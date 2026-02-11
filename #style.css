@@ -1,12 +1,1 @@
-body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f4f9; padding: 20px; }
-.container-login { max-width: 350px; margin: 100px auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center; }
-.container-main { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-input { padding: 10px; margin: 5px 0; border: 1px solid #ddd; border-radius: 5px; }
-button { padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
-.btn-primary { background: #2196F3; color: white; width: 100%; }
-.btn-success { background: #4CAF50; color: white; }
-.btn-danger { background: #f44336; color: white; }
-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-th, td { border-bottom: 1px solid #ddd; padding: 12px; text-align: left; }
-th { background: #f8f9fa; }
-.error { color: red; font-size: 13px; display: none; }
+
