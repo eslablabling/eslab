@@ -988,40 +988,54 @@
 
         function renderCoaRow(bC, it, originalIndex, isAdmin, canVerify) {
             if(it.isV) {
-                // Status Verified selalu berwarna hijau
+                // Badge Hasil Terverifikasi
                 const verifiedBadge = `
-                    <div style="background: #ecfdf5; color: #065f46; padding: 6px 10px; border-radius: 8px; font-weight: 800; border: 1px solid #bbf7d0; display: inline-block;">
-                        ${it.res} <small style="font-size: 0.6rem;">mg/Nm³</small>
+                    <div style="background: #ecfdf5; color: #065f46; padding: 6px 12px; border-radius: 8px; font-weight: 800; border: 1px solid #bbf7d0; display: inline-block; min-width: 80px;">
+                        ${it.res} <small style="font-size: 0.65rem; font-weight: 600;">mg/Nm³</small>
                     </div>`;
 
                 bC.innerHTML += `
-                    <tr style="border-bottom: 1px solid #f1f5f9; font-size: 0.85rem;">
+                    <tr style="border-bottom: 1px solid #f1f5f9; font-size: 0.85rem; transition: background 0.2s;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+                        <!-- ID Sampel -->
                         <td style="font-weight: 700; color: var(--primary); padding: 15px;">${it.id}</td>
+                        
+                        <!-- Perusahaan -->
                         <td style="font-weight: 600;">${it.company}</td>
-                        <td><small>${it.reg}</small></td>
-                        <td><span style="background: #f1f5f9; padding: 4px 8px; border-radius: 6px; font-weight: 700;">${it.param}</span></td>
-                        <td style="text-align: center;">${verifiedBadge}</td>
+                        
+                        <!-- Regulasi -->
+                        <td><small style="color: #64748b;">${it.reg}</small></td>
+                        
+                        <!-- Parameter -->
+                        <td><span style="background: #f1f5f9; padding: 4px 8px; border-radius: 6px; font-weight: 700; color: #334155;">${it.param}</span></td>
+                        
+                        <!-- Metode (Menambahkan kolom yang tadi ada di header) -->
+                        <td style="color: #64748b; font-size: 0.8rem;">${it.met}</td>
+                        
+                        <!-- Hasil (Center sesuai header) -->
+                        <td style="text-align: center; padding: 10px;">${verifiedBadge}</td>
+                        
+                        <!-- Aksi -->
                         <td style="text-align: right; padding: 10px; white-space: nowrap;">
-                            <div style="display: flex; align-items: center; justify-content: flex-end; gap: 10px;">
+                            <div style="display: flex; align-items: center; justify-content: flex-end; gap: 8px;">
                                 
-                                <!-- Tombol UNVERIFY (Hanya untuk Validator/Admin) -->
                                 ${canVerify ? `
                                     <button onclick="toggleV(${originalIndex})" 
-                                        style="background: var(--warning); color: white; border: none; padding: 7px 12px; border-radius: 8px; cursor: pointer; font-size: 0.65rem; font-weight: 800; min-width: 95px;">
+                                        style="background: var(--warning); color: white; border: none; padding: 7px 12px; border-radius: 6px; cursor: pointer; font-size: 0.65rem; font-weight: 800; display: flex; align-items: center; gap: 5px;"
+                                        title="Batalkan Verifikasi">
                                         <i class="fas fa-undo"></i> UNVERIFY
                                     </button>` : ''}
 
-                                <!-- Tombol CETAK PDF (Selalu Ada) -->
                                 <button onclick="printCOA(${originalIndex})" 
-                                    style="background: var(--primary); color: white; border: none; padding: 7px 12px; border-radius: 8px; cursor: pointer; font-size: 0.65rem; font-weight: 800;">
+                                    style="background: var(--primary); color: white; border: none; padding: 7px 12px; border-radius: 6px; cursor: pointer; font-size: 0.65rem; font-weight: 800; display: flex; align-items: center; gap: 5px;">
                                     <i class="fas fa-file-pdf"></i> PDF
                                 </button>
                                 
-                                <!-- Tombol HAPUS (Khusus Admin) -->
                                 ${isAdmin ? `
-                                    <i class="fas fa-trash-alt" onclick="deleteAnalisa(${originalIndex})" 
-                                        style="color: var(--danger); cursor: pointer; font-size: 1.1rem; margin-left: 5px;" 
-                                        title="Hapus Data"></i>` : ''}
+                                    <button onclick="deleteAnalisa(${originalIndex})" 
+                                        style="background: none; border: none; color: var(--danger); cursor: pointer; padding: 5px;" 
+                                        title="Hapus Data">
+                                        <i class="fas fa-trash-alt" style="font-size: 1.1rem;"></i>
+                                    </button>` : ''}
                             </div>
                         </td>
                     </tr>`;
