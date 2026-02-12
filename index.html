@@ -1756,6 +1756,25 @@
                 }
             }
 
+            function exportExcel() {
+                // 1. Ambil tabel yang ingin diekspor (body-coa)
+                const table = document.querySelector("#view-coa table");
+                
+                // 2. Gunakan SheetJS untuk mengubah tabel HTML menjadi workbook Excel
+                const wb = XLSX.utils.table_to_book(table, { sheet: "Hasil Analisa" });
+                
+                // 3. Tentukan nama file dengan timestamp agar unik
+                const date = new Date().toISOString().split('T')[0];
+                const fileName = `Rekap_Hasil_LIMS_ES_${date}.xlsx`;
+                
+                // 4. Picu pengunduhan file
+                XLSX.writeFile(wb, fileName);
+                
+                // 5. Catat log aktivitas
+                addLog("EXPORT EXCEL", "Mengekspor rekap hasil analisa ke format Excel");
+                showToast("File Excel berhasil diunduh!");
+            }
+        
             function printCOC() {
                 const { jsPDF } = window.jspdf;
                 const doc = new jsPDF('l', 'mm', 'a4'); // Landscape
