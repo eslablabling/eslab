@@ -1757,83 +1757,90 @@
             }
 
             function exportExcel() {
-                // 1. Ambil hanya data yang sudah VERIFIED
                 const verifiedData = db.filter(it => it.isV);
-                
-                if (verifiedData.length === 0) {
-                    return showToast("Tidak ada data terverifikasi untuk diekspor!", "error");
-                }
+                if (verifiedData.length === 0) return showToast("Tidak ada data terverifikasi!", "error");
             
                 const wb = XLSX.utils.book_new();
             
-                // 2. Loop setiap sampel untuk dibuatkan Sheet terpisah (atau digabung dalam satu sheet panjang)
-                // Di sini kita buat satu Sheet Rekap dengan format Laporan Resmi
-                let reportData = [
-                    ["LABORATORIUM PT ENVIROTAMA SOLUSINDO"],
-                    ["Jl. Jatiwangi No.84 Kamurang, Cikarang Barat, Bekasi 17530"],
-                    ["REKAPITULASI CERTIFICATE OF ANALYSIS (COA)"],
-                    [""], // Baris Kosong
-                ];
-            
-                verifiedData.forEach((it, index) => {
+                verifiedData.forEach((it) => {
                     const sd = it.samplingData || {};
                     const regData = masterReg.find(r => r.name === it.reg) || { o2: 0, limit: '-' };
+                    const baseDate = moment(it.date, "DD-MM-YYYY");
                     
-                    // Header Identitas Per Sampel
-                    reportData.push(["DATA PELANGGAN & SAMPEL - " + it.id]);
-                    reportData.push(["Customer Name", ": " + it.company, "", "Sampling Date", ": " + (sd.tgl || it.date)]);
-                    reportData.push(["Subject Test", ": Air Emission", "", "Sampling Time", ": " + (sd.jam || "-")]);
-                    reportData.push(["Location", ": " + (sd.lokasi || "-"), "", "Sampling Condition", ": " + (sd.cuaca || "Clear")]);
-                    reportData.push(["Regulasi", ": " + it.reg, "", "Lab Number", ": LAB-" + it.id]);
-                    reportData.push([""]); // Spasi sebelum tabel
+                    // --- DATA STRUKTUR EXCEL (Sama Persis Alur PDF) ---
+                    let sheetContent = [
+                        ["CERTIFICATE OF ANALYSIS"], // Baris 1
+                        [`Certificate No: ES-${it.id}/${moment().format('YYYY')}`],
+                        [""],
+                        ["[ HALAMAN 1: OWNERS IDENTITY ]"],
+                        ["Name of Company", ": " + it.company],
+                        ["Address", ": " + (it.companyLocation || "-")],
+                        ["Customer Contact", ": " + (it.customerContact || "-")],
+                        [""],
+                        ["[ CUSTOMER JOB REFERENCE ]"],
+                        ["Subject Test", ": Air Emissions Stationary Source"],
+                        ["Sampled By", ": PT Envirotama Solusindo, Bekasi"],
+                        ["Date of Sampling", ": " + (sd.tgl ? moment(sd.tgl).format('MMMM DD, YYYY') : "-")],
+                        ["Lab Facilities", ": PT Envirotama Solusindo, Bekasi"],
+                        ["Date of Acceptance", ": " + baseDate.format('MMMM DD, YYYY')],
+                        ["Date of Analysis", ": " + baseDate.clone().add(1, 'days').format('MMMM DD, YYYY') + " until " + baseDate.clone().add(2, 'days').format('MMMM DD, YYYY')],
+                        [""],
+                        ["[ OTHER INFORMATION ]"],
+                        ["Additional Notes", ": " + (sd.note || "-")],
+                        [""],
+                        ["--------------------------------------------------------------------------------"],
+                        [""],
+                        ["[ HALAMAN 2: TEST RESULTS ]"],
+                        ["Sample ID / Location", ": " + it.id + " / " + (sd.lokasi || "-")],
+                        ["Coordinate", ": " + (sd.koordinat || "-")],
+                        ["Sampling Condition", ": " + (sd.cuaca || "Clear")],
+                        ["Sampling Method", ": Isokinetic"],
+                        [""],
+                        // --- HEADER TABEL HASIL ---
+                        ["No.", "Testing Parameter", "Sample Result", "Regulatory Limit**", "Unit#", "Methods", "O2 Reg (%)"],
+                        [1, it.param, it.res, regData.limit, "mg/Nm³", it.met, regData.o2],
+                        [2, "Oksigen (O2)", sd.o2_lapangan || "20.9", "-", "%", "IKM-ESP-7.2.5", "-"],
+                        [3, "Velocity", sd.velocity || "-", "-", "m/s", it.met, "-"],
+                        [4, "Volumetric Flow Rate", sd.flowRate || "-", "-", "m³/s", it.met, "-"],
+                        [5, "Water Vapor", sd.waterVapor || "-", "-", "%", it.met, "-"],
+                        [6, "Num of Traverse Point", sd.traversePoint || "-", "-", "-", it.met, "-"],
+                        [7, "Percent of Isokinetic", sd.isokinetic || "-", "90-110", "%", it.met, "-"],
+                        [""],
+                        ["Note:"],
+                        ["**", it.reg],
+                        ["#", "mg/m³ = Concentration of miligram per meter cubic, at normal atmosfer (25°C, 1 atm)"],
+                        [""],
+                        ["Approved by,"],
+                        [""],
+                        [""],
+                        ["Technical Manager"],
+                        ["PT ENVIROTAMA SOLUSINDO"]
+                    ];
             
-                    // Header Tabel Teknis (Persis COA)
-                    reportData.push(["No.", "Testing Parameter", "Sample Result", "Regulatory Limit", "Unit", "Methods", "O2 Reg (%)"]);
+                    // Buat Worksheet
+                    const ws = XLSX.utils.aoa_to_sheet(sheetContent);
                     
-                    // Baris Hasil (Parameter Utama)
-                    reportData.push([
-                        1, 
-                        it.param, 
-                        it.res, 
-                        regData.limit, 
-                        "mg/Nm³", 
-                        it.met, 
-                        regData.o2
-                    ]);
+                    // Atur Lebar Kolom (wch = width in characters)
+                    ws['!cols'] = [
+                        { wch: 20 }, // Kolom A (Label)
+                        { wch: 40 }, // Kolom B (Value / Parameter)
+                        { wch: 15 }, // Result
+                        { wch: 20 }, // Limit
+                        { wch: 10 }, // Unit
+                        { wch: 25 }, // Methods
+                        { wch: 12 }  // O2 Reg
+                    ];
             
-                    // Baris Data Lapangan Pendukung (Persis COA)
-                    reportData.push([2, "Oksigen (O2) Terukur", sd.o2_lapangan || "20.9", "-", "%", "IKM-ESP", "-"]);
-                    reportData.push([3, "Velocity", sd.velocity || "-", "-", "m/s", "-", "-"]);
-                    reportData.push([4, "Volumetric Flow Rate", sd.flowRate || "-", "-", "m³/s", "-", "-"]);
-                    reportData.push([5, "Percent of Isokinetic", sd.isokinetic || "-", "90-110", "%", "-", "-"]);
-                    
-                    reportData.push([""]); // Baris kosong pemisah antar sampel
-                    reportData.push(["---------------------------------------------------------------------------------------------------"]);
-                    reportData.push([""]); 
+                    // Tambahkan ke Workbook (Nama Sheet = ID Sampel)
+                    XLSX.utils.book_append_sheet(wb, ws, it.id.substring(0, 30));
                 });
             
-                // 3. Konversi ke Worksheet
-                const ws = XLSX.utils.aoa_to_sheet(reportData);
-            
-                // 4. Atur Styling Kolom (Lebar Kolom)
-                const wscols = [
-                    {wch: 5},  // No
-                    {wch: 30}, // Parameter
-                    {wch: 15}, // Result
-                    {wch: 20}, // Limit
-                    {wch: 12}, // Unit
-                    {wch: 25}, // Methods
-                    {wch: 10}  // O2 Reg
-                ];
-                ws['!cols'] = wscols;
-            
-                // 5. Tambahkan Sheet ke Workbook dan Download
-                XLSX.utils.book_append_sheet(wb, ws, "Rekap_COA");
-                XLSX.writeFile(wb, `REKAP_COA_ES_${moment().format('YYYYMMDD_HHmm')}.xlsx`);
-            
-                addLog("EXPORT EXCEL", `Mengekspor ${verifiedData.length} Laporan COA ke Excel`);
-                showToast("Rekap Excel (Format COA) Berhasil Diunduh!");
+                // Download File
+                XLSX.writeFile(wb, `COA_FULL_REPORT_ES_${moment().format('YYYYMMDD')}.xlsx`);
+                addLog("EXPORT EXCEL", `Ekspor ${verifiedData.length} Laporan Lengkap ke Excel`);
+                showToast("Excel Laporan Lengkap (Halaman 1 & 2) Berhasil Diunduh!");
             }
+
 
         
             function printCOC() {
