@@ -493,6 +493,27 @@
                 weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' 
             });
         };
+function addNewRow() {
+
+    const tbody = document.getElementById("coc-sample-body");
+
+    const row = document.createElement("tr");
+
+    row.innerHTML = `
+        <td><input type="text" class="param" placeholder="Parameter" required></td>
+        <td><input type="text" class="method" placeholder="Metode" required></td>
+        <td><input type="number" class="qty" value="1" min="1" required></td>
+        <td>
+            <button type="button" onclick="removeRow(this)">
+                Hapus
+            </button>
+        </td>
+    `;
+
+    tbody.appendChild(row);
+}
+
+        
 async function loadCocDropdown(){
 
     const { data } = await supabaseClient
