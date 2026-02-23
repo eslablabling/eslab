@@ -516,7 +516,7 @@ function removeRow(btn){
     btn.closest("tr").remove();
 }
         
-async function loadCocDropdown(){
+function loadCocDropdown(){
 
     const { data } = await supabaseClient
         .from('coc')
@@ -540,7 +540,7 @@ async function loadCocDropdown(){
       document.getElementById("select-coc")
 .addEventListener("change", loadCocToReception);
 
-      async function loadCocToReception(){
+    function loadCocToReception(){
 
     const cocId = document.getElementById("select-coc").value;
     if(!cocId) return;
@@ -755,7 +755,7 @@ async function loadCocDropdown(){
 }
 
       document.getElementById("sample-form")
-.addEventListener("submit", async function(e){
+.addEventListener("submit", function(e){
 
     e.preventDefault();
 
