@@ -289,7 +289,13 @@
             <!-- SECTION SAMPEL -->
             <div id="view-sampel" class="section-container" style="display:none;">
                             <section class="section-box">
-                                <form id="sample-form" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(250px,1fr)); gap:15px;">
+                              <div style="margin-bottom:15px;">
+    <label style="font-weight:700;">Ambil dari COC</label>
+    <select id="select-coc" 
+        style="padding:10px; border-radius:8px; border:1px solid var(--border); width:100%;">
+    </select>
+</div>  
+                              <form id="sample-form" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(250px,1fr)); gap:15px;">
                                     <div style="display:flex; flex-direction:column; gap:5px;"><label for="s-id">ID Sampel</label><input type="text" id="s-id" required style="padding:10px; border-radius:8px; border:1px solid var(--border);"></div>
                                     <div style="display:flex; flex-direction:column; gap:5px;"><label for="s-company">Perusahaan</label><input type="text" id="s-company" required style="padding:10px; border-radius:8px; border:1px solid var(--border);"></div>
                                     <div style="display:flex; flex-direction:column; gap:5px;"><label for="s-company-loc">Lokasi Perusahaan</label><input type="text" id="s-company-loc" required placeholder="Ex: Jakarta, Surabaya, dll" style="padding:10px; border-radius:8px; border:1px solid var(--border);" autocomplete="address-level2"></div>
@@ -487,7 +493,82 @@
                 weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' 
             });
         };
+async function loadCocDropdown(){
 
+    const { data } = await supabaseClient
+        .from('coc')
+        .select('*')
+        .neq('status','CLOSED');
+
+    const select = document.getElementById("select-coc");
+    select.innerHTML = `<option value="">-- Pilih COC --</option>`;
+
+    data.forEach(c=>{
+        select.innerHTML += `
+            <option value="${c.id}">
+                ${c.number} - ${c.company} (${c.status})
+            </option>
+        `;
+    });
+}
+
+      loadCocDropdown();
+
+      document.getElementById("select-coc")
+.addEventListener("change", loadCocToReception);
+
+      async function loadCocToReception(){
+
+    const cocId = document.getElementById("select-coc").value;
+    if(!cocId) return;
+
+    // Ambil data COC
+    const { data: cocData } = await supabaseClient
+        .from('coc')
+        .select('*')
+        .eq('id', cocId)
+        .single();
+
+    // Isi perusahaan otomatis
+    document.getElementById("s-company").value = cocData.company;
+
+    // Generate ID Sampel otomatis
+    document.getElementById("s-id").value =
+        cocData.number + "-" + Date.now().toString().slice(-4);
+
+    // Ambil sample parameter dari COC
+    const { data: samples } = await supabaseClient
+        .from('samples')
+        .select('*')
+        .eq('coc_id', cocId);
+
+    autoCheckParameters(samples);
+
+    // Update status COC jadi USED
+    await supabaseClient
+        .from('coc')
+        .update({ status:'USED', used_at: new Date() })
+        .eq('id', cocId);
+
+    loadCocDropdown();
+}
+
+      function autoCheckParameters(sampleList){
+
+    const container = document.getElementById("param-check-container");
+    const checkboxes = container.querySelectorAll("input[type='checkbox']");
+
+    checkboxes.forEach(cb => cb.checked = false);
+
+    sampleList.forEach(s=>{
+        const match = Array.from(checkboxes)
+            .find(cb => cb.value === s.parameter);
+
+        if(match) match.checked = true;
+    });
+}
+
+      
         function addLog(action, details) {
             // Ambil role tepat saat log dibuat
             const currentUser = sessionStorage.getItem('role') || 'Sistem'; 
@@ -649,6 +730,21 @@
                 paramCheckContainer.innerHTML = checkHtml;
             }
 }
+
+      document.getElementById("sample-form")
+.addEventListener("submit", async function(e){
+
+    e.preventDefault();
+
+    const cocId = document.getElementById("select-coc").value;
+
+    if(!cocId){
+        alert("Pilih COC terlebih dahulu");
+        return;
+    }
+
+    // lanjutkan simpan ke table reception / db Anda
+});
 
         document.getElementById('sample-form').addEventListener('submit', function(e) {
             e.preventDefault();
@@ -1114,6 +1210,10 @@
 
             let hasil = netoMiligram / vol;
 
+          if (netoGram < 0) {
+              showToast("QC Alert: Berat Neto Negatif!", "error");
+              return;
+          }
             // Terapkan Rumus Koreksi O2
             if (o2Koreksi > 0 && o2Terukur < 20.9) {
                 hasil = hasil * (20.9 - o2Koreksi) / (20.9 - o2Terukur);
@@ -1553,7 +1653,7 @@
             });
         }
 
-        function resetDB() { if(confirm("Hapus permanen?")) { localStorage.clear(); location.reload(); } }
+        function resetDB() { if(confirm("Hapus permanen?")) { localSto(); location.reload(); } }
 
         function showSection(id, el) {
             // 1. Sembunyikan semua section
@@ -1585,7 +1685,77 @@
                 // loadCOCDetails(); 
             }
         }
+        
+        let cocTempSamples = [];
 
+      function addCocRow() {
+    cocTempSamples.push({
+        sampleId: '',
+        sampleName: '',
+        matrix: '',
+        parameter: '',
+        metode: ''
+    });
+    renderCocTable();
+}
+
+      function renderCocTable() {
+    const tbody = document.getElementById("coc-tbody");
+    tbody.innerHTML = '';
+
+    cocTempSamples.forEach((s, i) => {
+        tbody.innerHTML += `
+        <tr>
+            <td>${i+1}</td>
+            <td><input onchange="updateCoc(${i}, 'sampleId', this.value)"></td>
+            <td><input onchange="updateCoc(${i}, 'sampleName', this.value)"></td>
+            <td><input onchange="updateCoc(${i}, 'matrix', this.value)"></td>
+            <td><input onchange="updateCoc(${i}, 'parameter', this.value)"></td>
+            <td><input onchange="updateCoc(${i}, 'metode', this.value)"></td>
+            <td><button onclick="deleteCocRow(${i})">Hapus</button></td>
+        </tr>
+        `;
+    });
+}
+
+      function updateCoc(index, field, value) {
+    cocTempSamples[index][field] = value;
+}
+
+      function deleteCocRow(index){
+    cocTempSamples.splice(index,1);
+    renderCocTable();
+}
+
+      let cocDB = JSON.parse(localStorage.getItem('lab_coc_db')) || [];
+
+      function saveCoc() {
+
+    const cocNumber = document.getElementById('coc-number').value;
+    const company = document.getElementById('coc-company').value;
+
+    if(!cocNumber || cocTempSamples.length === 0){
+        alert("COC belum lengkap!");
+        return;
+    }
+
+    const newCoc = {
+        number: cocNumber,
+        company: company,
+        date: new Date().toISOString(),
+        samples: cocTempSamples
+    };
+
+    cocDB.push(newCoc);
+    localStorage.setItem('lab_coc_db', JSON.stringify(cocDB));
+
+    alert("COC berhasil disimpan!");
+
+    cocTempSamples = [];
+    renderCocTable();
+}
+
+      
         function showToast(m, t="success") {
             const c = document.getElementById('toast-container');
             const b = document.createElement('div'); b.className='toast'; b.innerText=m;
