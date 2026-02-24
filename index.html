@@ -81,7 +81,7 @@
             <ul>
                 <li><button onclick="showSection('view-home', this)" class="menu-link active"><span><i class="fas fa-home"></i> Dashboard</span></button></li>
                 <li id="m-master"><button onclick="showSection('view-master', this)" class="menu-link"><span><i class="fas fa-database"></i> Master Data</span></button></li>
-                <li id="m-coc"><button onclick="showSection('view-coc', this)" class="menu-link"><i class="fas fa-file-signature"></i> Pembuatan COC</button></li>
+                <li id="m-coc"><button onclick="showSection('view-coc', this); renderCOC();" class="menu-link coc-menu"><span><i class="fas fa-file-signature"></i> Pembuatan COC</span></button></li>
                 <li><button onclick="showSection('view-coc-list', this)" class="menu-link"><span><i class="fas fa-list"></i> Lihat COC</span></button></li>
                 <li id="m-sampel"><button onclick="showSection('view-sampel', this)" class="menu-link"><span><i class="fas fa-box-open"></i> Penerimaan</span></button></li>
                 <li><button onclick="showSection('view-input-sampling', this)" class="menu-link"><span><i class="fas fa-edit"></i> Input Data</span></button></li>
@@ -1262,23 +1262,28 @@
 
         function showSection(id, el){
 
-            document.querySelectorAll('.section-container')
+            // 🔥 Sembunyikan SEMUA section (semua class section)
+            document.querySelectorAll('.section-container, .content-section')
                 .forEach(v => v.style.display = 'none');
 
+            // Tampilkan section yang dipilih
             const target = document.getElementById(id);
             if(target) target.style.display = 'block';
 
+            // Reset menu active
             document.querySelectorAll('.menu-link')
                 .forEach(l => l.classList.remove('active'));
 
             if(el) el.classList.add('active');
 
+            // Update title
             document.getElementById('view-title').innerText =
                 el ? el.innerText.trim() : "Dashboard";
 
+            // Save last menu
             sessionStorage.setItem('activeMenu', id);
 
-            // 🔥 Lazy Render (IMPORTANT)
+            // Lazy Render
             if(id === 'view-coc-list'){
                 renderCOCList();
             }
@@ -1288,7 +1293,7 @@
             }
 
             if(id === 'view-input-sampling'){
-                updateSamplingDropdown();
+                updateSamplingDropdown?.();
             }
         }
 
