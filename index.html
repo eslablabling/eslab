@@ -500,16 +500,20 @@
         let cocDB = JSON.parse(localStorage.getItem("cocDB")) || [];
         let logs = JSON.parse(localStorage.getItem('lab_audit_logs')) || [];
         let recycleBin = JSON.parse(localStorage.getItem('lab_recycle_bin')) || [];
-        let masterReg = JSON.parse(localStorage.getItem('lab_final_reg')) || [{ name: "PermenLHK 15/2019 (Batubara)", o2: 7 },{ name: "PermenLHK 15/2019 (Minyak)", o2: 5 }];
-        let masterMap = JSON.parse(localStorage.getItem('lab_final_map')) || {"pH": ["SNI 06-6989.11-2004"], "TSS": ["SNI 6989.3:2019"]};
+        let masterReg = JSON.parse(localStorage.getItem('lab_final_reg')) || [];
+        let masterMap = JSON.parse(localStorage.getItem('lab_final_map')) || {};
         let myChart;
 
         window.onload = () => {
 
-            cocDB = JSON.parse(localStorage.getItem("cocDB")) || [];
+            try {
+                cocDB = JSON.parse(localStorage.getItem("cocDB")) || [];
+            } catch (e) {
+                cocDB = [];
+                console.error("Error parsing cocDB:", e);
+            }
 
-            if(sessionStorage.getItem('isAuth')){
-
+            if (sessionStorage.getItem('isAuth')) {
                 showDashboard();
 
                 const lastMenu =
@@ -518,22 +522,50 @@
                 const menuBtn =
                     document.querySelector(`button[onclick*="${lastMenu}"]`);
 
-                showSection(lastMenu, menuBtn);
+                if (menuBtn) {
+                    showSection(lastMenu, menuBtn);
+                }
             }
 
             updateStats();
 
+            // ⭐ Auto New COC setiap reload
+            if(!sessionStorage.getItem("editingCOC")){
+                newCOC();
+            }
+
             const liveDate = document.getElementById('live-date');
-            if(liveDate){
+            if (liveDate) {
                 liveDate.innerText =
-                new Date().toLocaleDateString('id-ID',{
-                    weekday:'long',
-                    day:'numeric',
-                    month:'long',
-                    year:'numeric'
-                });
+                    new Date().toLocaleDateString('id-ID', {
+                        weekday: 'long',
+                        day: 'numeric',
+                        month: 'long',
+                        year: 'long'
+                    });
             }
         };
+
+        function bindCascadeDropdown(row, paramValue, methodValue){
+
+            const paramSelect = row.querySelector(".param-select");
+            const methodSelect = row.querySelector(".method-select");
+
+            if(!paramSelect || !methodSelect) return;
+
+            // Set value param
+            paramSelect.value = paramValue || "";
+
+            // Render method sesuai param
+            methodSelect.innerHTML =
+                generateMethodOptions(paramValue, methodValue);
+
+            // Event listener param change (SAFE VERSION)
+            paramSelect.onchange = function(){
+                methodSelect.innerHTML =
+                    generateMethodOptions(this.value, "");
+            };
+        }
 
         function searchCOC(){
 
@@ -557,7 +589,6 @@
             body.innerHTML = "";
 
             if (!data || data.length === 0) {
-
                 body.innerHTML = `
                     <tr>
                         <td colspan="5" style="text-align:center; padding:10px;">
@@ -580,13 +611,13 @@
                     <td>
 
                         <button
-                            onclick="openCOCFromList(${JSON.stringify(coc.cocNo)})"
+                            onclick="openCOCFromList('${coc.cocNo}')"
                             style="padding:4px 8px; margin-right:5px;">
                             Buka
                         </button>
 
                         <button
-                            onclick="deleteCOCFromList(${JSON.stringify(coc.cocNo)})"
+                            onclick="deleteCOCFromList('${coc.cocNo}')"
                             style="background:red;color:white;border:none;padding:4px 8px;">
                             Hapus
                         </button>
@@ -644,20 +675,27 @@
 
         function saveCOC() {
 
+            const getVal = id => document.getElementById(id)?.value || "";
+
+            if (!getVal("coc-coc-no")) {
+                showToast("COC No wajib diisi!", "error");
+                return;
+            }
+
             const cocData = {
-                companyName: document.getElementById("coc-company-name").value,
-                companyAddress: document.getElementById("coc-company-address").value,
-                email: document.getElementById("coc-email-coa").value,
-                cocNo: document.getElementById("coc-coc-no").value,
-                ltrNo: document.getElementById("coc-ltr-no").value,
-                location: document.getElementById("coc-company-location-detail").value,
-                tat: document.getElementById("coc-tat-req").value,
-                officerA: document.getElementById("coc-officer-a").value,
-                officerB: document.getElementById("coc-officer-b").value,
-                officerC: document.getElementById("coc-officer-c").value,
-                planDate: document.getElementById("coc-plan-date").value,
-                pic: document.getElementById("coc-pic").value,
-                phone: document.getElementById("coc-phone-no").value,
+                companyName: getVal("coc-company-name"),
+                companyAddress: getVal("coc-company-address"),
+                email: getVal("coc-email-coa"),
+                cocNo: getVal("coc-coc-no"),
+                ltrNo: getVal("coc-ltr-no"),
+                location: getVal("coc-company-location-detail"),
+                tat: getVal("coc-tat-req"),
+                officerA: getVal("coc-officer-a"),
+                officerB: getVal("coc-officer-b"),
+                officerC: getVal("coc-officer-c"),
+                planDate: getVal("coc-plan-date"),
+                pic: getVal("coc-pic"),
+                phone: getVal("coc-phone-no"),
                 samples: []
             };
 
@@ -665,37 +703,36 @@
 
             rows.forEach(row => {
 
-                // Sample basic info
-                const sampleInputs = row.querySelectorAll("td input");
+                const inputs = row.querySelectorAll("td input");
 
-                // Collect multi test parameter
                 const tests = [];
 
-                row.querySelectorAll(".reg-select").forEach((regSelect, idx) => {
+                const regSelects = row.querySelectorAll(".reg-select");
+                const paramSelects = row.querySelectorAll(".param-select");
+                const methodSelects = row.querySelectorAll(".method-select");
 
-                    const paramSelect = row.querySelectorAll(".param-select")[idx];
-                    const methodSelect = row.querySelectorAll(".method-select")[idx];
+                regSelects.forEach((reg, i) => {
 
                     tests.push({
-                        regulation: regSelect?.value || "",
-                        parameter: paramSelect?.value || "",
-                        method: methodSelect?.value || ""
+                        regulation: reg?.value || "",
+                        parameter: paramSelects[i]?.value || "",
+                        method: methodSelects[i]?.value || ""
                     });
 
                 });
 
                 cocData.samples.push({
-                    sampleId: sampleInputs[0]?.value || "",
-                    description: sampleInputs[1]?.value || "",
-                    matrix: sampleInputs[2]?.value || "",
-                    container: sampleInputs[3]?.value || "",
-                    tests: tests
+                    sampleId: inputs[0]?.value || "",
+                    description: inputs[1]?.value || "",
+                    matrix: inputs[2]?.value || "",
+                    container: inputs[3]?.value || "",
+                    tests
                 });
 
             });
 
-            // Simpan ke database COC
-            const existingIndex = cocDB.findIndex(c => c.cocNo === cocData.cocNo);
+            const existingIndex =
+                cocDB.findIndex(c => c.cocNo === cocData.cocNo);
 
             if (existingIndex !== -1) {
                 cocDB[existingIndex] = cocData;
@@ -710,24 +747,6 @@
             renderCOC();
         }
 
-        function generateRegOptions(selected = "") {
-
-            let options = `<option value="">-- Pilih Regulasi --</option>`;
-
-            masterReg.forEach(reg => {
-
-                const isSelected = reg.name === selected ? "selected" : "";
-
-                options += `
-                    <option value="${reg.name}" ${isSelected}>
-                        ${reg.name}
-                    </option>
-                `;
-            });
-
-            return options;
-        }
-
         function addCOCRow() {
 
             const body = document.getElementById("coc-samples-body");
@@ -737,6 +756,7 @@
             const rowCount = body.rows.length;
 
             row.innerHTML = `
+            
                 <td style="border:1px solid #000; padding:5px;">${rowCount}</td>
 
                 <td style="border:1px solid #000; padding:5px;">
@@ -764,7 +784,7 @@
 
                 <!-- PARAMETER -->
                 <td style="border:1px solid #000; padding:5px; width:150px;">
-                    <select class="param-select" style="width:100%;" onchange="updateMethod(this)">
+                    <select class="param-select" style="width:100%;">
                         ${generateParamOptions()}
                     </select>
                 </td>
@@ -784,8 +804,33 @@
                     </button>
                 </td>
             `;
+            const paramSelect = row.querySelector(".param-select");
+            const methodSelect = row.querySelector(".method-select");
+
+            paramSelect.onchange = function(){
+                methodSelect.innerHTML =
+                    generateMethodOptions(this.value, "");
+            };
 
             renumberCOCRows();
+        }
+
+        function generateRegOptions(selected = "") {
+
+            let options = `<option value="">-- Pilih Regulasi --</option>`;
+
+            masterReg.forEach(reg => {
+
+                const isSelected = reg.name === selected ? "selected" : "";
+
+                options += `
+                    <option value="${reg.name}" ${isSelected}>
+                        ${reg.name}
+                    </option>
+                `;
+            });
+
+            return options;
         }
 
         function generateMethodOptions(param, selected = "") {
@@ -861,143 +906,117 @@
         }
 
         function renderCOC() {
+
             const select = document.getElementById("coc-select");
-                select.innerHTML = '<option value="">-- Pilih COC Tersimpan --</option>';
+            if (!select) return;
 
-                cocDB.forEach(coc => {
-                    select.innerHTML += `
-                        <option value="${coc.cocNo}">
-                            ${coc.cocNo}
-                        </option>
-                    `;
-                });
-            const body = document.getElementById("coc-samples-body");
-            body.innerHTML = "";
-
-            if (!db || db.length === 0) {
-                body.innerHTML = `
-                    <tr>
-                        <td colspan="10" style="text-align:center; padding:10px;">
-                            Tidak ada data sampel
-                        </td>
-                    </tr>
-                `;
-                return;
-            }
-
-            // 🔵 TARUH DI SINI
-            const filtered = db.filter(x => x.status === "RECEIVED");
-
-            if (filtered.length === 0) {
-                body.innerHTML = `
-                    <tr>
-                        <td colspan="10" style="text-align:center; padding:10px;">
-                            Tidak ada sampel dengan status RECEIVED
-                        </td>
-                    </tr>
-                `;
-                return;
-            }
-
-            filtered.forEach((item, index) => {
-                body.innerHTML += `
-                    <tr>
-                        <td style="border:1px solid #000; padding:5px;">${index + 1}</td>
-                        <td style="border:1px solid #000; padding:5px;">${item.id || "-"}</td>
-                        <td style="border:1px solid #000; padding:5px;">${item.desc || "-"}</td>
-                        <td style="border:1px solid #000; padding:5px;">${item.matrix || "-"}</td>
-                        <td style="border:1px solid #000; padding:5px;">-</td>
-                        <td style="border:1px solid #000; padding:5px;">${item.regulation || "-"}</td>
-                        <td style="border:1px solid #000; padding:5px;">${item.parameter || "-"}</td>
-                        <td style="border:1px solid #000; padding:5px;">-</td>
-                    </tr>
-                `;
-            });
+            select.innerHTML =
+                '<option value="">-- Pilih COC Tersimpan --</option>' +
+                cocDB.map(c =>
+                    `<option value="${c.cocNo}">${c.cocNo}</option>`
+                ).join("");
         }
 
         function loadCOC(cocNo) {
 
             if (!cocNo) return;
-            if(!cocDB || cocDB.length === 0) return;
+            if (!cocDB || cocDB.length === 0) return;
+
             const data = cocDB.find(c => c.cocNo === cocNo);
             if (!data) return;
 
-            // Isi header
-            document.getElementById("coc-company-name").value = data.companyName;
-            document.getElementById("coc-company-address").value = data.companyAddress;
-            document.getElementById("coc-email-coa").value = data.email;
-            document.getElementById("coc-coc-no").value = data.cocNo;
-            document.getElementById("coc-ltr-no").value = data.ltrNo;
-            document.getElementById("coc-company-location-detail").value = data.location;
-            document.getElementById("coc-tat-req").value = data.tat;
-            document.getElementById("coc-officer-a").value = data.officerA;
-            document.getElementById("coc-officer-b").value = data.officerB;
-            document.getElementById("coc-officer-c").value = data.officerC;
-            document.getElementById("coc-plan-date").value = data.planDate;
-            document.getElementById("coc-pic").value = data.pic;
-            document.getElementById("coc-phone-no").value = data.phone;
+            // ===== HEADER =====
+            const fields = {
+                "coc-company-name": data.companyName,
+                "coc-company-address": data.companyAddress,
+                "coc-email-coa": data.email,
+                "coc-coc-no": data.cocNo,
+                "coc-ltr-no": data.ltrNo,
+                "coc-company-location-detail": data.location,
+                "coc-tat-req": data.tat,
+                "coc-officer-a": data.officerA,
+                "coc-officer-b": data.officerB,
+                "coc-officer-c": data.officerC,
+                "coc-plan-date": data.planDate,
+                "coc-pic": data.pic,
+                "coc-phone-no": data.phone
+            };
 
-            // Isi tabel
+            Object.entries(fields).forEach(([id, value]) => {
+                const el = document.getElementById(id);
+                if (el) el.value = value || "";
+            });
+
+            // ===== TABLE BODY =====
             const body = document.getElementById("coc-samples-body");
+            if (!body) return;
+
             body.innerHTML = "";
 
             data.samples.forEach((s, index) => {
 
+                const test = s.tests?.[0] || {};  // ambil test pertama
+
                 const row = body.insertRow();
 
                 row.innerHTML = `
-                    <td style="border:1px solid #000; padding:5px;">${index + 1}</td>
+                    <td style="border:1px solid #000;padding:5px">${index + 1}</td>
 
-                    <td style="border:1px solid #000; padding:5px;">
-                        <input value="${s.sampleId || ''}" style="width:100%; border:none;">
+                    <td style="border:1px solid #000;padding:5px">
+                        <input value="${s.sampleId || ''}" style="width:100%;border:none">
                     </td>
 
-                    <td style="border:1px solid #000; padding:5px;">
-                        <input value="${s.description || ''}" style="width:100%; border:none;">
+                    <td style="border:1px solid #000;padding:5px">
+                        <input value="${s.description || ''}" style="width:100%;border:none">
                     </td>
 
-                    <td style="border:1px solid #000; padding:5px;">
-                        <input value="${s.matrix || ''}" style="width:100%; border:none;">
+                    <td style="border:1px solid #000;padding:5px">
+                        <input value="${s.matrix || ''}" style="width:100%;border:none">
                     </td>
 
-                    <td style="border:1px solid #000; padding:5px;">
-                        <input value="${s.container || ''}" style="width:100%; border:none;">
+                    <td style="border:1px solid #000;padding:5px">
+                        <input value="${s.container || ''}" style="width:100%;border:none">
                     </td>
 
-                    <!-- REGULASI -->
-                    <td style="border:1px solid #000; padding:5px; width:160px;">
-                        <select class="reg-select" style="width:100%;">
-                            ${generateRegOptions(s.regulation)}
+                    <td style="border:1px solid #000;padding:5px;width:160px">
+                        <select class="reg-select" style="width:100%">
+                            ${generateRegOptions(test.regulation)}
                         </select>
                     </td>
 
-                    <!-- PARAMETER -->
-                    <td style="border:1px solid #000; padding:5px; width:150px;">
-                        <select class="param-select" 
-                                style="width:100%;" 
-                                onchange="updateMethod(this)">
-                            ${generateParamOptions(s.parameter)}
+                    <td style="border:1px solid #000;padding:5px;width:150px">
+                        <select class="param-select" style="width:100%">
+                            ${generateParamOptions(test.parameter)}
                         </select>
                     </td>
 
-                    <!-- METODE -->
-                    <td style="border:1px solid #000; padding:5px; width:160px;">
-                        <select class="method-select" style="width:100%;">
-                            ${generateMethodOptions(s.parameter, s.method)}
+                    <td style="border:1px solid #000;padding:5px;width:160px">
+                        <select class="method-select" style="width:100%">
+                            ${generateMethodOptions(test.parameter, test.method)}
                         </select>
                     </td>
 
-                    <td style="border:1px solid #000; padding:5px; text-align:center;">
+                    <td style="border:1px solid #000;padding:5px;text-align:center">
                         <button type="button"
-                                onclick="deleteCOCRow(this)"
-                                style="background:red; color:white; border:none; padding:3px 6px;">
+                            onclick="deleteCOCRow(this)"
+                            style="background:red;color:white;border:none;padding:3px 6px">
                             ✕
                         </button>
                     </td>
                 `;
-            });
-        }
 
+                const paramSelect = row.querySelector(".param-select");
+                const methodSelect = row.querySelector(".method-select");
+
+                paramSelect.onchange = function(){
+                    methodSelect.innerHTML =
+                        generateMethodOptions(this.value, "");
+                };
+
+            });
+
+        }
+        
         function deleteCOC(){
 
             const select = document.getElementById("coc-select");
@@ -2570,7 +2589,7 @@
                 
                 doc.save(fileName);
             }
-
+ 
     </script>
 </body>
 </html>
