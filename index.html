@@ -2083,46 +2083,61 @@
             showToast("Seluruh database (Master + Transaksi + Audit) berhasil diekspor", "success");
         }
 
-        function importJSON(e) {
+        function importJSON(e){
+
             const file = e.target.files[0];
-            if (!file) return;
+            if(!file) return;
 
             file.text().then(result => {
-                try {
-                    const data = JSON.parse(result);
-                    
-                    // 1. Update variabel global (Termasuk Log & Recycle Bin)
-                    db = data.db || []; 
-                    masterReg = data.masterReg || []; 
-                    masterMap = data.masterMap || {};
-                    logs = data.logs || [];              // TAMBAHKAN INI
-                    recycleBin = data.recycleBin || [];  // TAMBAHKAN INI
 
-                    // 2. Simpan ke LocalStorage dengan Key yang Konsisten
+                try{
+                    const data = JSON.parse(result);
+
+                    // ===== VALIDASI BACKUP STRUCTURE =====
+                    if(
+                        !data ||
+                        !data.data ||
+                        !Array.isArray(data.data.db) ||
+                        !Array.isArray(data.data.masterReg)
+                    ){
+                        throw new Error("Backup file tidak valid");
+                    }
+
+                    const backup = data.data;
+
+                    // ===== RESTORE DATABASE =====
+                    db = backup.db || [];
+                    masterReg = backup.masterReg || [];
+                    masterMap = backup.masterMap || {};
+                    logs = backup.logs || [];
+                    recycleBin = backup.recycleBin || [];
+
+                    // ===== SAVE TO LOCALSTORAGE =====
                     localStorage.setItem('lab_final_db', JSON.stringify(db));
                     localStorage.setItem('lab_final_reg', JSON.stringify(masterReg));
                     localStorage.setItem('lab_final_map', JSON.stringify(masterMap));
-                    localStorage.setItem('lab_audit_logs', JSON.stringify(logs));    // TAMBAHKAN INI
-                    localStorage.setItem('lab_recycle_bin', JSON.stringify(recycleBin)); // TAMBAHKAN INI
+                    localStorage.setItem('lab_audit_logs', JSON.stringify(logs));
+                    localStorage.setItem('lab_recycle_bin', JSON.stringify(recycleBin));
 
-                    // 3. REFRESH TAMPILAN
-                    updateMasterUI(); 
-                    renderTables(); 
+                    // ===== REFRESH UI =====
+                    updateMasterUI();
+                    renderTables();
                     updateStats();
-                    
-                    // Render ulang log & bin jika Admin sedang membuka halaman tersebut
-                    if (typeof renderLogs === 'function') renderLogs();
-                    if (typeof renderRecycleBin === 'function') renderRecycleBin();
-                    if (!data ||!Array.isArray(data.db) ||!Array.isArray(data.masterReg)) {throw new Error("Backup tidak valid");}
-                    showToast("Seluruh Database (Master, Transaksi & Audit) Berhasil Dipulihkan!", "success");
-                    
-                    e.target.value = ''; 
 
-                } catch (err) {
-                    console.error("Import JSON error:", err);
-                    showToast("Format File JSON Tidak Valid!", "error");
+                    if(typeof renderLogs === 'function') renderLogs();
+                    if(typeof renderRecycleBin === 'function') renderRecycleBin();
+
+                    showToast("Database berhasil dipulihkan", "success");
+
+                    e.target.value = "";
+
+                }catch(err){
+                    console.error(err);
+                    showToast("Format backup tidak valid!", "error");
                 }
+
             });
+
         }
 
         function resetDB() { if(confirm("Hapus permanen?")) { localStorage.clear(); location.reload(); } }
