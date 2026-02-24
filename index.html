@@ -81,6 +81,8 @@
             <ul>
                 <li><button onclick="showSection('view-home', this)" class="menu-link active"><span><i class="fas fa-home"></i> Dashboard</span></button></li>
                 <li id="m-master"><button onclick="showSection('view-master', this)" class="menu-link"><span><i class="fas fa-database"></i> Master Data</span></button></li>
+                <li id="m-coc"><button onclick="showSection('view-coc', this)" class="menu-link"><i class="fas fa-file-signature"></i> Pembuatan COC</button></li>
+                <li><button onclick="showSection('view-coc-list', this)" class="menu-link"><span><i class="fas fa-list"></i> Lihat COC</span></button></li>
                 <li id="m-sampel"><button onclick="showSection('view-sampel', this)" class="menu-link"><span><i class="fas fa-box-open"></i> Penerimaan</span></button></li>
                 <li><button onclick="showSection('view-input-sampling', this)" class="menu-link"><span><i class="fas fa-edit"></i> Input Data</span></button></li>
                 <li><button onclick="showSection('view-analisa', this)" class="menu-link"><span><i class="fas fa-microscope"></i> Analisa</span> <span id="badge-analisa" class="badge-count" style="background:var(--danger)">0</span></button></li>
@@ -152,8 +154,26 @@
                         <div style="font-size: 14px; font-weight: bold; padding: 5px; border: 1px solid #ccc; background-color: #f9f9f9;">
                             CHAIN OF CUSTODY (COC)
                         </div>
+                        <button onclick="newCOC()" style="background:#2c7be5; color:white; border:none; padding:6px 10px;">
+                            + COC Baru
+                        </button>
+                        <div style="margin-bottom:10px;">
+                            <select id="coc-select" onchange="loadCOC(this.value)">
+                                <option value="">-- Pilih COC Tersimpan --</option>
+                            </select>
+
+                            <button onclick="deleteCOC()" style="margin-left:5px; background:red; color:white; border:none; padding:5px 8px;">
+                                Hapus COC
+                            </button>
+                        </div>
                         <button onclick="printCOC()" class="btn-primary" style="margin-left: 15px;">
                             <i class="fas fa-file-pdf"></i> Cetak PDF
+                        </button>
+                        <button onclick="saveCOC()" class="btn-primary" style="margin-left: 10px;">
+                            <i class="fas fa-save"></i> Simpan COC
+                        </button>
+                        <button onclick="addCOCRow()" class="btn-primary">
+                            <i class="fas fa-plus"></i> Tambah Sampel
                         </button>
                     </div>
 
@@ -221,30 +241,43 @@
                                 <th style="border: 1px solid #000; padding: 5px;">Regulation</th>
                                 <th style="border: 1px solid #000; padding: 5px;">Testing Parameter</th>
                                 <th style="border: 1px solid #000; padding: 5px;">Methods</th>
-                                <th style="border: 1px solid #000; padding: 5px;">Sampling Date</th>
-                                <th style="border: 1px solid #000; padding: 5px;">Login Date</th>
                             </tr>
                         </thead>
+                        
                         <tbody id="coc-samples-body">
-                            <!-- Loop 15 rows of samples here dynamically via JavaScript -->
-                            <!-- Placeholder row -->
-                            <tr>
-                                <td style="border: 1px solid #000; padding: 5px; height: 15px;">1</td>
-                                <td style="border: 1px solid #000; padding: 5px;"></td>
-                                <td style="border: 1px solid #000; padding: 5px;"></td>
-                                <td style="border: 1px solid #000; padding: 5px;"></td>
-                                <td style="border: 1px solid #000; padding: 5px;"></td>
-                                <td style="border: 1px solid #000; padding: 5px;"></td>
-                                <td style="border: 1px solid #000; padding: 5px;"></td>
-                                <td style="border: 1px solid #000; padding: 5px;"></td>
-                                <td style="border: 1px solid #000; padding: 5px;"></td>
-                                <td style="border: 1px solid #000; padding: 5px;"></td>
-                            </tr>
                         </tbody>
                     </table>
                 </section>
             </div>
 
+            <!-- SECTION LIAT COC -->
+             <div id="view-coc-list" class="content-section" style="display:none;">
+                
+                    <h2>Daftar COC</h2>
+                    <div style="margin-bottom:10px;">
+                        <input 
+                            type="text" 
+                            id="search-coc"
+                            placeholder="Cari COC"
+                            onkeyup="searchCOC()"
+                            style="padding:6px; width:250px;"
+                        >
+                    </div>
+                    <table border="1" width="100%" style="border-collapse:collapse;">
+                        <thead style="background:#f0f0f0;">
+                            <tr>
+                                <th>No</th>
+                                <th>No COC</th>
+                                <th>Perusahaan</th>
+                                <th>Tanggal Rencana</th>
+                                <th>Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="coc-list-body">
+                        </tbody>
+                    </table>
+
+                </div>
 
             <!-- SECTION LOG -->
                 <div id="view-logs" class="section-container" style="display:none;">
@@ -464,30 +497,535 @@
         };
 
         let db = JSON.parse(localStorage.getItem('lab_final_db')) || [];
+        let cocDB = JSON.parse(localStorage.getItem("cocDB")) || [];
         let logs = JSON.parse(localStorage.getItem('lab_audit_logs')) || [];
         let recycleBin = JSON.parse(localStorage.getItem('lab_recycle_bin')) || [];
         let masterReg = JSON.parse(localStorage.getItem('lab_final_reg')) || [{ name: "PermenLHK 15/2019 (Batubara)", o2: 7 },{ name: "PermenLHK 15/2019 (Minyak)", o2: 5 }];
         let masterMap = JSON.parse(localStorage.getItem('lab_final_map')) || {"pH": ["SNI 06-6989.11-2004"], "TSS": ["SNI 6989.3:2019"]};
         let myChart;
 
-        window.onload = () => { 
-            if(sessionStorage.getItem('isAuth')) {
-                showDashboard(); 
-                
-                // AMBIL MENU TERAKHIR ATAU DEFAULT KE 'view-home'
-                const lastMenu = sessionStorage.getItem('activeMenu') || 'view-home';
-                
-                // Cari tombol menu yang sesuai dengan ID tersebut
-                const menuBtn = document.querySelector(`button[onclick*="${lastMenu}"]`);
-                
-                // Jalankan fungsi showSection untuk menu tersebut
+        window.onload = () => {
+
+            cocDB = JSON.parse(localStorage.getItem("cocDB")) || [];
+
+            if(sessionStorage.getItem('isAuth')){
+
+                showDashboard();
+
+                const lastMenu =
+                    sessionStorage.getItem('activeMenu') || 'view-home';
+
+                const menuBtn =
+                    document.querySelector(`button[onclick*="${lastMenu}"]`);
+
                 showSection(lastMenu, menuBtn);
             }
+
             updateStats();
-            document.getElementById('live-date').innerText = new Date().toLocaleDateString('id-ID', { 
-                weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' 
-            });
+
+            const liveDate = document.getElementById('live-date');
+            if(liveDate){
+                liveDate.innerText =
+                new Date().toLocaleDateString('id-ID',{
+                    weekday:'long',
+                    day:'numeric',
+                    month:'long',
+                    year:'numeric'
+                });
+            }
         };
+
+        function searchCOC(){
+
+            const keyword =
+                document.getElementById("search-coc")
+                ?.value.toLowerCase().trim() || "";
+
+            const filtered = cocDB.filter(c =>
+                (c.cocNo || "").toLowerCase().includes(keyword) ||
+                (c.companyName || "").toLowerCase().includes(keyword)
+            );
+
+            renderCOCList(keyword ? filtered : cocDB);
+        }
+
+        function renderCOCList(data = cocDB) {
+
+            const body = document.getElementById("coc-list-body");
+            if (!body) return;
+
+            body.innerHTML = "";
+
+            if (!data || data.length === 0) {
+
+                body.innerHTML = `
+                    <tr>
+                        <td colspan="5" style="text-align:center; padding:10px;">
+                            Tidak ada data ditemukan
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            data.forEach((coc, index) => {
+
+                const row = body.insertRow();
+
+                row.innerHTML = `
+                    <td>${index + 1}</td>
+                    <td>${coc?.cocNo || "-"}</td>
+                    <td>${coc?.companyName || "-"}</td>
+                    <td>${coc?.planDate || "-"}</td>
+                    <td>
+
+                        <button
+                            onclick="openCOCFromList(${JSON.stringify(coc.cocNo)})"
+                            style="padding:4px 8px; margin-right:5px;">
+                            Buka
+                        </button>
+
+                        <button
+                            onclick="deleteCOCFromList(${JSON.stringify(coc.cocNo)})"
+                            style="background:red;color:white;border:none;padding:4px 8px;">
+                            Hapus
+                        </button>
+
+                    </td>
+                `;
+            });
+        }
+
+        function openCOCFromList(cocNo) {
+
+            // pindah ke menu form COC
+            const btn = document.querySelector("button[onclick*='view-coc']");
+            showSection("view-coc", btn);
+
+            loadCOC(cocNo);
+
+            // set dropdown supaya ikut terpilih
+            const select = document.getElementById("coc-select");
+            if (select) select.value = cocNo;
+        }
+
+        function deleteCOCFromList(cocNo) {
+
+            if (!confirm("Yakin hapus COC ini?")) return;
+
+            cocDB = cocDB.filter(c => c.cocNo !== cocNo);
+
+            localStorage.setItem("cocDB", JSON.stringify(cocDB));
+
+           
+            renderCOC();
+
+        }
+
+        function newCOC() {
+
+            // Reset semua input text & date
+            document.querySelectorAll("#view-coc input").forEach(input => {
+                input.value = "";
+            });
+
+            // Reset dropdown COC
+            const select = document.getElementById("coc-select");
+            if (select) select.value = "";
+
+            // Kosongkan tabel sampel
+            const body = document.getElementById("coc-samples-body");
+            body.innerHTML = "";
+
+            // Tambahkan 1 baris kosong
+            addCOCRow();
+
+        }
+
+        function saveCOC() {
+
+            const cocData = {
+                companyName: document.getElementById("coc-company-name").value,
+                companyAddress: document.getElementById("coc-company-address").value,
+                email: document.getElementById("coc-email-coa").value,
+                cocNo: document.getElementById("coc-coc-no").value,
+                ltrNo: document.getElementById("coc-ltr-no").value,
+                location: document.getElementById("coc-company-location-detail").value,
+                tat: document.getElementById("coc-tat-req").value,
+                officerA: document.getElementById("coc-officer-a").value,
+                officerB: document.getElementById("coc-officer-b").value,
+                officerC: document.getElementById("coc-officer-c").value,
+                planDate: document.getElementById("coc-plan-date").value,
+                pic: document.getElementById("coc-pic").value,
+                phone: document.getElementById("coc-phone-no").value,
+                samples: []
+            };
+
+            const rows = document.querySelectorAll("#coc-samples-body tr");
+
+            rows.forEach(row => {
+
+                // Sample basic info
+                const sampleInputs = row.querySelectorAll("td input");
+
+                // Collect multi test parameter
+                const tests = [];
+
+                row.querySelectorAll(".reg-select").forEach((regSelect, idx) => {
+
+                    const paramSelect = row.querySelectorAll(".param-select")[idx];
+                    const methodSelect = row.querySelectorAll(".method-select")[idx];
+
+                    tests.push({
+                        regulation: regSelect?.value || "",
+                        parameter: paramSelect?.value || "",
+                        method: methodSelect?.value || ""
+                    });
+
+                });
+
+                cocData.samples.push({
+                    sampleId: sampleInputs[0]?.value || "",
+                    description: sampleInputs[1]?.value || "",
+                    matrix: sampleInputs[2]?.value || "",
+                    container: sampleInputs[3]?.value || "",
+                    tests: tests
+                });
+
+            });
+
+            // Simpan ke database COC
+            const existingIndex = cocDB.findIndex(c => c.cocNo === cocData.cocNo);
+
+            if (existingIndex !== -1) {
+                cocDB[existingIndex] = cocData;
+            } else {
+                cocDB.push(cocData);
+            }
+
+            localStorage.setItem("cocDB", JSON.stringify(cocDB));
+
+            showToast("COC berhasil disimpan!", "success");
+
+            renderCOC();
+        }
+
+        function generateRegOptions(selected = "") {
+
+            let options = `<option value="">-- Pilih Regulasi --</option>`;
+
+            masterReg.forEach(reg => {
+
+                const isSelected = reg.name === selected ? "selected" : "";
+
+                options += `
+                    <option value="${reg.name}" ${isSelected}>
+                        ${reg.name}
+                    </option>
+                `;
+            });
+
+            return options;
+        }
+
+        function addCOCRow() {
+
+            const body = document.getElementById("coc-samples-body");
+            if (!body) return;
+
+            const row = body.insertRow();
+            const rowCount = body.rows.length;
+
+            row.innerHTML = `
+                <td style="border:1px solid #000; padding:5px;">${rowCount}</td>
+
+                <td style="border:1px solid #000; padding:5px;">
+                    <input type="text" style="width:100%; border:none;">
+                </td>
+
+                <td style="border:1px solid #000; padding:5px;">
+                    <input type="text" style="width:100%; border:none;">
+                </td>
+
+                <td style="border:1px solid #000; padding:5px;">
+                    <input type="text" style="width:100%; border:none;">
+                </td>
+
+                <td style="border:1px solid #000; padding:5px;">
+                    <input type="text" style="width:100%; border:none;">
+                </td>
+
+                <!-- REGULASI -->
+                <td style="border:1px solid #000; padding:5px; width:160px;">
+                    <select class="reg-select" style="width:100%;">
+                        ${generateRegOptions()}
+                    </select>
+                </td>
+
+                <!-- PARAMETER -->
+                <td style="border:1px solid #000; padding:5px; width:150px;">
+                    <select class="param-select" style="width:100%;" onchange="updateMethod(this)">
+                        ${generateParamOptions()}
+                    </select>
+                </td>
+
+                <!-- METODE -->
+                <td style="border:1px solid #000; padding:5px; width:160px;">
+                    <select class="method-select" style="width:100%;">
+                        <option value="">-- Pilih Metode --</option>
+                    </select>
+                </td>
+
+                <td style="border:1px solid #000; padding:5px; text-align:center;">
+                    <button type="button"
+                            onclick="deleteCOCRow(this)"
+                            style="background:red; color:white; border:none; padding:3px 6px; cursor:pointer;">
+                        ✕
+                    </button>
+                </td>
+            `;
+
+            renumberCOCRows();
+        }
+
+        function generateMethodOptions(param, selected = "") {
+
+            let options = `<option value="">-- Pilih Metode --</option>`;
+
+            if (!masterMap[param]) return options;
+
+            masterMap[param].forEach(method => {
+
+                const isSelected = method === selected ? "selected" : "";
+
+                options += `
+                    <option value="${method}" ${isSelected}>
+                        ${method}
+                    </option>
+                `;
+            });
+
+            return options;
+        }
+
+        function generateParamOptions(selected = "") {
+
+            let options = `<option value="">-- Pilih Parameter --</option>`;
+
+            Object.keys(masterMap).forEach(param => {
+
+                const isSelected = param === selected ? "selected" : "";
+
+                options += `
+                    <option value="${param}" ${isSelected}>
+                        ${param}
+                    </option>
+                `;
+            });
+
+            return options;
+        }
+
+        function updateMethod(selectElement) {
+
+            const selectedParam = selectElement.value;
+
+            const row = selectElement.closest("tr");
+            const methodSelect = row.querySelector(".method-select");
+
+            methodSelect.innerHTML = `<option value="">-- Pilih Metode --</option>`;
+
+            if (!selectedParam || !masterMap[selectedParam]) return;
+
+            masterMap[selectedParam].forEach(method => {
+
+                methodSelect.innerHTML += `
+                    <option value="${method}">
+                        ${method}
+                    </option>
+                `;
+            });
+        }
+
+        function deleteCOCRow(button) {
+            const row = button.closest("tr");
+            row.remove();
+            renumberCOCRows();
+        }
+
+        function renumberCOCRows() {
+            const rows = document.querySelectorAll("#coc-samples-body tr");
+            rows.forEach((row, index) => {
+                row.cells[0].innerText = index + 1;
+            });
+        }
+
+        function renderCOC() {
+            const select = document.getElementById("coc-select");
+                select.innerHTML = '<option value="">-- Pilih COC Tersimpan --</option>';
+
+                cocDB.forEach(coc => {
+                    select.innerHTML += `
+                        <option value="${coc.cocNo}">
+                            ${coc.cocNo}
+                        </option>
+                    `;
+                });
+            const body = document.getElementById("coc-samples-body");
+            body.innerHTML = "";
+
+            if (!db || db.length === 0) {
+                body.innerHTML = `
+                    <tr>
+                        <td colspan="10" style="text-align:center; padding:10px;">
+                            Tidak ada data sampel
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            // 🔵 TARUH DI SINI
+            const filtered = db.filter(x => x.status === "RECEIVED");
+
+            if (filtered.length === 0) {
+                body.innerHTML = `
+                    <tr>
+                        <td colspan="10" style="text-align:center; padding:10px;">
+                            Tidak ada sampel dengan status RECEIVED
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            filtered.forEach((item, index) => {
+                body.innerHTML += `
+                    <tr>
+                        <td style="border:1px solid #000; padding:5px;">${index + 1}</td>
+                        <td style="border:1px solid #000; padding:5px;">${item.id || "-"}</td>
+                        <td style="border:1px solid #000; padding:5px;">${item.desc || "-"}</td>
+                        <td style="border:1px solid #000; padding:5px;">${item.matrix || "-"}</td>
+                        <td style="border:1px solid #000; padding:5px;">-</td>
+                        <td style="border:1px solid #000; padding:5px;">${item.regulation || "-"}</td>
+                        <td style="border:1px solid #000; padding:5px;">${item.parameter || "-"}</td>
+                        <td style="border:1px solid #000; padding:5px;">-</td>
+                    </tr>
+                `;
+            });
+        }
+
+        function loadCOC(cocNo) {
+
+            if (!cocNo) return;
+            if(!cocDB || cocDB.length === 0) return;
+            const data = cocDB.find(c => c.cocNo === cocNo);
+            if (!data) return;
+
+            // Isi header
+            document.getElementById("coc-company-name").value = data.companyName;
+            document.getElementById("coc-company-address").value = data.companyAddress;
+            document.getElementById("coc-email-coa").value = data.email;
+            document.getElementById("coc-coc-no").value = data.cocNo;
+            document.getElementById("coc-ltr-no").value = data.ltrNo;
+            document.getElementById("coc-company-location-detail").value = data.location;
+            document.getElementById("coc-tat-req").value = data.tat;
+            document.getElementById("coc-officer-a").value = data.officerA;
+            document.getElementById("coc-officer-b").value = data.officerB;
+            document.getElementById("coc-officer-c").value = data.officerC;
+            document.getElementById("coc-plan-date").value = data.planDate;
+            document.getElementById("coc-pic").value = data.pic;
+            document.getElementById("coc-phone-no").value = data.phone;
+
+            // Isi tabel
+            const body = document.getElementById("coc-samples-body");
+            body.innerHTML = "";
+
+            data.samples.forEach((s, index) => {
+
+                const row = body.insertRow();
+
+                row.innerHTML = `
+                    <td style="border:1px solid #000; padding:5px;">${index + 1}</td>
+
+                    <td style="border:1px solid #000; padding:5px;">
+                        <input value="${s.sampleId || ''}" style="width:100%; border:none;">
+                    </td>
+
+                    <td style="border:1px solid #000; padding:5px;">
+                        <input value="${s.description || ''}" style="width:100%; border:none;">
+                    </td>
+
+                    <td style="border:1px solid #000; padding:5px;">
+                        <input value="${s.matrix || ''}" style="width:100%; border:none;">
+                    </td>
+
+                    <td style="border:1px solid #000; padding:5px;">
+                        <input value="${s.container || ''}" style="width:100%; border:none;">
+                    </td>
+
+                    <!-- REGULASI -->
+                    <td style="border:1px solid #000; padding:5px; width:160px;">
+                        <select class="reg-select" style="width:100%;">
+                            ${generateRegOptions(s.regulation)}
+                        </select>
+                    </td>
+
+                    <!-- PARAMETER -->
+                    <td style="border:1px solid #000; padding:5px; width:150px;">
+                        <select class="param-select" 
+                                style="width:100%;" 
+                                onchange="updateMethod(this)">
+                            ${generateParamOptions(s.parameter)}
+                        </select>
+                    </td>
+
+                    <!-- METODE -->
+                    <td style="border:1px solid #000; padding:5px; width:160px;">
+                        <select class="method-select" style="width:100%;">
+                            ${generateMethodOptions(s.parameter, s.method)}
+                        </select>
+                    </td>
+
+                    <td style="border:1px solid #000; padding:5px; text-align:center;">
+                        <button type="button"
+                                onclick="deleteCOCRow(this)"
+                                style="background:red; color:white; border:none; padding:3px 6px;">
+                            ✕
+                        </button>
+                    </td>
+                `;
+            });
+        }
+
+        function deleteCOC(){
+
+            const select = document.getElementById("coc-select");
+            const cocNo = select.value;
+
+            if(!cocNo){
+                showToast("Pilih COC dulu","error");
+                return;
+            }
+
+            if(!confirm("Hapus COC ini?")) return;
+
+            cocDB = cocDB.filter(c => c.cocNo !== cocNo);
+
+            localStorage.setItem("cocDB", JSON.stringify(cocDB));
+
+            showToast("COC dihapus","success");
+
+            const activeMenu = sessionStorage.getItem("activeMenu");
+
+            if(activeMenu === "view-coc-list"){
+                renderCOCList();
+            }
+
+            if(activeMenu === "view-coc"){
+                renderCOC();
+            }
+        }
 
         function addLog(action, details) {
             // Ambil role tepat saat log dibuat
@@ -525,34 +1063,57 @@
             }
         });
 
-                    function showDashboard() {
-                        document.getElementById('login-page').style.display = 'none';
-                        document.getElementById('main-dashboard').style.display = 'flex';
-                        
+                    function showDashboard(){
+
+                        const loginPage = document.getElementById('login-page');
+                        const dashboard = document.getElementById('main-dashboard');
+
+                        if(loginPage) loginPage.style.display = 'none';
+                        if(dashboard) dashboard.style.display = 'flex';
+
                         const r = sessionStorage.getItem('role');
 
-                        // Menampilkan menu Log dan Recycle Bin khusus ADMIN
+                        // Helper role check
+                        const isAdmin = r === 'ADMIN';
+                        const isAnalyst = r === 'ANALIS';
+                        const isValidator = r === 'VALIDATOR';
+
+                        // MENU REFERENCES
                         const logMenu = document.getElementById('m-logs');
                         const binMenu = document.getElementById('m-recycle');
-                          const cocMenu = document.getElementById('m-coc');
-                        if (cocMenu) {
-                            cocMenu.style.display = (r === 'ADMIN' || r === 'ANALIS' || r === 'VALIDATOR') ? 'block' : 'none';}
-                        if (logMenu) logMenu.style.display = (r === 'ADMIN') ? 'block' : 'none';
-                        if (binMenu) binMenu.style.display = (r === 'ADMIN') ? 'block' : 'none';
-
-                        // Menampilkan menu Master Data khusus ADMIN
+                        const cocMenu = document.getElementById('m-coc');
                         const masterMenu = document.getElementById('m-master');
-                        if (masterMenu) masterMenu.style.display = (r === 'ADMIN') ? 'block' : 'none';
-
-                        // PERBAIKAN DI SINI: VALIDATOR sekarang bisa melihat menu Penerimaan
                         const sampelMenu = document.getElementById('m-sampel');
-                        if (sampelMenu) {
-                            // Menu Penerimaan tampil untuk ADMIN, ANALIS, dan VALIDATOR
-                            sampelMenu.style.display = (r === 'ADMIN' || r === 'ANALIS' || r === 'VALIDATOR') ? 'block' : 'none';
+
+                        // COC Menu
+                        if(cocMenu){
+                            cocMenu.style.display =
+                                (isAdmin || isAnalyst || isValidator) ? 'block' : 'none';
                         }
 
-                        updateMasterUI(); 
-                        renderTables(); 
+                        // Audit Log
+                        if(logMenu){
+                            logMenu.style.display = isAdmin ? 'block' : 'none';
+                        }
+
+                        // Recycle Bin
+                        if(binMenu){
+                            binMenu.style.display = isAdmin ? 'block' : 'none';
+                        }
+
+                        // Master Data
+                        if(masterMenu){
+                            masterMenu.style.display = isAdmin ? 'block' : 'none';
+                        }
+
+                        // Sampling Menu
+                        if(sampelMenu){
+                            sampelMenu.style.display =
+                                (isAdmin || isAnalyst || isValidator) ? 'block' : 'none';
+                        }
+
+                        updateMasterUI();
+                        renderTables();
                         updateStats();
                     }
 
@@ -698,6 +1259,38 @@
             updateStats();
             showToast("Sampel Berhasil Disimpan!");
         });
+
+        function showSection(id, el){
+
+            document.querySelectorAll('.section-container')
+                .forEach(v => v.style.display = 'none');
+
+            const target = document.getElementById(id);
+            if(target) target.style.display = 'block';
+
+            document.querySelectorAll('.menu-link')
+                .forEach(l => l.classList.remove('active'));
+
+            if(el) el.classList.add('active');
+
+            document.getElementById('view-title').innerText =
+                el ? el.innerText.trim() : "Dashboard";
+
+            sessionStorage.setItem('activeMenu', id);
+
+            // 🔥 Lazy Render (IMPORTANT)
+            if(id === 'view-coc-list'){
+                renderCOCList();
+            }
+
+            if(id === 'view-coc'){
+                renderCOC();
+            }
+
+            if(id === 'view-input-sampling'){
+                updateSamplingDropdown();
+            }
+        }
 
         function renderLogs() {
             const bL = document.getElementById('body-logs');
@@ -1242,47 +1835,6 @@
             }
         }
 
-        function updateStats() {
-            if (!db) return;
-
-            // 1. HITUNG DATA (Satu sumber untuk semua elemen)
-            const totalMasuk = [...new Set(db.map(i => i.id))].length;
-            const totalAnalisa = db.filter(i => i.isV === false).length;
-            const totalSelesai = db.filter(i => i.isV === true).length;
-
-            // 2. UPDATE DASHBOARD (Stat Cards)
-            const elMasuk = document.getElementById('stat-total');
-            const elProses = document.getElementById('stat-proses');
-            const elSelesai = document.getElementById('stat-selesai');
-
-            if(elMasuk) elMasuk.innerText = totalMasuk;
-            if(elProses) elProses.innerText = totalAnalisa;
-            if(elSelesai) elSelesai.innerText = totalSelesai;
-
-            // 3. UPDATE SIDEBAR (Badge) - PAKSA SINKRON
-            const bAnalisa = document.getElementById('badge-analisa');
-            const bSelesai = document.getElementById('badge-coa');
-
-            if (bAnalisa) {
-                // Harus sama dengan elProses.innerText
-                bAnalisa.innerText = totalAnalisa; 
-                bAnalisa.style.display = 'inline-block';
-                bAnalisa.style.background = totalAnalisa > 0 ? 'var(--danger)' : '#cbd5e1';
-            }
-
-            if (bSelesai) {
-                // Harus sama dengan elSelesai.innerText
-                bSelesai.innerText = totalSelesai; 
-                bSelesai.style.display = 'inline-block';
-                bSelesai.style.background = totalSelesai > 0 ? 'var(--success)' : '#cbd5e1';
-            }
-
-            // 4. UPDATE GRAFIK
-            if (typeof updateChart === 'function') {
-                updateChart(totalMasuk, totalAnalisa, totalSelesai);
-            }
-        }
-
         function updateChart(masuk, proses, selesai) {
             const chartEl = document.getElementById('labChart');
             if(!chartEl) return;
@@ -1491,25 +2043,44 @@
             }
 
         function exportJSON() {
-            // Gabungkan SEMUA variabel database ke dalam satu objek
-            const data = { 
-                db, 
-                masterReg, 
-                masterMap, 
-                logs,       // Tambahkan ini
-                recycleBin  // Tambahkan ini
+
+            const backupData = {
+                system: "LIMS ENVIRONMENT LAB SYSTEM by Muhammad Rifai",
+                version: "1.0",
+                exportedAt: new Date().toLocaleString("id-ID"),
+                totalDB: db.length,
+                totalLogs: logs.length,
+                totalRecycle: recycleBin.length,
+
+                data: {
+                    db: db,
+                    masterReg: masterReg,
+                    masterMap: masterMap,
+                    logs: logs,
+                    recycleBin: recycleBin
+                }
             };
-            
-            const blob = new Blob([JSON.stringify(data)], {type:'application/json'});
-            const a = document.createElement('a'); 
-            a.href = URL.createObjectURL(blob); 
-            
-            // Beri nama file dengan tanggal agar tidak tertukar
-            const timestamp = new Date().toISOString().split('T')[0];
-            a.download = `Full_Backup_LIMS_ES_${timestamp}.json`; 
-            
+
+            // Pretty JSON format (lebih rapi & mudah dibaca)
+            const formattedJSON = JSON.stringify(backupData, null, 4);
+
+            const blob = new Blob([formattedJSON], { type: "application/json" });
+
+            const url = URL.createObjectURL(blob);
+
+            const a = document.createElement("a");
+            a.href = url;
+
+            const timestamp = new Date().toISOString().split("T")[0];
+            a.download = `LIMS_ES_BACKUP_${timestamp}.json`;
+
+            document.body.appendChild(a);
             a.click();
-            showToast("Seluruh database (termasuk Log & Bin) telah diekspor");
+            document.body.removeChild(a);
+
+            URL.revokeObjectURL(url);
+
+            showToast("Seluruh database (Master + Transaksi + Audit) berhasil diekspor", "success");
         }
 
         function importJSON(e) {
@@ -1542,7 +2113,7 @@
                     // Render ulang log & bin jika Admin sedang membuka halaman tersebut
                     if (typeof renderLogs === 'function') renderLogs();
                     if (typeof renderRecycleBin === 'function') renderRecycleBin();
-                    
+                    if (!data ||!Array.isArray(data.db) ||!Array.isArray(data.masterReg)) {throw new Error("Backup tidak valid");}
                     showToast("Seluruh Database (Master, Transaksi & Audit) Berhasil Dipulihkan!", "success");
                     
                     e.target.value = ''; 
@@ -1556,36 +2127,7 @@
 
         function resetDB() { if(confirm("Hapus permanen?")) { localStorage.clear(); location.reload(); } }
 
-        function showSection(id, el) {
-            // 1. Sembunyikan semua section
-            document.querySelectorAll('.section-container').forEach(v => v.style.display = 'none');
-            
-            // 2. Tampilkan section yang dipilih
-            const target = document.getElementById(id);
-            if(target) target.style.display = 'block';
-            
-            // 3. Update styling tombol menu
-            document.querySelectorAll('.menu-link').forEach(l => l.classList.remove('active'));
-            if(el) el.classList.add('active');
-            
-            // 4. Update judul header
-            document.getElementById('view-title').innerText = el ? el.innerText.trim() : "Dashboard";
-
-            // 5. Simpan status menu ke storage
-            sessionStorage.setItem('activeMenu', id);
-
-            // 6. LOGIKA KHUSUS UNTUK MENU SPESIFIK
-            if (id === 'view-input-sampling') {
-                updateSamplingDropdown(); // Segarkan daftar ID
-                const currentId = document.getElementById('samp-id-select').value;
-                if(currentId) showSampleInfo(currentId); // Tampilkan info regulasi & metode
-            } else if (id === 'view-coc') {
-                // LOGIKA KHUSUS UNTUK CHAIN OF CUSTODY
-                // Di sini Anda bisa memuat data COC yang tersedia atau menampilkan form COC baru
-                // Anda perlu memanggil fungsi khusus di sini, contoh:
-                // loadCOCDetails(); 
-            }
-        }
+        
 
         function showToast(m, t="success") {
             const c = document.getElementById('toast-container');
@@ -1699,6 +2241,7 @@
             // 4. Update Grafik dengan data yang sudah dihitung
             updateChart(totalMasuk, totalAnalisa, totalSelesai);
         }
+        
 
             function addLog(action, details) {
                 // Ambil role langsung dari sessionStorage setiap kali log dibuat
@@ -1765,7 +2308,10 @@
                 verifiedData.forEach((it) => {
                     const sd = it.samplingData || {};
                     const regData = masterReg.find(r => r.name === it.reg) || { o2: 0, limit: '-' };
-                    const baseDate = moment(it.date, "DD-MM-YYYY");
+                    const baseDate = moment(it.date, "DD-MM-YYYY", true);
+                    const safeDate = baseDate.isValid() 
+                        ? baseDate.format('MMMM DD, YYYY') 
+                        : "-";
                     
                     // --- DATA STRUKTUR EXCEL (Sama Persis Alur PDF) ---
                     let sheetContent = [
@@ -1923,13 +2469,14 @@
                 // --- 3. TABEL DAFTAR SAMPEL ---
                 const sampleHead = [['No.', 'Sample ID', 'Description', 'Matrix', 'Container', 'Regulation', 'Parameters', 'Methods', 'Sampling Date', 'Login']];
                 const sampleBody = [];
+                
                 // Loop untuk membuat 12 baris kosong (bisa diganti dengan data dinamis dari tabel input)
                 for (let i = 1; i <= 5; i++) {
                     sampleBody.push([i, '', '', '', '', '', '', '', '', '']);
                 }
 
                 doc.autoTable({
-                    startY: doc.lastAutoTable.finalY + 5,
+                    startY: lastY + 5,
                     head: sampleHead,
                     body: sampleBody,
                     theme: 'grid',
@@ -1946,7 +2493,7 @@
                 // --- 4. KONDISI & INSTRUKSI ---
                 const sectionY = doc.lastAutoTable.finalY + 5;
                 const halfWidth = (pageW / 2) - 12.5;
-
+                const lastY = doc.lastAutoTable ? doc.lastAutoTable.finalY : 40;
                 // Sisi Kiri: Sample Condition
                 doc.autoTable({
                     startY: sectionY,
@@ -2003,17 +2550,6 @@
                 
                 doc.save(fileName);
             }
-
-
-
-
-
-
-
-
-
-
-
 
     </script>
 </body>
