@@ -1113,9 +1113,19 @@
                 const { data, error } = await supabase
                     .from('users')
                     .select('*')
-                    .eq('username', username)
-                    .eq('password_hash', password)
-                    .single();
+                    .eq('username', username);
+
+                if(error || !data || data.length === 0){
+                    showToast("Login gagal!", "error");
+                    return;
+                }
+
+                const user = data.find(u => u.password_hash === password);
+
+                if(!user){
+                    showToast("Login gagal! Password salah", "error");
+                    return;
+                }
 
                 if (error || !data) {
                     showToast("Login gagal! Cek username/password", "error");
