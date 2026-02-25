@@ -2430,12 +2430,10 @@
         function updateStats() {
             if (!db) return;
 
-            // 1. Hitung Data (Konsisten dengan tabel)
             const totalMasuk = [...new Set(db.map(i => i.id))].length;
             const totalAnalisa = db.filter(i => i.isV === false).length;
             const totalSelesai = db.filter(i => i.isV === true).length;
 
-            // 2. Update Angka Dashboard (Card Atas)
             const elMasuk = document.getElementById('stat-total');
             const elProses = document.getElementById('stat-proses');
             const elSelesai = document.getElementById('stat-selesai');
@@ -2444,24 +2442,25 @@
             if(elProses) elProses.innerText = totalAnalisa;
             if(elSelesai) elSelesai.innerText = totalSelesai;
 
-            // 3. Update Badge Sidebar (Gunakan querySelector untuk menghindari ID null)
             const badgeAnl = document.getElementById('badge-analisa');
             const badgeSel = document.getElementById('badge-coa');
 
             if (badgeAnl) {
                 badgeAnl.innerText = totalAnalisa;
-                badgeAnl.style.display = 'inline-block'; // Angka 0 tetap muncul
+                badgeAnl.style.display = 'inline-block';
                 badgeAnl.style.background = totalAnalisa > 0 ? 'var(--danger)' : '#cbd5e1';
             }
 
             if (badgeSel) {
                 badgeSel.innerText = totalSelesai;
-                badgeSel.style.display = 'inline-block'; // Angka 0 tetap muncul
+                badgeSel.style.display = 'inline-block';
                 badgeSel.style.background = totalSelesai > 0 ? 'var(--success)' : '#cbd5e1';
             }
 
-            // 4. Update Grafik dengan data yang sudah dihitung
-            updateChart(totalMasuk, totalAnalisa, totalSelesai);
+            // ⭐ SAFE CALL
+            if (typeof updateChart === "function") {
+                updateChart(totalMasuk, totalAnalisa, totalSelesai);
+            }
         }
         
 
