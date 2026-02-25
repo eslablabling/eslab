@@ -1093,108 +1093,67 @@
 
        document.getElementById('login-form').addEventListener('submit', async (e) => {
 
-            e.preventDefault();
+                e.preventDefault();
 
-            const username = document.getElementById('username').value.trim();
-            const password = document.getElementById('password').value.trim();
+                const username = document.getElementById('username').value.trim();
+                const password = document.getElementById('password').value.trim();
 
-            if (!username || !password) {
-                showToast("Username dan Password wajib diisi!", "error");
-                return;
-            }
-
-            try {
-
-                if (!window.supabaseClient) {
-                    showToast("Supabase belum siap!", "error");
+                if (!username || !password) {
+                    showToast("Username dan Password wajib diisi!", "error");
                     return;
                 }
 
-                const { data, error } = await supabaseClient
-                    .from('users')
-                    .select('*')
-                    .eq('username', username)
-                    .single();
+                try {
 
-                if (error || !data) {
-                    showToast("Login gagal!", "error");
-                    return;
+                    const { data, error } = await window.supabaseClient
+                        .from('users')
+                        .select('*')
+                        .eq('username', username)
+                        .single();
+
+                    if (error || !data) {
+                        showToast("User tidak ditemukan!", "error");
+                        return;
+                    }
+
+                    if (data.password_hash !== password) {
+                        showToast("Password salah!", "error");
+                        return;
+                    }
+
+                    sessionStorage.setItem('isAuth','true');
+                    sessionStorage.setItem('role', data.role);
+                    sessionStorage.setItem('user', data.username);
+
+                    addLog("LOGIN", `User ${data.role} login`);
+
+                    showToast("Login berhasil!", "success");
+
+                    setTimeout(()=>{
+                        showDashboard();
+                    },500);
+
+                } catch(err){
+                    console.error(err);
+                    showToast("System error login", "error");
                 }
 
-                if (data.password_hash !== password) {
-                    showToast("Password salah!", "error");
-                    return;
-                }
-
-                // Session
-                sessionStorage.setItem('isAuth', 'true');
-                sessionStorage.setItem('role', data.role);
-                sessionStorage.setItem('user', data.username);
-
-                addLog("LOGIN", `User ${data.role} login`);
-
-                showToast("Login berhasil", "success");
-
-                setTimeout(() => {
-                    showDashboard();
-                }, 500);
-
-            } catch (err) {
-                console.error(err);
-                showToast("Error sistem login", "error");
-            }
-
-        });
+            });
 
                     async function showDashboard(){
 
-                        const loginPage = document.getElementById('login-page');
-                        const dashboard = document.getElementById('main-dashboard');
-
-                        if(loginPage) loginPage.style.display = 'none';
-                        if(dashboard) dashboard.style.display = 'flex';
-
                         try {
 
-                            const username = sessionStorage.getItem('user');
+                            document.getElementById('login-page').style.display='none';
+                            document.getElementById('main-dashboard').style.display='flex';
+
                             const role = (sessionStorage.getItem('role') || "").toUpperCase();
 
-                            if(!username){
-                                logout();
-                                return;
-                            }
+                            // MENU CONTROL
+                            const isAdmin = role === "ADMIN";
+                            const isAnalyst = role === "ANALIS";
+                            const isValidator = role === "VALIDATOR";
 
-                            // Menu Role Control
-                            document.getElementById('m-logs').style.display =
-                                role === "ADMIN" ? "block" : "none";
-
-                            document.getElementById('m-recycle').style.display =
-                                role === "ADMIN" ? "block" : "none";
-
-                            document.getElementById('m-master').style.display =
-                                role === "ADMIN" ? "block" : "none";
-
-                            document.getElementById('m-sampel').style.display =
-                                (role === "ADMIN" || role === "ANALIS" || role === "VALIDATOR")
-                                ? "block" : "none";
-
-                            updateMasterUI();
-                            renderTables();
-                            updateStats();
-
-                        } catch(err){
-                            console.error(err);
-                            showToast("Error memuat dashboard", "error");
-                        }
-                    }
-
-                            const r = data.role.toUpperCase();
-
-                            const isAdmin = r === 'ADMIN';
-                            const isAnalyst = r === 'ANALIS';
-                            const isValidator = r === 'VALIDATOR';
-
-                            // MENU REFERENCES
                             const logMenu = document.getElementById('m-logs');
                             const binMenu = document.getElementById('m-recycle');
                             const cocMenu = document.getElementById('m-coc');
@@ -1203,24 +1162,24 @@
 
                             if(cocMenu){
                                 cocMenu.style.display =
-                                    (isAdmin || isAnalyst || isValidator) ? 'block' : 'none';
+                                    (isAdmin || isAnalyst || isValidator) ? "block" : "none";
                             }
 
                             if(logMenu){
-                                logMenu.style.display = isAdmin ? 'block' : 'none';
+                                logMenu.style.display = isAdmin ? "block" : "none";
                             }
 
                             if(binMenu){
-                                binMenu.style.display = isAdmin ? 'block' : 'none';
+                                binMenu.style.display = isAdmin ? "block" : "none";
                             }
 
                             if(masterMenu){
-                                masterMenu.style.display = isAdmin ? 'block' : 'none';
+                                masterMenu.style.display = isAdmin ? "block" : "none";
                             }
 
                             if(sampelMenu){
                                 sampelMenu.style.display =
-                                    (isAdmin || isAnalyst || isValidator) ? 'block' : 'none';
+                                    (isAdmin || isAnalyst || isValidator) ? "block" : "none";
                             }
 
                             updateMasterUI();
@@ -1232,6 +1191,7 @@
                             showToast("Error memuat dashboard", "error");
                         }
                     }
+                    
 
                     function logout(){
                         sessionStorage.clear();
