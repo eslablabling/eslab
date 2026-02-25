@@ -2845,14 +2845,12 @@
                 doc.save(fileName);
             }
 
-            const supabaseUrl = "https://quhyhvwzxhulzmecbglv.supabase.co";
-            const supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF1aHlodnd6eGh1bHptZWNiZ2x2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5NjUzNTMsImV4cCI6MjA4NzU0MTM1M30.73s0ubjBvJ-xxBAA6WjLlnXWwe4gpbNuF_cYfavl22o";
-
-            // 🔥 PENTING: Gunakan nama lain
-            const supabase = window.supabase.createClient(
-                supabaseUrl,
-                supabaseKey
+            const supabaseClient = supabase.createClient(
+                "https://quhyhvwzxhulzmecbglv.supabase.co",
+                "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF1aHlodnd6eGh1bHptZWNiZ2x2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5NjUzNTMsImV4cCI6MjA4NzU0MTM1M30.73s0ubjBvJ-xxBAA6WjLlnXWwe4gpbNuF_cYfavl22o"
             );
+
+            window.supabaseClient = supabaseClient;
 
     </script>
 </body>
