@@ -112,10 +112,9 @@
             <div id="view-master" class="section-container" style="display:none;">
                 <div class="section-box" style="display:flex; gap:10px; align-items:center;">
                     <strong>Database:</strong>
-                    <button onclick="exportJSON()" class="btn-primary" style="background:#334155; font-size:0.75rem;">Export JSON</button>
-                    <input type="file" id="import-file" style="display:none;" onchange="importJSON(event)">
-                    <button onclick="document.getElementById('import-file').click()" class="btn-primary" style="background:#64748b; font-size:0.75rem;">Import JSON</button>
-                    <button onclick="resetDB()" class="btn-primary" style="background:var(--danger); font-size:0.75rem;">Reset Semua</button>
+                    <button onclick="exportMasterData()" class="btn-primary" style="padding:6px 12px;"><i class="fas fa-file-export"></i> Export</button>
+                    <input type="file" id="import-file" accept=".xlsx, .xls" style="display:none;" onchange="importMasterData(event)">
+                    <button onclick="document.getElementById('import-file').click()" class="btn-primary" style="padding:6px 12px;"><i class="fas fa-file-import"></i> Import</button>
                 </div>
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 20px;">
                     <section class="section-box">
@@ -154,7 +153,7 @@
                             + COC Baru
                         </button>
                         <div style="margin-bottom:10px;">
-                            <select id="coc-select" onchange="loadCOC(this.value)">
+                            <select id="coc-select" onchange="loadCOCServer(this.value)">
                                 <option value="">-- Pilih COC Tersimpan --</option>
                             </select>
 
@@ -493,17 +492,44 @@
             window.logs = window.logs || [];
             window.myChart = null;
 
+         const supabaseClient = supabase.createClient(
+                "https://quhyhvwzxhulzmecbglv.supabase.co",
+                "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF1aHlodnd6eGh1bHptZWNiZ2x2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5NjUzNTMsImV4cCI6MjA4NzU0MTM1M30.73s0ubjBvJ-xxBAA6WjLlnXWwe4gpbNuF_cYfavl22o"
+            );
+
+            window.supabaseClient = supabaseClient;    
+
             async function loadMasterServer(){
 
-                const [{data: regData},{data: mapData}] = await Promise.all([
-                    supabaseClient.from("master_regulation").select("*"),
-                    supabaseClient.from("master_map").select("*")
-                ]);
+                try{
 
-                masterReg = regData || [];
-                masterMap = transformMap(mapData || []);
+                    const [{data: regData, error: regError},
+                        {data: mapData, error: mapError}] = await Promise.all([
+                        supabaseClient.from("master_regulation").select("*"),
+                        supabaseClient.from("master_map").select("*")
+                    ]);
+
+                    if(regError) throw regError;
+                    if(mapError) throw mapError;
+
+                    // Safety parsing
+                    masterReg = (regData || []).map(r => ({
+                        id: r.id,
+                        name: r.name,
+                        o2: Number(r.o2) || 0,
+                        limit_value: r.limit_value || "-"
+                    }));
+
+                    masterMap = transformMap(mapData || []);
+
+                    updateMasterUI();
+
+                }catch(err){
+                    console.error("Load Master Error:", err);
+                    showToast("Gagal memuat master data","error");
+                }
+
             }
-
             async function loadServerDB(){
 
                 const [
@@ -524,14 +550,27 @@
                 logs = logData || [];
             }
 
-            function transformMap(data){
-                const map = {};
+            function transformMap(mapData){
 
-                data?.forEach(r=>{
-                    map[r.param] = r.methods || [];
+                const result = {};
+
+                (mapData || []).forEach(m => {
+
+                    if(!result[m.param]){
+                        result[m.param] = [];
+                    }
+
+                    if(m.methods){
+                        if(Array.isArray(m.methods)){
+                            result[m.param].push(...m.methods);
+                        }else{
+                            result[m.param].push(m.methods);
+                        }
+                    }
+
                 });
 
-                return map;
+                return result;
             }
 
             async function addLogServer(action, details){
@@ -584,22 +623,14 @@
                     return;
                 }
 
-                try{
-                    await loadServerDB();
-                    await loadMasterServer();
-                    await loadCOCListServer();
+                document.getElementById("login-page").style.display="none";
 
-                    document.getElementById("login-page").style.display="none";
-                    document.getElementById("main-dashboard").style.display="flex";
+                await initAppData();
 
-                    renderTables();
-                    updateStats();
-
-                }catch(err){
-                    console.error(err);
-                    showToast("Server load error","error");
-                }
-            };
+                showDashboard();
+                renderTables();
+                updateStats();
+            }
 
 
         function bindCascadeDropdown(row, paramValue, methodValue){
@@ -635,6 +666,30 @@
             );
 
             renderCOCList(keyword ? filtered : cocDB);
+        }
+
+        async function initAppData(){
+
+            try{
+
+                const [regRes, mapRes, cocRes] = await Promise.all([
+                    supabaseClient.from("master_regulation").select("*"),
+                    supabaseClient.from("master_map").select("*"),
+                    supabaseClient.from("coc").select("*").order("created_at",{ascending:false})
+                ]);
+
+                window.masterReg = regRes.data || [];
+                window.masterMap = transformMap(mapRes.data || []);
+                window.cocDB = cocRes.data || [];
+
+                updateMasterUI();
+                renderCOCListServer();
+                renderCOCSelect();
+
+            }catch(err){
+                console.error("Bootstrap Load Error:",err);
+            }
+
         }
 
         async function deleteCOCServer(cocNo){
@@ -681,19 +736,19 @@
 
                 row.innerHTML = `
                     <td>${index + 1}</td>
-                    <td>${coc?.cocNo || "-"}</td>
-                    <td>${coc?.companyName || "-"}</td>
-                    <td>${coc?.planDate || "-"}</td>
+                    <td>${coc?.coc_no || coc?.cocNo || "-"}</td>
+                    <td>${coc?.company_name || coc?.companyName || "-"}</td>
+                    <td>${coc?.plan_date || coc?.planDate || "-"}</td>
                     <td>
 
                         <button
-                            onclick="openCOCFromList('${coc.cocNo}')"
+                            onclick="openCOCFromList('${coc?.coc_no || coc?.cocNo}')"
                             style="padding:4px 8px; margin-right:5px;">
                             Buka
                         </button>
 
                         <button
-                            onclick="deleteCOCFromList('${coc.cocNo}')"
+                            onclick="deleteCOCFromList('${coc?.coc_no || coc?.cocNo}')"
                             style="background:red;color:white;border:none;padding:4px 8px;">
                             Hapus
                         </button>
@@ -703,17 +758,22 @@
             });
         }
 
-        function openCOCFromList(cocNo) {
+        function openCOCFromList(cocNo){
 
-            // pindah ke menu form COC
+            if(!cocNo || cocNo === "-" || cocNo === "undefined"){
+                showToast("COC tidak valid","error");
+                return;
+            }
+
             const btn = document.querySelector("button[onclick*='view-coc']");
             showSection("view-coc", btn);
 
-            loadCOC(cocNo);
+            setTimeout(()=>{
+                loadCOCServer(cocNo);
+            },100); // ⭐ Hindari race condition DOM + fetch
 
-            // set dropdown supaya ikut terpilih
             const select = document.getElementById("coc-select");
-            if (select) select.value = cocNo;
+            if(select) select.value = cocNo;
         }
 
         async function deleteCOCFromList(cocNo){
@@ -979,31 +1039,48 @@
             });
         }
 
-        function renderCOC() {
+        function renderCOC(){
 
             const select = document.getElementById("coc-select");
-            if (!select) return;
+            if(!select) return;
 
             select.innerHTML =
                 '<option value="">-- Pilih COC Tersimpan --</option>' +
-                cocDB.map(c =>
-                    `<option value="${c.cocNo}">${c.cocNo}</option>`
-                ).join("");
+                cocDB.map(c => {
+
+                    const cocNo = c.coc_no || c.cocNo || "";
+
+                    return `<option value="${cocNo}">
+                                ${cocNo}
+                            </option>`;
+
+                }).join("");
         }
 
-        async function loadCOCListServer(){
+       async function loadCOCListServer(){
 
-            const {data} = await supabaseClient
-                .from("coc")
-                .select("*")
-                .order("created_at",{ascending:false});
+            try{
 
-            cocDB = data || [];
+                const {data,error} = await supabaseClient
+                    .from("coc")
+                    .select("*")
+                    .order("created_at",{ascending:false});
 
-             if(typeof renderCOCListServer === "function"){
-    renderCOCListServer();
-}
-            renderCOCSelect();
+                if(error){
+                    console.error("COC Load Error:",error);
+                    showToast("Gagal load COC","error");
+                    return;
+                }
+
+                cocDB = data || [];
+
+                renderCOCListServer();
+                renderCOCSelect();
+
+            }catch(err){
+                console.error(err);
+            }
+
         }
 
         function renderCOCListServer(){
@@ -1013,7 +1090,7 @@
 
             body.innerHTML = "";
 
-            if(!cocDB || cocDB.length === 0){
+            if(!Array.isArray(cocDB) || cocDB.length === 0){
                 body.innerHTML = `
                 <tr>
                     <td colspan="5" style="text-align:center;padding:15px;">
@@ -1025,21 +1102,25 @@
 
             cocDB.forEach((coc,i)=>{
 
+                const cocNo = coc?.coc_no || coc?.cocNo || "-";
+                const company = coc?.company_name || coc?.companyName || "-";
+                const planDate = coc?.plan_date || coc?.planDate || "-";
+
                 const row = body.insertRow();
 
                 row.innerHTML = `
                     <td>${i+1}</td>
-                    <td>${coc.coc_no || coc.cocNo || "-"}</td>
-                    <td>${coc.company_name || coc.companyName || "-"}</td>
-                    <td>${coc.plan_date || coc.planDate || "-"}</td>
+                    <td>${cocNo}</td>
+                    <td>${company}</td>
+                    <td>${planDate}</td>
                     <td style="text-align:center">
 
-                        <button onclick="openCOCFromList('${coc.coc_no || coc.cocNo}')"
+                        <button onclick="openCOCFromList('${cocNo}')"
                             style="padding:4px 8px;margin-right:5px">
                             Buka
                         </button>
 
-                        <button onclick="deleteCOCServer('${coc.coc_no || coc.cocNo}')"
+                        <button onclick="deleteCOCServer('${cocNo}')"
                             style="background:red;color:white;border:none;padding:4px 8px">
                             Hapus
                         </button>
@@ -1047,6 +1128,7 @@
                     </td>
                 `;
             });
+
         }
 
         window.addEventListener("DOMContentLoaded", ()=>{
@@ -1120,20 +1202,26 @@
 
         function fillCOCForm(data){
 
-            const fields = {
-                "coc-coc-no": data.coc_no,
-                "coc-company-name": data.company_name,
-                "coc-company-address": data.company_address,
-                "coc-email-coa": data.email,
-                "coc-phone-no": data.phone,
-                "coc-pic": data.pic,
-                "coc-plan-date": data.plan_date
-            };
+            document.getElementById("coc-coc-no").value =
+                data.coc_no || "";
 
-            Object.entries(fields).forEach(([id,val])=>{
-                const el = document.getElementById(id);
-                if(el) el.value = val || "";
-            });
+            document.getElementById("coc-company-name").value =
+                data.company_name || "";
+
+            document.getElementById("coc-company-address").value =
+                data.company_address || "";
+
+            document.getElementById("coc-email-coa").value =
+                data.email || "";
+
+            document.getElementById("coc-phone-no").value =
+                data.phone || "";
+
+            document.getElementById("coc-pic").value =
+                data.pic || "";
+
+            document.getElementById("coc-plan-date").value =
+                data.plan_date || "";
 
             renderCOCSampleTable(data.samples || []);
         }
@@ -1174,106 +1262,115 @@
             if(logs.length > 500) logs.pop(); 
         }
 
-       document.getElementById("login-form").addEventListener("submit", async e => {
-
-            e.preventDefault();
-
-            const username = document.getElementById("username").value;
-            const password = document.getElementById("password").value;
-
-            const { data, error } = await supabaseClient
-                .from("users")
-                .select("*")
-                .eq("username", username)
-                .single();
-
-            if(error || !data){
-                return showToast("User tidak ditemukan","error");
-            }
-
-            if(data.password_hash !== password){
-                return showToast("Password salah","error");
-            }
-
-            sessionStorage.setItem("auth_token", crypto.randomUUID());
-            sessionStorage.setItem("username", username);
-
-            await addLogServer("LOGIN", `${username} login`);
-
-            showDashboard();
-        });
-
                     async function showDashboard(){
 
-                        try {
+                    try {
 
-                            const token = sessionStorage.getItem("auth_token");
+                        const token = sessionStorage.getItem("auth_token");
 
-                            if(!token){
-                                location.reload();
-                                return;
-                            }
-
-                            document.getElementById('login-page').style.display='none';
-                            document.getElementById('main-dashboard').style.display='flex';
-
-                            const role = (sessionStorage.getItem('role') || "").toUpperCase();
-
-                            const isAdmin = role === "ADMIN";
-                            const isAnalyst = role === "ANALIS";
-                            const isValidator = role === "VALIDATOR";
-
-                            const logMenu = document.getElementById('m-logs');
-                            const binMenu = document.getElementById('m-recycle');
-                            const cocMenu = document.getElementById('m-coc');
-                            const masterMenu = document.getElementById('m-master');
-                            const sampelMenu = document.getElementById('m-sampel');
-
-                            if(cocMenu){
-                                cocMenu.style.display =
-                                    (isAdmin || isAnalyst || isValidator) ? "block" : "none";
-                            }
-
-                            if(logMenu){
-                                logMenu.style.display = isAdmin ? "block" : "none";
-                            }
-
-                            if(binMenu){
-                                binMenu.style.display = isAdmin ? "block" : "none";
-                            }
-
-                            if(masterMenu){
-                                masterMenu.style.display = isAdmin ? "block" : "none";
-                            }
-
-                            if(sampelMenu){
-                                sampelMenu.style.display =
-                                    (isAdmin || isAnalyst || isValidator) ? "block" : "none";
-                            }
-
-                            updateMasterUI();
-                            renderTables();
-                            updateStats();
-
-                        } catch(err){
-                            console.error(err);
-                            showToast("Error memuat dashboard", "error");
+                        if(!token){
+                            location.reload();
+                            return;
                         }
+
+                        document.getElementById('login-page').style.display='none';
+                        document.getElementById('main-dashboard').style.display='flex';
+
+                        const role = (sessionStorage.getItem('role') || "").toUpperCase();
+
+                        const isAdmin = role === "ADMIN";
+                        const isAnalyst = role === "ANALIS";
+                        const isValidator = role === "VALIDATOR";
+
+                        const cocMenu = document.getElementById('m-coc');
+                        const logMenu = document.getElementById('m-logs');
+                        const binMenu = document.getElementById('m-recycle');
+                        const masterMenu = document.getElementById('m-master');
+                        const sampelMenu = document.getElementById('m-sampel');
+
+                        if(cocMenu)
+                            cocMenu.style.display =
+                                (isAdmin || isAnalyst || isValidator) ? "block" : "none";
+
+                        if(logMenu)
+                            logMenu.style.display = isAdmin ? "block" : "none";
+
+                        if(binMenu)
+                            binMenu.style.display = isAdmin ? "block" : "none";
+
+                        if(masterMenu)
+                            masterMenu.style.display = isAdmin ? "block" : "none";
+
+                        if(sampelMenu)
+                            sampelMenu.style.display =
+                                (isAdmin || isAnalyst || isValidator) ? "block" : "none";
+
+                        // ⭐ SINGLE SOURCE OF TRUTH
+                        await initAppData();
+
+                        renderTables();
+                        updateStats();
+
+                    }catch(err){
+                        console.error(err);
+                        showToast("Error memuat dashboard", "error");
                     }
-                    
+                }
 
                     function logout(){
                         sessionStorage.clear();
                         location.reload();
                     }
 
-                    function saveMaster() {
-                        updateMasterUI();
-                        showToast("Master Data Disimpan");
+                    async function saveMaster(){
+
+                        try{
+
+                            const regPayload = masterReg.map(r => ({
+                                name: r.name,
+                                o2: Number(r.o2),
+                                limit_value: r.limit
+                            }));
+
+                            const mapPayload = Object.keys(masterMap).map(param => ({
+                                param: param,
+                                methods: masterMap[param]
+                            }));
+
+                            if(regPayload.length){
+                                const { error: regError } = await supabaseClient
+                                    .from("master_regulation")
+                                    .upsert(regPayload, {
+                                        onConflict: "name"
+                                    });
+
+                                if(regError) throw regError;
+                            }
+
+                            if(mapPayload.length){
+                                const { error: mapError } = await supabaseClient
+                                    .from("master_map")
+                                    .upsert(mapPayload, {
+                                        onConflict: "param"
+                                    });
+
+                                if(mapError) throw mapError;
+                            }
+
+                            showToast("Master Data Berhasil Disimpan","success");
+
+                            await loadMasterServer();
+                            updateMasterUI();
+
+                        }catch(err){
+                            console.error(err);
+                            showToast("Gagal menyimpan master data","error");
+                        }
+
                     }
 
 
-        function addReg() {
+        async function addReg() {
 
             const name = document.getElementById('m-reg-in').value.trim();
             const o2Val = document.getElementById('m-o2-in').value;
@@ -1292,10 +1389,10 @@
             masterReg.push({
                 name,
                 o2: parseFloat(o2Val),
-                limit: limitVal
+                limit_value: limitVal
             });
 
-            saveMaster();
+            await saveMaster();
 
             document.getElementById('m-reg-in').value='';
             document.getElementById('m-o2-in').value='';
@@ -1304,12 +1401,13 @@
             showToast("Regulasi tersimpan!");
         }
 
-        function addMap() {
+        async function addMap() {
             const p = document.getElementById('m-param-in').value, m = document.getElementById('m-met-in').value;
             if(p && m){
                 if(!masterMap[p]) masterMap[p] = [];
                 if(!masterMap[p].includes(m)) masterMap[p].push(m);
-                saveMaster(); document.getElementById('m-met-in').value='';
+
+                await saveMaster();
             }
         }
 
@@ -1389,7 +1487,7 @@
             const form = document.getElementById('sample-form');
             if(!form) return;
 
-            form.addEventListener('submit', function(e){
+            form.addEventListener('submit', async function(e){ // ⭐ Tambahkan async
                 e.preventDefault();
 
                 const regValue = document.getElementById('s-reg-sel').value;
@@ -1443,53 +1541,44 @@
 
                 });
 
-                 
-
                 form.reset();
+
+                // ⭐ Karena pakai await → harus dalam async function
+                await loadMasterServer();
+                await loadCOCListServer();
 
                 renderTables();
                 updateStats();
 
                 showToast("Sampel Berhasil Disimpan!");
-
             });
 
-            });
+        });
 
         function showSection(id, el){
 
-            // 🔥 Sembunyikan SEMUA section (semua class section)
             document.querySelectorAll('.section-container, .content-section')
                 .forEach(v => v.style.display = 'none');
 
-            // Tampilkan section yang dipilih
             const target = document.getElementById(id);
             if(target) target.style.display = 'block';
 
-            // Reset menu active
             document.querySelectorAll('.menu-link')
                 .forEach(l => l.classList.remove('active'));
 
             if(el) el.classList.add('active');
 
-            // Update title
             document.getElementById('view-title').innerText =
                 el ? el.innerText.trim() : "Dashboard";
 
-            // Save last menu
             sessionStorage.setItem('activeMenu', id);
 
-            // Lazy Render
             if(id === 'view-coc-list'){
-                renderCOCList();
+                loadCOCListServer();
             }
 
             if(id === 'view-coc'){
                 renderCOC();
-            }
-
-            if(id === 'view-input-sampling'){
-                updateSamplingDropdown?.();
             }
         }
 
@@ -2827,12 +2916,7 @@
                 doc.save(fileName);
             }
 
-            const supabaseClient = supabase.createClient(
-                "https://quhyhvwzxhulzmecbglv.supabase.co",
-                "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF1aHlodnd6eGh1bHptZWNiZ2x2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5NjUzNTMsImV4cCI6MjA4NzU0MTM1M30.73s0ubjBvJ-xxBAA6WjLlnXWwe4gpbNuF_cYfavl22o"
-            );
-
-            window.supabaseClient = supabaseClient;
+           
 
     </script>
 </body>
