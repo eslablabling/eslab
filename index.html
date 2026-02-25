@@ -1105,40 +1105,33 @@
 
             try {
 
-                if (!window.supabase) {
+                if (!window.supabaseClient) {
                     showToast("Supabase belum siap!", "error");
                     return;
                 }
 
-                const { data, error } = await supabase
+                const { data, error } = await supabaseClient
                     .from('users')
                     .select('*')
-                    .eq('username', username);
+                    .eq('username', username)
+                    .single();
 
-                if(error || !data || data.length === 0){
+                if (error || !data) {
                     showToast("Login gagal!", "error");
                     return;
                 }
 
-                const user = data.find(u => u.password_hash === password);
-
-                if(!user){
-                    showToast("Login gagal! Password salah", "error");
+                if (data.password_hash !== password) {
+                    showToast("Password salah!", "error");
                     return;
                 }
 
-                if (error || !data) {
-                    showToast("Login gagal! Cek username/password", "error");
-                    return;
-                }
-
-                // ✅ Session
+                // Session
                 sessionStorage.setItem('isAuth', 'true');
                 sessionStorage.setItem('role', data.role);
-                sessionStorage.setItem('user', username);
+                sessionStorage.setItem('user', data.username);
 
-                // ✅ Audit Log
-                addLog("LOGIN", `User ${data.role} login ke sistem`);
+                addLog("LOGIN", `User ${data.role} login`);
 
                 showToast("Login berhasil", "success");
 
@@ -1148,7 +1141,7 @@
 
             } catch (err) {
                 console.error(err);
-                showToast("Terjadi kesalahan sistem", "error");
+                showToast("Error sistem login", "error");
             }
 
         });
@@ -1164,39 +1157,26 @@
                         try {
 
                             const username = sessionStorage.getItem('user');
+                            const role = (sessionStorage.getItem('role') || "").toUpperCase();
 
                             if(!username){
                                 logout();
                                 return;
                             }
 
-                            const { data, error } = await supabase
-                                .from('users')
-                                .select('role')
-                                .eq('username', username)
-                                .single();
-
-                            if(error || !data){
-                                showToast("Session tidak valid", "error");
-                                logout();
-                                return;
-                            }
-
-                            const r = data.role.toUpperCase();
-
+                            // Menu Role Control
                             document.getElementById('m-logs').style.display =
-                                r === "ADMIN" ? "block" : "none";
+                                role === "ADMIN" ? "block" : "none";
 
                             document.getElementById('m-recycle').style.display =
-                                r === "ADMIN" ? "block" : "none";
+                                role === "ADMIN" ? "block" : "none";
 
                             document.getElementById('m-master').style.display =
-                                r === "ADMIN" ? "block" : "none";
+                                role === "ADMIN" ? "block" : "none";
 
                             document.getElementById('m-sampel').style.display =
-                                (r === "ADMIN" || r === "ANALIS" || r === "VALIDATOR")
-                                ? "block"
-                                : "none";
+                                (role === "ADMIN" || role === "ANALIS" || role === "VALIDATOR")
+                                ? "block" : "none";
 
                             updateMasterUI();
                             renderTables();
