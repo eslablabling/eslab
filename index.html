@@ -502,19 +502,29 @@
             ==================================================
             */
 
-            function loadLocalDB(){
+            async function loadLocalDB(){
 
                 try{
-                    db = JSON.parse(localStorage.getItem('lab_final_db')) || [];
+
+                    // Load dari Supabase dulu (Source of Truth)
+                    const { data: dbData } = await supabaseClient
+                        .from("samples")
+                        .select("*");
+
+                    if(dbData){
+                        db = dbData;
+                        localStorage.setItem("lab_final_db", JSON.stringify(db));
+                    }
+
+                    // Backup cache
                     cocDB = JSON.parse(localStorage.getItem("cocDB")) || [];
-                    logs = JSON.parse(localStorage.getItem('lab_audit_logs')) || [];
-                    recycleBin = JSON.parse(localStorage.getItem('lab_recycle_bin')) || [];
-                    masterReg = JSON.parse(localStorage.getItem('lab_final_reg')) || [];
-                    masterMap = JSON.parse(localStorage.getItem('lab_final_map')) || {};
-                }
-                catch(err){
-                    console.error("Database corrupted, resetting...");
-                    localStorage.clear();
+                    logs = JSON.parse(localStorage.getItem("lab_audit_logs")) || [];
+                    recycleBin = JSON.parse(localStorage.getItem("lab_recycle_bin")) || [];
+                    masterReg = JSON.parse(localStorage.getItem("lab_final_reg")) || [];
+                    masterMap = JSON.parse(localStorage.getItem("lab_final_map")) || {};
+
+                } catch(err){
+                    console.error("Database load error", err);
                 }
 
             }
@@ -526,20 +536,36 @@
             ==================================================
             */
 
-            window.onload = () => {
+            window.onload = async () => {
 
                 try {
 
-                    loadLocalDB();
+                    await loadLocalDB();
 
-                    // Auth check
-                    if (sessionStorage.getItem('isAuth') === 'true') {
+                    const isAuth = sessionStorage.getItem('isAuth') === 'true';
+                    const username = sessionStorage.getItem('user');
+
+                    if (isAuth && username) {
 
                         const loginPage = document.getElementById('login-page');
                         const dashboard = document.getElementById('main-dashboard');
 
                         if(loginPage) loginPage.style.display = 'none';
                         if(dashboard) dashboard.style.display = 'flex';
+
+                        // 🔥 Validasi session ke database
+                        const { data, error } = await supabaseClient
+                            .from("users")
+                            .select("role")
+                            .eq("username", username)
+                            .single();
+
+                        if(error || !data){
+                            logout();
+                            return;
+                        }
+
+                        sessionStorage.setItem("role", data.role);
 
                         const lastMenu =
                             sessionStorage.getItem('activeMenu') || 'view-home';
@@ -704,18 +730,20 @@
 
         function saveCOC() {
 
-            const getVal = id => document.getElementById(id)?.value || "";
+            const getVal = id => document.getElementById(id)?.value.trim() || "";
 
             if (!getVal("coc-coc-no")) {
                 showToast("COC No wajib diisi!", "error");
                 return;
             }
 
+            const cocNo = getVal("coc-coc-no");
+
             const cocData = {
+                cocNo,
                 companyName: getVal("coc-company-name"),
                 companyAddress: getVal("coc-company-address"),
                 email: getVal("coc-email-coa"),
-                cocNo: getVal("coc-coc-no"),
                 ltrNo: getVal("coc-ltr-no"),
                 location: getVal("coc-company-location-detail"),
                 tat: getVal("coc-tat-req"),
@@ -735,7 +763,7 @@
                 const inputs = row.querySelectorAll("td input");
 
                 const sampleId = inputs[0]?.value.trim();
-                if (!sampleId) return; // skip kalau kosong
+                if (!sampleId) return;
 
                 const description = inputs[1]?.value || "";
                 const matrix = inputs[2]?.value || "";
@@ -745,12 +773,10 @@
                 const parameter = row.querySelector(".param-select")?.value || "";
                 const method = row.querySelector(".method-select")?.value || "";
 
-                // 🔎 Cek apakah sampleId sudah ada
-                let existingSample = cocData.samples.find(s => s.sampleId === sampleId);
+                let sample = cocData.samples.find(s => s.sampleId === sampleId);
 
-                if (!existingSample) {
-                    // Buat sample baru
-                    existingSample = {
+                if (!sample) {
+                    sample = {
                         sampleId,
                         description,
                         matrix,
@@ -758,12 +784,11 @@
                         regulation,
                         tests: []
                     };
-                    cocData.samples.push(existingSample);
+                    cocData.samples.push(sample);
                 }
 
-                // Tambahkan test ke sample
                 if (parameter) {
-                    existingSample.tests.push({
+                    sample.tests.push({
                         parameter,
                         method
                     });
@@ -771,18 +796,29 @@
 
             });
 
-            const existingIndex = cocDB.findIndex(c => c.cocNo === cocData.cocNo);
+            const index = cocDB.findIndex(c => c.cocNo === cocNo);
 
-            if (existingIndex !== -1) {
-                cocDB[existingIndex] = cocData;
+            if (index >= 0) {
+
+                // 🔥 Merge update (lebih aman daripada replace total)
+                cocDB[index] = {
+                    ...cocDB[index],
+                    ...cocData,
+                    samples: cocData.samples
+                };
+
             } else {
-                cocDB.push(cocData);
+                cocDB.unshift(cocData);
             }
 
             localStorage.setItem("cocDB", JSON.stringify(cocDB));
 
-            showToast("COC berhasil disimpan!", "success");
+            addLog("SAVE COC", `COC ${cocNo} disimpan / diperbarui`);
+
+            renderCOCList();
             renderCOC();
+
+            showToast("COC berhasil disimpan!", "success");
         }
         
 
@@ -992,34 +1028,38 @@
 
             body.innerHTML = "";
 
-            data.samples.forEach((s, index) => {
+            let counter = 1;
 
-                s.tests.forEach(test => {
+            data.samples?.forEach(sample => {
+
+                sample.tests?.forEach(test => {
 
                     const row = body.insertRow();
 
                     row.innerHTML = `
-                        <td style="border:1px solid #000;padding:5px">${body.rows.length}</td>
+                        <td style="border:1px solid #000;padding:5px;text-align:center">
+                            ${counter++}
+                        </td>
 
-                        <td><input value="${s.sampleId}" style="width:100%;border:none"></td>
-                        <td><input value="${s.description}" style="width:100%;border:none"></td>
-                        <td><input value="${s.matrix}" style="width:100%;border:none"></td>
-                        <td><input value="${s.container}" style="width:100%;border:none"></td>
+                        <td><input value="${sample.sampleId}" style="width:100%;border:none"></td>
+                        <td><input value="${sample.description}" style="width:100%;border:none"></td>
+                        <td><input value="${sample.matrix}" style="width:100%;border:none"></td>
+                        <td><input value="${sample.container}" style="width:100%;border:none"></td>
 
                         <td>
-                            <select class="reg-select" style="width:100%">
-                                ${generateRegOptions(s.regulation)}
+                            <select class="reg-select">
+                                ${generateRegOptions(sample.regulation)}
                             </select>
                         </td>
 
                         <td>
-                            <select class="param-select" style="width:100%">
+                            <select class="param-select">
                                 ${generateParamOptions(test.parameter)}
                             </select>
                         </td>
 
                         <td>
-                            <select class="method-select" style="width:100%">
+                            <select class="method-select">
                                 ${generateMethodOptions(test.parameter, test.method)}
                             </select>
                         </td>
@@ -1032,10 +1072,11 @@
                         </td>
                     `;
 
+                    // Cascade dropdown
                     const paramSelect = row.querySelector(".param-select");
                     const methodSelect = row.querySelector(".method-select");
 
-                    paramSelect.onchange = function(){
+                    paramSelect.onchange = function () {
                         methodSelect.innerHTML =
                             generateMethodOptions(this.value, "");
                     };
@@ -1142,55 +1183,61 @@
 
                     async function showDashboard(){
 
-                        try {
+                    try {
 
-                            document.getElementById('login-page').style.display='none';
-                            document.getElementById('main-dashboard').style.display='flex';
+                        const isAuth = sessionStorage.getItem('isAuth');
 
-                            const role = (sessionStorage.getItem('role') || "").toUpperCase();
-
-                            // MENU CONTROL
-                            const isAdmin = role === "ADMIN";
-                            const isAnalyst = role === "ANALIS";
-                            const isValidator = role === "VALIDATOR";
-
-                            const logMenu = document.getElementById('m-logs');
-                            const binMenu = document.getElementById('m-recycle');
-                            const cocMenu = document.getElementById('m-coc');
-                            const masterMenu = document.getElementById('m-master');
-                            const sampelMenu = document.getElementById('m-sampel');
-
-                            if(cocMenu){
-                                cocMenu.style.display =
-                                    (isAdmin || isAnalyst || isValidator) ? "block" : "none";
-                            }
-
-                            if(logMenu){
-                                logMenu.style.display = isAdmin ? "block" : "none";
-                            }
-
-                            if(binMenu){
-                                binMenu.style.display = isAdmin ? "block" : "none";
-                            }
-
-                            if(masterMenu){
-                                masterMenu.style.display = isAdmin ? "block" : "none";
-                            }
-
-                            if(sampelMenu){
-                                sampelMenu.style.display =
-                                    (isAdmin || isAnalyst || isValidator) ? "block" : "none";
-                            }
-
-                            updateMasterUI();
-                            renderTables();
-                            updateStats();
-
-                        } catch(err){
-                            console.error(err);
-                            showToast("Error memuat dashboard", "error");
+                        if(!isAuth){
+                            location.reload();
+                            return;
                         }
+
+                        document.getElementById('login-page').style.display='none';
+                        document.getElementById('main-dashboard').style.display='flex';
+
+                        const role = (sessionStorage.getItem('role') || "").toUpperCase();
+
+                        const isAdmin = role === "ADMIN";
+                        const isAnalyst = role === "ANALIS";
+                        const isValidator = role === "VALIDATOR";
+
+                        const logMenu = document.getElementById('m-logs');
+                        const binMenu = document.getElementById('m-recycle');
+                        const cocMenu = document.getElementById('m-coc');
+                        const masterMenu = document.getElementById('m-master');
+                        const sampelMenu = document.getElementById('m-sampel');
+
+                        if(cocMenu){
+                            cocMenu.style.display =
+                                (isAdmin || isAnalyst || isValidator) ? "block" : "none";
+                        }
+
+                        if(logMenu){
+                            logMenu.style.display = isAdmin ? "block" : "none";
+                        }
+
+                        if(binMenu){
+                            binMenu.style.display = isAdmin ? "block" : "none";
+                        }
+
+                        if(masterMenu){
+                            masterMenu.style.display = isAdmin ? "block" : "none";
+                        }
+
+                        if(sampelMenu){
+                            sampelMenu.style.display =
+                                (isAdmin || isAnalyst || isValidator) ? "block" : "none";
+                        }
+
+                        updateMasterUI();
+                        renderTables();
+                        updateStats();
+
+                    } catch(err){
+                        console.error(err);
+                        showToast("Error memuat dashboard", "error");
                     }
+                }
                     
 
                     function logout(){
@@ -1207,21 +1254,34 @@
 
 
         function addReg() {
-            const name = document.getElementById('m-reg-in').value;
-            const o2Val = document.getElementById('m-o2-in').value; // Input baru
-            const limitVal = document.getElementById('m-limit-in').value; // Ambil nilai limit
 
-            if(name && o2Val && limitVal) {
-                masterReg.push({ name: name, o2: Number.parseFloat(o2Val),limit: limitVal });
-                saveMaster();
-                document.getElementById('m-reg-in').value = '';
-                document.getElementById('m-o2-in').value = '';
-                document.getElementById('m-limit-in').value = '';
+            const name = document.getElementById('m-reg-in').value.trim();
+            const o2Val = document.getElementById('m-o2-in').value;
+            const limitVal = document.getElementById('m-limit-in').value.trim();
 
-                showToast("Regulasi & Baku Mutu Tersimpan");
-            } else {
-                showToast("Nama & O2 Koreksi harus diisi!", "error");
+            if(!name || !o2Val || !limitVal){
+                showToast("Nama, O2, dan Limit wajib diisi!", "error");
+                return;
             }
+
+            if(masterReg.some(r => r.name === name)){
+                showToast("Regulasi sudah ada!", "error");
+                return;
+            }
+
+            masterReg.push({
+                name,
+                o2: parseFloat(o2Val),
+                limit: limitVal
+            });
+
+            saveMaster();
+
+            document.getElementById('m-reg-in').value='';
+            document.getElementById('m-o2-in').value='';
+            document.getElementById('m-limit-in').value='';
+
+            showToast("Regulasi tersimpan!");
         }
 
         function addMap() {
@@ -1261,7 +1321,10 @@
                 <div style="background:#f8fafc; padding:12px; border-radius:12px; margin-bottom:10px; border:1px solid #eee;">
                     <div style="display:flex; justify-content:space-between;">
                         <strong>${p}</strong> 
-                        <i class="fas fa-trash" onclick="delete masterMap['${p}']; saveMaster();" style="color:var(--danger); cursor:pointer; font-size:0.8rem;"></i>
+                        <i class="fas fa-trash"
+                            onclick="deleteMappingParam('${p}')"
+                            style="color:var(--danger); cursor:pointer; font-size:0.8rem;">
+                            </i>
                     </div>
                     ${masterMap[p].map((m,i) => `
                         <div style="font-size:0.75rem; color:#666; display:flex; justify-content:space-between; margin-top:3px;">
@@ -1290,55 +1353,88 @@
                 }
                 paramCheckContainer.innerHTML = checkHtml;
             }
-}
+}       
+        function deleteMappingParam(p){
+            if(!masterMap[p]) return;
 
-        document.getElementById('sample-form').addEventListener('submit', function(e) {
-            e.preventDefault();
-            
-            // Ambil nilai dari input search regulasi
-            const regValue = document.getElementById('s-reg-sel').value;
-
-            // VALIDASI: Pastikan regulasi yang diketik ada di Master
-            const isValidReg = masterReg.find(r => r.name === regValue);
-            if(!isValidReg) {
-                showToast("Regulasi tidak ditemukan! Pilih dari daftar.", "error");
-                return;
+            if(confirm(`Hapus mapping parameter ${p}?`)){
+                delete masterMap[p];
+                saveMaster();
+                updateMasterUI();
             }
+        }
 
-            const sid = document.getElementById('s-id').value;
-            const comp = document.getElementById('s-company').value;
-            // --- BARIS BARU: Ambil lokasi perusahaan ---
-            const compLoc = document.getElementById('s-company-loc').value;
-            const contact = document.getElementById('s-contact').value; 
-            // --- AKHIR BARIS BARU ---
-            const selectedParams = Array.from(document.querySelectorAll('input[name="p-check"]:checked'));
-            
-            if(!selectedParams.length) return showToast("Pilih Parameter!", "error");
+        window.addEventListener('DOMContentLoaded', ()=>{
 
-            selectedParams.forEach(cb => {
-                const p = cb.value;
-                const m = document.querySelector(`select[name="m-select-${p}"]`).value;
-                
-                db.push({ 
-                    id: sid, 
-                    company: comp, 
-                    // --- PROPERTI BARU: Simpan lokasi ke database ---
-                    companyLocation: compLoc,
-                    customerContact: contact, 
-                    // --- AKHIR PROPERTI BARU ---
-                    reg: regValue, 
-                    param: p, met: m, res: '0.0000', isV: false, 
-                    date: new Date().toLocaleDateString('id-ID'),
-                    samplingData: null 
+            const form = document.getElementById('sample-form');
+            if(!form) return;
+
+            form.addEventListener('submit', function(e){
+                e.preventDefault();
+
+                const regValue = document.getElementById('s-reg-sel').value;
+
+                const isValidReg = masterReg.find(r => r.name === regValue);
+                if(!isValidReg){
+                    showToast("Regulasi tidak ditemukan!", "error");
+                    return;
+                }
+
+                const sid = document.getElementById('s-id').value;
+                const comp = document.getElementById('s-company').value;
+                const compLoc = document.getElementById('s-company-loc').value;
+                const contact = document.getElementById('s-contact').value;
+
+                if(db.some(d => d.id === sid)){
+                    showToast("Sample ID sudah ada!", "error");
+                    return;
+                }
+
+                const selectedParams =
+                    Array.from(document.querySelectorAll('input[name="p-check"]:checked'));
+
+                if(!selectedParams.length){
+                    showToast("Pilih Parameter!", "error");
+                    return;
+                }
+
+                selectedParams.forEach(cb => {
+
+                    const p = cb.value;
+
+                    const mSelect =
+                        document.querySelector(`select[name="m-select-${p}"]`);
+
+                    const m = mSelect ? mSelect.value : "";
+
+                    db.push({
+                        id: sid,
+                        company: comp,
+                        companyLocation: compLoc,
+                        customerContact: contact,
+                        reg: regValue,
+                        param: p,
+                        met: m,
+                        res: "0.0000",
+                        isV: false,
+                        date: new Date().toLocaleDateString('id-ID'),
+                        samplingData: null
+                    });
+
                 });
+
+                localStorage.setItem('lab_final_db', JSON.stringify(db));
+
+                form.reset();
+
+                renderTables();
+                updateStats();
+
+                showToast("Sampel Berhasil Disimpan!");
+
             });
 
-            localStorage.setItem('lab_final_db', JSON.stringify(db));
-            this.reset();
-            renderTables();
-            updateStats();
-            showToast("Sampel Berhasil Disimpan!");
-        });
+            });
 
         function showSection(id, el){
 
@@ -1461,19 +1557,19 @@
 
                 if(it.samplingData) {
                     // --- JIKA DATA ADA (DITEMUKAN) ---
-                    document.getElementById('samp-weather').value = it.samplingData.cuaca || 'Sunny';
-                    document.getElementById('samp-coord').value = it.samplingData.koordinat || '';
-                    document.getElementById('samp-date').value = it.samplingData.tgl || '';
-                    document.getElementById('samp-time').value = it.samplingData.jam || '';
-                    document.getElementById('samp-lokasi').value = it.samplingData.lokasi || '';
-                    document.getElementById('samp-o2').value = it.samplingData.o2_lapangan || '';
-                    document.getElementById('samp-volume').value = it.samplingData.volume || '';
-                    document.getElementById('samp-velocity').value = it.samplingData.velocity || '';
-                    document.getElementById('samp-flow').value = it.samplingData.flowRate || '';
-                    document.getElementById('samp-water').value = it.samplingData.waterVapor || '';
-                    document.getElementById('samp-traverse').value = it.samplingData.traversePoint || '';
-                    document.getElementById('samp-isokinetic').value = it.samplingData.isokinetic || '';
-                    document.getElementById('samp-note').value = it.samplingData.note || '';
+                    safeSet('samp-weather', it.samplingData.cuaca || 'Sunny');
+                    safeSet('samp-coord', it.samplingData.koordinat || '');
+                    safeSet('samp-date', it.samplingData.tgl || '');
+                    safeSet('samp-time', it.samplingData.jam || '');
+                    safeSet('samp-lokasi', it.samplingData.lokasi || '');
+                    safeSet('samp-o2', it.samplingData.o2_lapangan || '');
+                    safeSet('samp-volume', it.samplingData.volume || '');
+                    safeSet('samp-velocity', it.samplingData.velocity || '');
+                    safeSet('samp-flow', it.samplingData.flowRate || '');
+                    safeSet('samp-water', it.samplingData.waterVapor || '');
+                    safeSet('samp-traverse', it.samplingData.traversePoint || '');
+                    safeSet('samp-isokinetic', it.samplingData.isokinetic || '');
+                    safeSet('samp-note', it.samplingData.note || '');
                 } else {
                     // --- JIKA DATA BARU (SET KE DEFAULT) ---
                     resetSamplingForm(); 
@@ -1485,16 +1581,19 @@
             }
         }
 
-        function resetSamplingForm() {
+        function resetSamplingForm(){
+
             const form = document.getElementById('sampling-form');
-            if (form) {
-                form.reset(); 
-                // Set nilai default manual yang tidak bisa di-reset form biasa
-                document.getElementById('samp-weather').value = 'Sunny';
-                document.getElementById('samp-o2').value = '';
-                document.getElementById('samp-coord').value = 'S : 06°\'.0" E : 107°\'.0"';
-                document.getElementById('samp-note').value = '-';
-            }
+            if(form) form.reset();
+
+            safeSet('samp-weather','Sunny');
+            safeSet('samp-coord',"S : 06°'.0\" E : 107°'.0\"");
+            safeSet('samp-note','-');
+        }
+
+        function safeVal(id, def=""){
+            const el = document.getElementById(id);
+            return el ? el.value : def;
         }
 
         function getVerifyButtonHtml(originalIndex, isVerified, canVerify) {
@@ -1507,7 +1606,7 @@
                 <span style="background: #ecfdf5; color: #065f46; padding: 7px 12px; border-radius: 8px; font-size: 0.7rem; font-weight: 900; border: 1px solid #bbf7d0; display: flex; align-items: center; gap: 5px;">
                     <i class="fas fa-check-circle"></i> VERIFIED
                 </span>
-                <button onclick="toggleV(${originalIndex})" 
+                <button onclick="toggleVById('${it.id}')" 
                     title="Unverify Data"
                     style="background: #fef3c7; color: #92400e; border: 1px solid #fde68a; padding: 7px 10px; border-radius: 8px; cursor: pointer; font-size: 0.65rem; font-weight: 800; display: flex; align-items: center; gap: 4px;">
                     <i class="fas fa-undo"></i> UNVERIFY
@@ -1874,31 +1973,32 @@
             if(!selectedId) return showToast("Pilih ID Sampel!", "error");
 
             // Di dalam event listener submit sampling-form
-            const samplingData = {
-                tgl: document.getElementById('samp-date').value,
-                jam: document.getElementById('samp-time').value,
-                cuaca: document.getElementById('samp-weather').value, // Baru
-                koordinat: document.getElementById('samp-coord').value, // Baru
-                lokasi: document.getElementById('samp-lokasi').value,
-                volume: Number.parseFloat(document.getElementById('samp-volume').value) || 1,
-                velocity: document.getElementById('samp-velocity').value,
-                flowRate: document.getElementById('samp-flow').value,
-                waterVapor: document.getElementById('samp-water').value,
-                traversePoint: document.getElementById('samp-traverse').value,
-                isokinetic: document.getElementById('samp-isokinetic').value,
-                o2_lapangan: Number.parseFloat(document.getElementById('samp-o2').value) || 20.9,
-                note: document.getElementById('samp-note').value
+           const samplingData = {
+                tgl: safeVal('samp-date'),
+                jam: safeVal('samp-time'),
+                cuaca: safeVal('samp-weather','Sunny'),
+                koordinat: safeVal('samp-coord'),
+                lokasi: safeVal('samp-lokasi'),
+                volume: parseFloat(safeVal('samp-volume','1')) || 1,
+                velocity: safeVal('samp-velocity'),
+                flowRate: safeVal('samp-flow'),
+                waterVapor: safeVal('samp-water'),
+                traversePoint: safeVal('samp-traverse'),
+                isokinetic: safeVal('samp-isokinetic'),
+                o2_lapangan: parseFloat(safeVal('samp-o2','20.9')) || 20.9,
+                note: safeVal('samp-note')
             };
 
 
-            db.forEach((item, index) => {
-                if(item.id === selectedId) {
-                    db[index].samplingData = samplingData;
-                    if(db[index].p_awal && db[index].p_akhir) {
-                        hitungTotalPartikulat(index, samplingData.volume);
-                    }
+            const idx = db.findIndex(x => x.id === selectedId);
+
+            if(idx !== -1){
+                db[idx].samplingData = samplingData;
+
+                if(db[idx].p_awal && db[idx].p_akhir){
+                    hitungTotalPartikulat(idx, samplingData.volume);
                 }
-            });
+            }
             
             localStorage.setItem('lab_final_db', JSON.stringify(db));
             showToast(`Data lapangan ${selectedId} berhasil disimpan!`, "success");
@@ -1907,60 +2007,40 @@
         });
 
         function toggleV(i) {
+
             const it = db[i];
-            const isNowVerifying = !it.isV; // Cek aksi: Mau verifikasi atau batal
+            if(!it) return;
+
+            const isNowVerifying = !it.isV;
             const actionName = isNowVerifying ? "VERIFIKASI" : "UNVERIFY";
-            
-            // 1. Pesan Peringatan Dinamis
+
+            const role = (sessionStorage.getItem('role') || "Unknown").toUpperCase();
+
             const message = isNowVerifying 
-                ? `Apakah Anda yakin ingin MEMVERIFIKASI Sampel ID: ${it.id}? \nData akan dikunci dan siap untuk diterbitkan CoA.`
-                : `⚠️ PERINGATAN: Anda akan membatalkan verifikasi Sampel ID: ${it.id}. \nData akan dapat diedit kembali oleh Analis. Lanjutkan?`;
+                ? `Apakah Anda yakin ingin MEMVERIFIKASI Sampel ID: ${it.id}?\nData akan dikunci dan siap diterbitkan CoA.`
+                : `⚠️ PERINGATAN: Anda akan membatalkan verifikasi Sampel ID: ${it.id}.\nData akan dapat diedit kembali oleh Analis. Lanjutkan?`;
 
-            // 2. Munculkan Konfirmasi
-            if (confirm(message)) {
-                // Simpan Status Sebelum Berubah untuk Log
-                const role = sessionStorage.getItem('role') || 'Unknown';
-                
-                // 3. Catat ke Audit Log
-                addLog(actionName, `${actionName} pada ID: ${it.id} | Parameter: ${it.param}`);
+            if(confirm(message)){
 
-                // 4. Update Status di Database
+                // Audit log (1 kali saja ✅)
+                addLog(
+                    actionName,
+                    `${role} ${actionName} ID: ${it.id} | Param: ${it.param}`
+                );
+
+                // Update status
                 db[i].isV = isNowVerifying;
-                localStorage.setItem('lab_final_db', JSON.stringify(db));
-                
-                // 5. Refresh UI & Notifikasi
-                renderTables(); 
-                updateStats();
-                
-                const toastMsg = isNowVerifying ? "Data Berhasil Diverifikasi" : "Verifikasi Dibatalkan";
-                showToast(toastMsg, isNowVerifying ? "success" : "warning");
-            }
-        }
 
-        function updateChart(masuk, proses, selesai) {
-            const chartEl = document.getElementById('labChart');
-            if(!chartEl) return;
-            
-            const ctx = chartEl.getContext('2d');
-            if(window.myChart) window.myChart.destroy(); 
-            
-            window.myChart = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: ["Total Masuk", "Analisa", "Selesai"], // Label disesuaikan
-                    datasets: [{
-                        data: [masuk, proses, selesai],
-                        backgroundColor: ['#4a90e2', '#f39c12', '#10b981'],
-                        borderRadius: 5
-                    }]
-                },
-                options: { 
-                    responsive: true, 
-                    maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
-                    scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
-                }
-            });
+                localStorage.setItem('lab_final_db', JSON.stringify(db));
+
+                renderTables();
+                updateStats();
+
+                showToast(
+                    isNowVerifying ? "Data Berhasil Diverifikasi" : "Verifikasi Dibatalkan",
+                    isNowVerifying ? "success" : "warning"
+                );
+            }
         }
 
             function printCOA(idx) {
@@ -2146,22 +2226,10 @@
 
         function exportJSON() {
 
-            const backupData = {
+            const payload = {
                 system: "LIMS ENVIRONMENT LAB SYSTEM by Muhammad Rifai",
-                version: "1.0",
-                exportedAt: new Date().toLocaleString("id-ID"),
-
-                checksum: btoa(
-                    JSON.stringify({
-                        db,
-                        masterReg,
-                        masterMap
-                    })
-                ),
-
-                totalDB: db.length,
-                totalLogs: logs.length,
-                totalRecycle: recycleBin.length,
+                version: "2.0",
+                exportedAt: new Date().toISOString(),
 
                 data: {
                     db,
@@ -2172,9 +2240,21 @@
                 }
             };
 
-            const formattedJSON = JSON.stringify(backupData, null, 4);
+            // ===== SECURITY HASH SIGNATURE =====
+            const rawString = JSON.stringify(payload.data);
 
-            const blob = new Blob([formattedJSON], { type: "application/json" });
+            payload.signature = btoa(
+                encodeURIComponent(
+                    rawString.split("").reverse().join("") + "LIMS_SECRET_KEY_2026"
+                )
+            );
+
+            payload.totalDB = db.length;
+            payload.totalLogs = logs.length;
+
+            const json = JSON.stringify(payload, null, 4);
+
+            const blob = new Blob([json], { type: "application/json" });
 
             const url = URL.createObjectURL(blob);
 
@@ -2182,7 +2262,7 @@
             a.href = url;
 
             const timestamp = new Date().toISOString().split("T")[0];
-            a.download = `LIMS_ES_BACKUP_${timestamp}.json`;
+            a.download = `LIMS_BACKUP_SECURE_${timestamp}.json`;
 
             document.body.appendChild(a);
             a.click();
@@ -2190,7 +2270,7 @@
 
             URL.revokeObjectURL(url);
 
-            showToast("Backup berhasil diekspor", "success");
+            showToast("Backup Secure berhasil diekspor", "success");
         }
 
 
@@ -2205,33 +2285,31 @@
 
                     const data = JSON.parse(result);
 
-                    // ===== VALIDASI DASAR =====
                     if(!data || !data.data){
                         throw new Error("Backup tidak valid");
                     }
 
-                    // ===== VALIDASI SIGNATURE SYSTEM =====
-                    if(
-                        data.system !== "LIMS ENVIRONMENT LAB SYSTEM by Muhammad Rifai" ||
-                        !data.version
-                    ){
-                        throw new Error("File bukan backup resmi sistem");
+                    // ===== VERIFY SIGNATURE =====
+                    const verifyRaw = JSON.stringify(data.data);
+
+                    const verifySignature = btoa(
+                        encodeURIComponent(
+                            verifyRaw.split("").reverse().join("") + "LIMS_SECRET_KEY_2026"
+                        )
+                    );
+
+                    if(data.signature !== verifySignature){
+                        throw new Error("Backup telah dimodifikasi!");
                     }
 
                     const backup = data.data;
 
-                    if(!Array.isArray(backup.db) || !Array.isArray(backup.masterReg)){
-                        throw new Error("Struktur backup rusak");
-                    }
-
-                    // ===== RESTORE =====
                     db = backup.db || [];
                     masterReg = backup.masterReg || [];
                     masterMap = backup.masterMap || {};
                     logs = backup.logs || [];
                     recycleBin = backup.recycleBin || [];
 
-                    // ===== SAVE LOCAL =====
                     localStorage.setItem('lab_final_db', JSON.stringify(db));
                     localStorage.setItem('lab_final_reg', JSON.stringify(masterReg));
                     localStorage.setItem('lab_final_map', JSON.stringify(masterMap));
@@ -2242,16 +2320,10 @@
                     renderTables();
                     updateStats();
 
-                    if(typeof renderLogs === 'function') renderLogs();
-                    if(typeof renderRecycleBin === 'function') renderRecycleBin();
-
                     showToast("Database berhasil dipulihkan", "success");
 
-                    e.target.value = "";
-
                 }catch(err){
-                    console.error(err);
-                    showToast(err.message || "Format backup tidak valid", "error");
+                    showToast(err.message, "error");
                 }
 
             });
@@ -2272,34 +2344,43 @@
 
         function showToast(m, t="success") {
             const c = document.getElementById('toast-container');
-            const b = document.createElement('div'); b.className='toast'; b.innerText=m;
-            if(t==='error') b.style.background='var(--danger)';
-            c.appendChild(b); setTimeout(() => b.remove(), 3000);
+            if(!c) return;
+
+            const b = document.createElement('div');
+            b.className = 'toast';
+            b.innerText = m;
+
+            if(t === 'error') b.style.background = 'var(--danger)';
+            if(t === 'warning') b.style.background = 'var(--warning)';
+            if(t === 'success') b.style.background = 'var(--success)';
+
+            c.appendChild(b);
+            setTimeout(()=>b.remove(),3000);
         }
 
         function deleteAnalisa(i) {
+
+            if(!db[i]) return;
+
             const it = JSON.parse(JSON.stringify(db[i]));
-            if (confirm(`Pindahkan Sampel ID: ${it.id} ke Tempat Sampah?`)) {
-                // 1. Tambahkan informasi waktu penghapusan
-                it.deletedAt = new Date().toLocaleString('id-ID');
-                
-                // 2. Pindahkan ke array recycleBin
-                recycleBin.unshift(it);
-                
-                // 3. Hapus dari database aktif
-                db.splice(i, 1);
-                
-                // 4. Simpan ke localStorage
-                localStorage.setItem('lab_final_db', JSON.stringify(db));
-                localStorage.setItem('lab_recycle_bin', JSON.stringify(recycleBin));
-                
-                // 5. Catat Log
-                addLog("RECYCLE", `ID: ${it.id} dipindahkan ke Tempat Sampah`);
-                
-                renderTables();
-                updateStats();
-                showToast("Data dipindahkan ke Tempat Sampah", "warning");
-            }
+
+            if (!confirm(`Pindahkan Sampel ID: ${it.id} ke Tempat Sampah?`)) return;
+
+            it.deletedAt = new Date().toLocaleString('id-ID');
+
+            recycleBin.unshift(it);
+            db.splice(i,1);
+
+            localStorage.setItem('lab_final_db', JSON.stringify(db));
+            localStorage.setItem('lab_recycle_bin', JSON.stringify(recycleBin));
+
+            addLog("RECYCLE", `ID ${it.id} dipindahkan ke recycle bin`);
+
+            renderRecycleBin();
+            renderTables();
+            updateStats();
+
+            showToast("Data dipindahkan ke Tempat Sampah","warning");
         }
 
         function renderRecycleBin() {
@@ -2323,30 +2404,27 @@
         }
 
         function restoreData(idx) {
+
             const it = recycleBin[idx];
-            
-            // 1. Masukkan kembali ke database utama
-            if (db.some(d => d.id === it.id)) {
-                showToast("ID sudah ada di sistem!", "error");
-                return;
-            } 
-            
-            // 2. Hapus dari daftar tempat sampah
-            recycleBin.splice(idx, 1); 
-            
-            // 3. Simpan KEDUA perubahan ke LocalStorage
+            if(!it) return;
+
+            if(db.some(d => d.id === it.id)){
+                return showToast("ID sudah ada di sistem","error");
+            }
+
+            recycleBin.splice(idx,1);
+            db.push(it);
+
             localStorage.setItem('lab_final_db', JSON.stringify(db));
             localStorage.setItem('lab_recycle_bin', JSON.stringify(recycleBin));
-            
-            // 4. Catat Log
-            addLog("RESTORE", `Mengembalikan Sampel ID: ${it.id} ke sistem aktif.`);
-            
-            // 5. REFRESH TAMPILAN (Sangat Penting)
-            renderRecycleBin(); // Update tabel tempat sampah
-            renderTables();     // Update tabel Analisa & CoA
-            updateStats();      // Update angka di dashboard
-            
-            showToast(`Data ID ${it.id} Berhasil Dipulihkan!`, "success");
+
+            addLog("RESTORE", `Restore ID ${it.id}`);
+
+            renderRecycleBin();
+            renderTables();
+            updateStats();
+
+            showToast(`ID ${it.id} dipulihkan`);
         }
 
         function updateStats() {
