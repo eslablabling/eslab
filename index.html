@@ -530,9 +530,7 @@
             updateStats();
 
             // ⭐ Auto New COC setiap reload
-            if(!sessionStorage.getItem("editingCOC")){
-                newCOC();
-            }
+            sessionStorage.setItem("editingCOC", "true");
 
             const liveDate = document.getElementById('live-date');
             if (liveDate) {
@@ -648,7 +646,7 @@
 
             localStorage.setItem("cocDB", JSON.stringify(cocDB));
 
-           
+            renderCOCList();
             renderCOC();
 
         }
@@ -705,34 +703,44 @@
 
                 const inputs = row.querySelectorAll("td input");
 
-                const tests = [];
+                const sampleId = inputs[0]?.value.trim();
+                if (!sampleId) return; // skip kalau kosong
 
-                const regSelects = row.querySelectorAll(".reg-select");
-                const paramSelects = row.querySelectorAll(".param-select");
-                const methodSelects = row.querySelectorAll(".method-select");
+                const description = inputs[1]?.value || "";
+                const matrix = inputs[2]?.value || "";
+                const container = inputs[3]?.value || "";
 
-                regSelects.forEach((reg, i) => {
+                const regulation = row.querySelector(".reg-select")?.value || "";
+                const parameter = row.querySelector(".param-select")?.value || "";
+                const method = row.querySelector(".method-select")?.value || "";
 
-                    tests.push({
-                        regulation: reg?.value || "",
-                        parameter: paramSelects[i]?.value || "",
-                        method: methodSelects[i]?.value || ""
+                // 🔎 Cek apakah sampleId sudah ada
+                let existingSample = cocData.samples.find(s => s.sampleId === sampleId);
+
+                if (!existingSample) {
+                    // Buat sample baru
+                    existingSample = {
+                        sampleId,
+                        description,
+                        matrix,
+                        container,
+                        regulation,
+                        tests: []
+                    };
+                    cocData.samples.push(existingSample);
+                }
+
+                // Tambahkan test ke sample
+                if (parameter) {
+                    existingSample.tests.push({
+                        parameter,
+                        method
                     });
-
-                });
-
-                cocData.samples.push({
-                    sampleId: inputs[0]?.value || "",
-                    description: inputs[1]?.value || "",
-                    matrix: inputs[2]?.value || "",
-                    container: inputs[3]?.value || "",
-                    tests
-                });
+                }
 
             });
 
-            const existingIndex =
-                cocDB.findIndex(c => c.cocNo === cocData.cocNo);
+            const existingIndex = cocDB.findIndex(c => c.cocNo === cocData.cocNo);
 
             if (existingIndex !== -1) {
                 cocDB[existingIndex] = cocData;
@@ -743,9 +751,9 @@
             localStorage.setItem("cocDB", JSON.stringify(cocDB));
 
             showToast("COC berhasil disimpan!", "success");
-
             renderCOC();
         }
+        
 
         function addCOCRow() {
 
@@ -955,63 +963,53 @@
 
             data.samples.forEach((s, index) => {
 
-                const test = s.tests?.[0] || {};  // ambil test pertama
+                s.tests.forEach(test => {
 
-                const row = body.insertRow();
+                    const row = body.insertRow();
 
-                row.innerHTML = `
-                    <td style="border:1px solid #000;padding:5px">${index + 1}</td>
+                    row.innerHTML = `
+                        <td style="border:1px solid #000;padding:5px">${body.rows.length}</td>
 
-                    <td style="border:1px solid #000;padding:5px">
-                        <input value="${s.sampleId || ''}" style="width:100%;border:none">
-                    </td>
+                        <td><input value="${s.sampleId}" style="width:100%;border:none"></td>
+                        <td><input value="${s.description}" style="width:100%;border:none"></td>
+                        <td><input value="${s.matrix}" style="width:100%;border:none"></td>
+                        <td><input value="${s.container}" style="width:100%;border:none"></td>
 
-                    <td style="border:1px solid #000;padding:5px">
-                        <input value="${s.description || ''}" style="width:100%;border:none">
-                    </td>
+                        <td>
+                            <select class="reg-select" style="width:100%">
+                                ${generateRegOptions(s.regulation)}
+                            </select>
+                        </td>
 
-                    <td style="border:1px solid #000;padding:5px">
-                        <input value="${s.matrix || ''}" style="width:100%;border:none">
-                    </td>
+                        <td>
+                            <select class="param-select" style="width:100%">
+                                ${generateParamOptions(test.parameter)}
+                            </select>
+                        </td>
 
-                    <td style="border:1px solid #000;padding:5px">
-                        <input value="${s.container || ''}" style="width:100%;border:none">
-                    </td>
+                        <td>
+                            <select class="method-select" style="width:100%">
+                                ${generateMethodOptions(test.parameter, test.method)}
+                            </select>
+                        </td>
 
-                    <td style="border:1px solid #000;padding:5px;width:160px">
-                        <select class="reg-select" style="width:100%">
-                            ${generateRegOptions(test.regulation)}
-                        </select>
-                    </td>
+                        <td style="text-align:center">
+                            <button onclick="deleteCOCRow(this)"
+                                style="background:red;color:white;border:none;padding:3px 6px">
+                                ✕
+                            </button>
+                        </td>
+                    `;
 
-                    <td style="border:1px solid #000;padding:5px;width:150px">
-                        <select class="param-select" style="width:100%">
-                            ${generateParamOptions(test.parameter)}
-                        </select>
-                    </td>
+                    const paramSelect = row.querySelector(".param-select");
+                    const methodSelect = row.querySelector(".method-select");
 
-                    <td style="border:1px solid #000;padding:5px;width:160px">
-                        <select class="method-select" style="width:100%">
-                            ${generateMethodOptions(test.parameter, test.method)}
-                        </select>
-                    </td>
+                    paramSelect.onchange = function(){
+                        methodSelect.innerHTML =
+                            generateMethodOptions(this.value, "");
+                    };
 
-                    <td style="border:1px solid #000;padding:5px;text-align:center">
-                        <button type="button"
-                            onclick="deleteCOCRow(this)"
-                            style="background:red;color:white;border:none;padding:3px 6px">
-                            ✕
-                        </button>
-                    </td>
-                `;
-
-                const paramSelect = row.querySelector(".param-select");
-                const methodSelect = row.querySelector(".method-select");
-
-                paramSelect.onchange = function(){
-                    methodSelect.innerHTML =
-                        generateMethodOptions(this.value, "");
-                };
+                });
 
             });
 
@@ -2428,22 +2426,31 @@
 
 
         
-            function printCOC() {
+           function printCOC() {
+
+                if (!window.jspdf) {
+                    alert("jsPDF belum terload!");
+                    return;
+                }
+
                 const { jsPDF } = window.jspdf;
-                const doc = new jsPDF('l', 'mm', 'a4'); // Landscape
+                const doc = new jsPDF('l', 'mm', 'a4');
+
                 const pageW = doc.internal.pageSize.getWidth();
                 const pageH = doc.internal.pageSize.getHeight();
                 const margin = 10;
 
-                // Helper function untuk mengambil value atau string kosong jika null
                 const getVal = (id) => {
                     const el = document.getElementById(id);
                     return el ? el.value : '';
                 };
 
-                // --- 1. HEADER (LOGO & TEKS) ---
-                doc.setDrawColor(200); 
-                doc.rect(margin, 8, 30, 15); // Box Logo
+                // ===============================
+                // 1. HEADER
+                // ===============================
+
+                doc.setDrawColor(150);
+                doc.rect(margin, 8, 30, 15);
                 doc.setFontSize(7);
                 doc.text("LOGO", margin + 11, 17);
 
@@ -2453,29 +2460,30 @@
 
                 doc.setFont("helvetica", "normal");
                 doc.setFontSize(7.5);
-                doc.text("Jl. Jatiwangi No.84 Kamurang, Kel. Cikedokan, Kec. Cikarang Barat, Kab. Bekasi 17530", margin + 35, 16);
-                doc.text("Phone: +6221-85934498 Fax. +6221-22143948", margin + 35, 19);
-                doc.text("Email: sales2@eslab.co.id | Website: www.eslab.co.id", margin + 35, 22);
+                doc.text("Jl. Jatiwangi No.84 Kamurang, Cikarang Barat, Bekasi 17530", margin + 35, 16);
+                doc.text("Phone: +6221-85934498", margin + 35, 19);
+                doc.text("Email: sales2@eslab.co.id | www.eslab.co.id", margin + 35, 22);
 
                 doc.setFontSize(14);
                 doc.setFont("helvetica", "bold");
                 doc.text("CHAIN OF CUSTODY (COC)", pageW - margin, 18, { align: "right" });
 
-                doc.setLineWidth(0.5);
                 doc.line(margin, 26, pageW - margin, 26);
 
-                // --- 2. TABEL INFORMASI UTAMA (Sinkron dengan HTML) ---
+                // ===============================
+                // 2. INFO TABLE
+                // ===============================
+
                 doc.autoTable({
                     startY: 30,
                     theme: 'grid',
-                    styles: { fontSize: 8, cellPadding: 1.5, valign: 'middle' },
-                    columnStyles: { 
-                        0: { fontStyle: 'bold', cellWidth: 35, fillColor: [240, 240, 240] }, 
-                        2: { fontStyle: 'bold', cellWidth: 30, fillColor: [240, 240, 240] }, 
-                        4: { fontStyle: 'bold', cellWidth: 30, fillColor: [240, 240, 240] } 
+                    styles: { fontSize: 8, cellPadding: 1.5 },
+                    columnStyles: {
+                        0: { fontStyle: 'bold', cellWidth: 35, fillColor: [240,240,240] },
+                        2: { fontStyle: 'bold', cellWidth: 30, fillColor: [240,240,240] },
+                        4: { fontStyle: 'bold', cellWidth: 30, fillColor: [240,240,240] }
                     },
                     body: [
-                        // Row 1 & 2 (Company & Email)
                         [
                             'Company Name', getVal('coc-company-name'),
                             {content: 'Email (COA)', rowSpan: 2}, {content: getVal('coc-email-coa'), rowSpan: 2},
@@ -2485,7 +2493,6 @@
                             'Company Address', getVal('coc-company-address'),
                             'LTR No.', getVal('coc-ltr-no')
                         ],
-                        // Row 3 & 4 (Location, TAT, Plan Date)
                         [
                             {content: 'Sampling Location', rowSpan: 2}, {content: getVal('coc-company-location-detail'), rowSpan: 2},
                             'TAT Requested', getVal('coc-tat-req'),
@@ -2495,7 +2502,6 @@
                             'Sampling Plan Date', getVal('coc-plan-date'),
                             'Sampling Officer 2', getVal('coc-officer-b')
                         ],
-                        // Row 5 (PIC, Phone, Officer 3)
                         [
                             'PIC', getVal('coc-pic'),
                             'Phone No.', getVal('coc-phone-no'),
@@ -2505,91 +2511,173 @@
                     margin: { left: margin, right: margin }
                 });
 
-                // --- 3. TABEL DAFTAR SAMPEL ---
-                const sampleHead = [['No.', 'Sample ID', 'Description', 'Matrix', 'Container', 'Regulation', 'Parameters', 'Methods', 'Sampling Date', 'Login']];
+                let lastY = doc.lastAutoTable.finalY;
+
+                // ===============================
+                // 3. SAMPLE TABLE (GROUPED)
+                // ===============================
+
+                const sampleHead = [[
+                    'No.',
+                    'Sample ID',
+                    'Description',
+                    'Matrix',
+                    'Container',
+                    'Regulation',
+                    'Parameter',
+                    'Method'
+                ]];
+
                 const sampleBody = [];
-                
-                // Loop untuk membuat 12 baris kosong (bisa diganti dengan data dinamis dari tabel input)
-                for (let i = 1; i <= 5; i++) {
-                    sampleBody.push([i, '', '', '', '', '', '', '', '', '']);
-                }
+                const rows = document.querySelectorAll("#coc-samples-body tr");
+
+                let sampleMap = {};
+                let counter = 1;
+
+                rows.forEach(row => {
+
+                    const inputs = row.querySelectorAll("td input");
+
+                    const sampleId = inputs[0]?.value || "";
+                    if (!sampleId) return;
+
+                    const description = inputs[1]?.value || "";
+                    const matrix = inputs[2]?.value || "";
+                    const container = inputs[3]?.value || "";
+
+                    const regulation = row.querySelector(".reg-select")?.value || "";
+                    const parameter = row.querySelector(".param-select")?.value || "";
+                    const method = row.querySelector(".method-select")?.value || "";
+
+                    if (!sampleMap[sampleId]) {
+                        sampleMap[sampleId] = {
+                            no: counter++,
+                            sampleId,
+                            description,
+                            matrix,
+                            container,
+                            regulation,
+                            tests: []
+                        };
+                    }
+
+                    sampleMap[sampleId].tests.push({
+                        parameter,
+                        method
+                    });
+
+                });
+
+                Object.values(sampleMap).forEach(sample => {
+
+                    sample.tests.forEach((test, index) => {
+
+                        sampleBody.push([
+                            index === 0 ? sample.no : "",
+                            index === 0 ? sample.sampleId : "",
+                            index === 0 ? sample.description : "",
+                            index === 0 ? sample.matrix : "",
+                            index === 0 ? sample.container : "",
+                            index === 0 ? sample.regulation : "",
+                            test.parameter || "-",
+                            test.method || "-"
+                        ]);
+
+                    });
+
+                });
 
                 doc.autoTable({
                     startY: lastY + 5,
                     head: sampleHead,
                     body: sampleBody,
                     theme: 'grid',
-                    headStyles: { fillColor: [51, 51, 51], halign: 'center', fontSize: 8 },
-                    styles: { fontSize: 7, halign: 'center', minCellHeight: 6 },
-                    columnStyles: {
-                        0: { cellWidth: 10 },
-                        1: { cellWidth: 30 },
-                        6: { cellWidth: 40 }, 
+                    headStyles: {
+                        fillColor: [40,40,40],
+                        fontSize: 8,
+                        halign: 'center'
+                    },
+                    styles: {
+                        fontSize: 7,
+                        halign: 'center',
+                        valign: 'middle'
                     },
                     margin: { left: margin, right: margin }
                 });
 
-                // --- 4. KONDISI & INSTRUKSI ---
-                const sectionY = doc.lastAutoTable.finalY + 5;
-                const halfWidth = (pageW / 2) - 12.5;
-                const lastY = doc.lastAutoTable ? doc.lastAutoTable.finalY : 40;
-                // Sisi Kiri: Sample Condition
-                doc.autoTable({
-                    startY: sectionY,
-                    tableWidth: halfWidth,
-                    body: [
-                        [{ content: 'Sample Condition Upon Reception', styles: { fontStyle: 'bold', fillColor: [220, 220, 220] } }],
-                        ['a. Suitability between information received:\n   [ ] No discrepancy   [ ] There is discrepancy:'],
-                        ['b. Conformity with method requirement:\n   [ ] According to requirement   [ ] Not in accordance:'],
-                        ['c. Samples condition upon reception:\n   [ ] Good   [ ] Not in good condition:'],
-                        ['d. Abnormality sampling condition:\n   _________________________________________________']
-                    ],
-                    theme: 'grid',
-                    styles: { fontSize: 7.5, minCellHeight: 7.5, valign: 'middle' }, 
-                    margin: { left: margin }
-                });
+                lastY = doc.lastAutoTable.finalY;
 
-                // Sisi Kanan: Special Instruction
-                doc.autoTable({
-                    startY: sectionY,
-                    tableWidth: halfWidth,
-                    body: [
-                        [{ content: 'Special Instruction / Transportation', styles: { fontStyle: 'bold', fillColor: [220, 220, 220] } }],
-                        ['Instruction: \n\n\n'],
-                        ['Delivered by:\n[ ] PT Envirotama Solusindo\n[ ] Other: _________________']
-                    ],
-                    theme: 'grid',
-                    styles: { fontSize: 7.5, minCellHeight: 10, valign: 'top' },
-                    margin: { left: (pageW / 2) + 2.5 }
-                });
+                // ===============================
+                // 4. SAMPLE CONDITION
+                // ===============================
 
-                // --- 5. TANDA TANGAN ---
                 doc.autoTable({
-                    startY: doc.lastAutoTable.finalY + 5,
-                    head: [['Issued by,', 'Approved (Tech Mgr)', 'Verified by,', 'Sampling Officer', 'Received by', 'Customer Approval']],
-                    body: [['\n\n\n\n', '', '', '', '', '']], 
+                    startY: lastY + 5,
                     theme: 'grid',
-                    styles: { fontSize: 7, halign: 'center' },
-                    headStyles: { fillColor: [220, 220, 220], textColor: [0, 0, 0], fontStyle: 'bold' },
+                    styles: { fontSize: 7.5 },
+                    body: [
+                        [{ content: 'Sample Condition Upon Reception', styles: { fontStyle: 'bold', fillColor: [220,220,220] } }],
+                        ['a. Suitability: [ ] No discrepancy   [ ] There is discrepancy'],
+                        ['b. Method conformity: [ ] Yes   [ ] No'],
+                        ['c. Sample condition: [ ] Good   [ ] Not good'],
+                        ['d. Notes: _______________________________________________']
+                    ],
                     margin: { left: margin, right: margin }
                 });
 
-                // --- 6. FOOTER (Nomor Halaman) ---
+                lastY = doc.lastAutoTable.finalY;
+
+                // ===============================
+                // 5. SIGNATURE TABLE
+                // ===============================
+
+                doc.autoTable({
+                    startY: lastY + 5,
+                    head: [[
+                        'Issued by',
+                        'Approved (Tech Mgr)',
+                        'Verified by',
+                        'Sampling Officer',
+                        'Received by',
+                        'Customer Approval'
+                    ]],
+                    body: [['\n\n\n\n', '', '', '', '', '']],
+                    theme: 'grid',
+                    styles: { fontSize: 7, halign: 'center' },
+                    headStyles: { fillColor: [220,220,220] },
+                    margin: { left: margin, right: margin }
+                });
+
+                // ===============================
+                // 6. PAGE NUMBER
+                // ===============================
+
                 const pageCount = doc.internal.getNumberOfPages();
-                for(let i = 1; i <= pageCount; i++) {
+
+                for (let i = 1; i <= pageCount; i++) {
                     doc.setPage(i);
                     doc.setFontSize(7);
-                    doc.text(`Page ${i} of ${pageCount}`, pageW - margin, pageH - 5, { align: 'right' });
+                    doc.text(
+                        `Page ${i} of ${pageCount}`,
+                        pageW - margin,
+                        pageH - 5,
+                        { align: 'right' }
+                    );
                 }
 
-                // --- 7. SAVE ---
-                // Membersihkan karakter ilegal untuk nama file
-                const cleanCompName = (getVal('coc-company-name') || 'Export').replace(/[/\\?%*:|"<>]/g, '-');
-                const fileName = `COC_${cleanCompName}_${getVal('coc-coc-no') || 'Draft'}.pdf`;
-                
+                // ===============================
+                // 7. SAVE FILE
+                // ===============================
+
+                const cleanComp = (getVal('coc-company-name') || 'Export')
+                    .replace(/[/\\?%*:|"<>]/g, '-');
+
+                const fileName =
+                    `COC_${cleanComp}_${getVal('coc-coc-no') || 'Draft'}.pdf`;
+
                 doc.save(fileName);
             }
- 
+
     </script>
 </body>
 </html>
