@@ -486,118 +486,119 @@
     <div id="toast-container" class="toast-container"></div>
 
     <script>
+            window.masterReg = window.masterReg || [];
+            window.masterMap = window.masterMap || {};
+            window.db = window.db || [];
+            window.cocDB = window.cocDB || [];
+            window.logs = window.logs || [];
+            window.myChart = null;
 
-            let db = [];
-            let cocDB = [];
-            let logs = [];
-            let recycleBin = [];
-            let masterReg = [];
-            let masterMap = {};
+            async function loadMasterServer(){
 
-            let myChart;
+                const [{data: regData},{data: mapData}] = await Promise.all([
+                    supabaseClient.from("master_regulation").select("*"),
+                    supabaseClient.from("master_map").select("*")
+                ]);
 
-            /*
-            ==================================================
-            LOAD LOCAL DATABASE SAFELY
-            ==================================================
-            */
-
-            async function loadLocalDB(){
-
-                try{
-
-                    // Load dari Supabase dulu (Source of Truth)
-                    const { data: dbData } = await supabaseClient
-                        .from("samples")
-                        .select("*");
-
-                    if(dbData){
-                        db = dbData;
-                        localStorage.setItem("lab_final_db", JSON.stringify(db));
-                    }
-
-                    // Backup cache
-                    cocDB = JSON.parse(localStorage.getItem("cocDB")) || [];
-                    logs = JSON.parse(localStorage.getItem("lab_audit_logs")) || [];
-                    recycleBin = JSON.parse(localStorage.getItem("lab_recycle_bin")) || [];
-                    masterReg = JSON.parse(localStorage.getItem("lab_final_reg")) || [];
-                    masterMap = JSON.parse(localStorage.getItem("lab_final_map")) || {};
-
-                } catch(err){
-                    console.error("Database load error", err);
-                }
-
+                masterReg = regData || [];
+                masterMap = transformMap(mapData || []);
             }
 
+            async function loadServerDB(){
 
-            /*
-            ==================================================
-            WINDOW ON LOAD
-            ==================================================
-            */
+                const [
+                    {data: sampleData},
+                    {data: regData},
+                    {data: mapData},
+                    {data: logData}
+                ] = await Promise.all([
+                    supabaseClient.from("samples").select("id").eq("is_v", true),
+                    supabaseClient.from("master_regulation").select("*"),
+                    supabaseClient.from("master_map").select("*"),
+                    supabaseClient.from("audit_logs").select("*")
+                ]);
+
+                db = sampleData || [];
+                masterReg = regData || [];
+                masterMap = transformMap(mapData);
+                logs = logData || [];
+            }
+
+            function transformMap(data){
+                const map = {};
+
+                data?.forEach(r=>{
+                    map[r.param] = r.methods || [];
+                });
+
+                return map;
+            }
+
+            async function addLogServer(action, details){
+
+                const username = sessionStorage.getItem("user");
+
+                await supabaseClient
+                    .from("audit_logs")
+                    .insert([{
+                        username,
+                        action,
+                        details,
+                        created_at:new Date().toISOString()
+                    }]);
+            }
+            
+            async function login(username, password){
+
+                const { data, error } = await supabaseClient
+                    .from("users")
+                    .select("*")
+                    .eq("username", username)
+                    .single();
+
+                if(error || !data){
+                    return showToast("User tidak ditemukan","error");
+                }
+
+                if(data.password_hash !== password){
+                    return showToast("Password salah","error");
+                }
+
+                // ⭐ Session
+                sessionStorage.setItem("isAuth","1");
+                sessionStorage.setItem("auth_token", crypto.randomUUID());
+                sessionStorage.setItem("user", data.username);
+                sessionStorage.setItem("role", data.role);
+
+                await addLogServer("LOGIN", `${data.username} login`);
+
+                showDashboard();
+            }
 
             window.onload = async () => {
 
-                try {
+                const token = sessionStorage.getItem("auth_token");
 
-                    await loadLocalDB();
-
-                    const isAuth = sessionStorage.getItem('isAuth') === 'true';
-                    const username = sessionStorage.getItem('user');
-
-                    if (isAuth && username) {
-
-                        const loginPage = document.getElementById('login-page');
-                        const dashboard = document.getElementById('main-dashboard');
-
-                        if(loginPage) loginPage.style.display = 'none';
-                        if(dashboard) dashboard.style.display = 'flex';
-
-                        // 🔥 Validasi session ke database
-                        const { data, error } = await supabaseClient
-                            .from("users")
-                            .select("role")
-                            .eq("username", username)
-                            .single();
-
-                        if(error || !data){
-                            logout();
-                            return;
-                        }
-
-                        sessionStorage.setItem("role", data.role);
-
-                        const lastMenu =
-                            sessionStorage.getItem('activeMenu') || 'view-home';
-
-                        const menuBtn =
-                            document.querySelector(`button[onclick*="${lastMenu}"]`);
-
-                        if(menuBtn){
-                            showSection(lastMenu, menuBtn);
-                        }
-
-                    }
-
-                    updateStats();
-
-                    // Live Date
-                    const liveDate = document.getElementById('live-date');
-
-                    if(liveDate){
-                        liveDate.innerText =
-                        new Date().toLocaleDateString('id-ID',{
-                            weekday:'long',
-                            day:'numeric',
-                            month:'long',
-                            year:'numeric'
-                        });
-                    }
-
-                } catch(err){
-                    console.error("Init error:", err);
+                if(!token){
+                    document.getElementById("login-page").style.display="flex";
+                    return;
                 }
 
+                try{
+                    await loadServerDB();
+                    await loadMasterServer();
+                    await loadCOCListServer();
+
+                    document.getElementById("login-page").style.display="none";
+                    document.getElementById("main-dashboard").style.display="flex";
+
+                    renderTables();
+                    updateStats();
+
+                }catch(err){
+                    console.error(err);
+                    showToast("Server load error","error");
+                }
             };
 
 
@@ -634,6 +635,26 @@
             );
 
             renderCOCList(keyword ? filtered : cocDB);
+        }
+
+        async function deleteCOCServer(cocNo){
+
+            if(!confirm("Hapus COC ini?")) return;
+
+            const {error} = await supabaseClient
+                .from("coc")
+                .delete()
+                .eq("coc_no", cocNo);
+
+            if(error){
+                return showToast("Delete gagal","error");
+            }
+
+            await addLogServer("DELETE COC", cocNo);
+
+            await loadCOCListServer();
+
+            showToast("COC dihapus","success");
         }
 
         function renderCOCList(data = cocDB) {
@@ -695,130 +716,108 @@
             if (select) select.value = cocNo;
         }
 
-        function deleteCOCFromList(cocNo) {
+        async function deleteCOCFromList(cocNo){
 
-            if (!confirm("Yakin hapus COC ini?")) return;
+            if(!confirm("Yakin hapus COC ini?")) return;
 
-            cocDB = cocDB.filter(c => c.cocNo !== cocNo);
+            const {error} = await supabaseClient
+                .from("coc")
+                .delete()
+                .eq("coc_no", cocNo);
 
-            localStorage.setItem("cocDB", JSON.stringify(cocDB));
+            if(error){
+                return showToast("Gagal hapus COC","error");
+            }
 
-            renderCOCList();
-            renderCOC();
+            await addLogServer("DELETE COC", `COC ${cocNo} dihapus`);
 
+             if(typeof renderCOCListServer === "function"){
+    renderCOCListServer();
+}
+            showToast("COC berhasil dihapus","success");
         }
 
-        function newCOC() {
+        function newCOC(){
 
-            // Reset semua input text & date
-            document.querySelectorAll("#view-coc input").forEach(input => {
+            document.querySelectorAll("#view-coc input").forEach(input=>{
                 input.value = "";
             });
 
-            // Reset dropdown COC
             const select = document.getElementById("coc-select");
-            if (select) select.value = "";
+            if(select) select.value = "";
 
-            // Kosongkan tabel sampel
-            const body = document.getElementById("coc-samples-body");
-            body.innerHTML = "";
+            document.getElementById("coc-samples-body").innerHTML = "";
 
-            // Tambahkan 1 baris kosong
             addCOCRow();
-
         }
 
-        function saveCOC() {
+        async function saveCOC(){
 
-            const getVal = id => document.getElementById(id)?.value.trim() || "";
+            const cocData = collectCOCFormData();
 
-            if (!getVal("coc-coc-no")) {
-                showToast("COC No wajib diisi!", "error");
-                return;
+            if(!cocData.coc_no){
+                return showToast("COC No wajib","error");
             }
 
-            const cocNo = getVal("coc-coc-no");
+            const {error} = await supabaseClient
+                .from("coc")
+                .upsert([cocData],{
+                    onConflict:"coc_no"
+                });
 
-            const cocData = {
-                cocNo,
-                companyName: getVal("coc-company-name"),
-                companyAddress: getVal("coc-company-address"),
-                email: getVal("coc-email-coa"),
-                ltrNo: getVal("coc-ltr-no"),
-                location: getVal("coc-company-location-detail"),
-                tat: getVal("coc-tat-req"),
-                officerA: getVal("coc-officer-a"),
-                officerB: getVal("coc-officer-b"),
-                officerC: getVal("coc-officer-c"),
-                planDate: getVal("coc-plan-date"),
-                pic: getVal("coc-pic"),
-                phone: getVal("coc-phone-no"),
-                samples: []
+            if(error){
+                return showToast("Gagal simpan COC","error");
+            }
+
+            await addLogServer("SAVE COC", cocData.coc_no);
+
+            await loadCOCListServer();
+
+            showToast("COC tersimpan","success");
+        }
+
+        function collectCOCFormData(){
+
+            return {
+                coc_no: document.getElementById("coc-coc-no").value,
+                company_name: document.getElementById("coc-company-name").value,
+                company_address: document.getElementById("coc-company-address").value,
+                email: document.getElementById("coc-email-coa").value,
+                phone: document.getElementById("coc-phone-no").value,
+                pic: document.getElementById("coc-pic").value,
+                plan_date: document.getElementById("coc-plan-date").value,
+                samples: collectCOCSamples()
             };
+        }
 
-            const rows = document.querySelectorAll("#coc-samples-body tr");
+        function collectCOCSamples(){
 
-            rows.forEach(row => {
+            const samples = [];
 
-                const inputs = row.querySelectorAll("td input");
+            document.querySelectorAll("#coc-samples-body tr").forEach(row=>{
 
-                const sampleId = inputs[0]?.value.trim();
-                if (!sampleId) return;
+                const inputs = row.querySelectorAll("input");
 
-                const description = inputs[1]?.value || "";
-                const matrix = inputs[2]?.value || "";
-                const container = inputs[3]?.value || "";
+                const sampleId = inputs[0]?.value;
+                if(!sampleId) return;
 
-                const regulation = row.querySelector(".reg-select")?.value || "";
-                const parameter = row.querySelector(".param-select")?.value || "";
-                const method = row.querySelector(".method-select")?.value || "";
-
-                let sample = cocData.samples.find(s => s.sampleId === sampleId);
-
-                if (!sample) {
-                    sample = {
-                        sampleId,
-                        description,
-                        matrix,
-                        container,
-                        regulation,
-                        tests: []
-                    };
-                    cocData.samples.push(sample);
-                }
-
-                if (parameter) {
-                    sample.tests.push({
-                        parameter,
-                        method
-                    });
-                }
+                samples.push({
+                    sampleId,
+                    description: inputs[1]?.value,
+                    matrix: inputs[2]?.value,
+                    container: inputs[3]?.value
+                });
 
             });
 
-            const index = cocDB.findIndex(c => c.cocNo === cocNo);
+            return samples;
+        }
 
-            if (index >= 0) {
+        async function saveSampleServer(sample){
 
-                // 🔥 Merge update (lebih aman daripada replace total)
-                cocDB[index] = {
-                    ...cocDB[index],
-                    ...cocData,
-                    samples: cocData.samples
-                };
-
-            } else {
-                cocDB.unshift(cocData);
-            }
-
-            localStorage.setItem("cocDB", JSON.stringify(cocDB));
-
-            addLog("SAVE COC", `COC ${cocNo} disimpan / diperbarui`);
-
-            renderCOCList();
-            renderCOC();
-
-            showToast("COC berhasil disimpan!", "success");
+            await supabaseClient
+                .from("samples")
+                .upsert([sample]);
         }
         
 
@@ -992,128 +991,172 @@
                 ).join("");
         }
 
-        function loadCOC(cocNo) {
+        async function loadCOCListServer(){
 
-            if (!cocNo) return;
-            if (!cocDB || cocDB.length === 0) return;
+            const {data} = await supabaseClient
+                .from("coc")
+                .select("*")
+                .order("created_at",{ascending:false});
 
-            const data = cocDB.find(c => c.cocNo === cocNo);
-            if (!data) return;
+            cocDB = data || [];
 
-            // ===== HEADER =====
-            const fields = {
-                "coc-company-name": data.companyName,
-                "coc-company-address": data.companyAddress,
-                "coc-email-coa": data.email,
-                "coc-coc-no": data.cocNo,
-                "coc-ltr-no": data.ltrNo,
-                "coc-company-location-detail": data.location,
-                "coc-tat-req": data.tat,
-                "coc-officer-a": data.officerA,
-                "coc-officer-b": data.officerB,
-                "coc-officer-c": data.officerC,
-                "coc-plan-date": data.planDate,
-                "coc-pic": data.pic,
-                "coc-phone-no": data.phone
-            };
+             if(typeof renderCOCListServer === "function"){
+    renderCOCListServer();
+}
+            renderCOCSelect();
+        }
 
-            Object.entries(fields).forEach(([id, value]) => {
-                const el = document.getElementById(id);
-                if (el) el.value = value || "";
-            });
+        function renderCOCListServer(){
 
-            // ===== TABLE BODY =====
-            const body = document.getElementById("coc-samples-body");
-            if (!body) return;
+            const body = document.getElementById("coc-list-body");
+            if(!body) return;
 
             body.innerHTML = "";
 
-            let counter = 1;
-
-            data.samples?.forEach(sample => {
-
-                sample.tests?.forEach(test => {
-
-                    const row = body.insertRow();
-
-                    row.innerHTML = `
-                        <td style="border:1px solid #000;padding:5px;text-align:center">
-                            ${counter++}
-                        </td>
-
-                        <td><input value="${sample.sampleId}" style="width:100%;border:none"></td>
-                        <td><input value="${sample.description}" style="width:100%;border:none"></td>
-                        <td><input value="${sample.matrix}" style="width:100%;border:none"></td>
-                        <td><input value="${sample.container}" style="width:100%;border:none"></td>
-
-                        <td>
-                            <select class="reg-select">
-                                ${generateRegOptions(sample.regulation)}
-                            </select>
-                        </td>
-
-                        <td>
-                            <select class="param-select">
-                                ${generateParamOptions(test.parameter)}
-                            </select>
-                        </td>
-
-                        <td>
-                            <select class="method-select">
-                                ${generateMethodOptions(test.parameter, test.method)}
-                            </select>
-                        </td>
-
-                        <td style="text-align:center">
-                            <button onclick="deleteCOCRow(this)"
-                                style="background:red;color:white;border:none;padding:3px 6px">
-                                ✕
-                            </button>
-                        </td>
-                    `;
-
-                    // Cascade dropdown
-                    const paramSelect = row.querySelector(".param-select");
-                    const methodSelect = row.querySelector(".method-select");
-
-                    paramSelect.onchange = function () {
-                        methodSelect.innerHTML =
-                            generateMethodOptions(this.value, "");
-                    };
-
-                });
-
-            });
-
-        }
-        
-        function deleteCOC(){
-
-            const select = document.getElementById("coc-select");
-            const cocNo = select.value;
-
-            if(!cocNo){
-                showToast("Pilih COC dulu","error");
+            if(!cocDB || cocDB.length === 0){
+                body.innerHTML = `
+                <tr>
+                    <td colspan="5" style="text-align:center;padding:15px;">
+                        Tidak ada data COC
+                    </td>
+                </tr>`;
                 return;
             }
 
-            if(!confirm("Hapus COC ini?")) return;
+            cocDB.forEach((coc,i)=>{
 
-            cocDB = cocDB.filter(c => c.cocNo !== cocNo);
+                const row = body.insertRow();
 
-            localStorage.setItem("cocDB", JSON.stringify(cocDB));
+                row.innerHTML = `
+                    <td>${i+1}</td>
+                    <td>${coc.coc_no || coc.cocNo || "-"}</td>
+                    <td>${coc.company_name || coc.companyName || "-"}</td>
+                    <td>${coc.plan_date || coc.planDate || "-"}</td>
+                    <td style="text-align:center">
 
-            showToast("COC dihapus","success");
+                        <button onclick="openCOCFromList('${coc.coc_no || coc.cocNo}')"
+                            style="padding:4px 8px;margin-right:5px">
+                            Buka
+                        </button>
 
-            const activeMenu = sessionStorage.getItem("activeMenu");
+                        <button onclick="deleteCOCServer('${coc.coc_no || coc.cocNo}')"
+                            style="background:red;color:white;border:none;padding:4px 8px">
+                            Hapus
+                        </button>
 
-            if(activeMenu === "view-coc-list"){
-                renderCOCList();
+                    </td>
+                `;
+            });
+        }
+
+        window.addEventListener("DOMContentLoaded", ()=>{
+
+            const loginForm = document.getElementById("login-form");
+
+            if(!loginForm) return;
+
+            loginForm.addEventListener("submit", async e => {
+
+                e.preventDefault();
+
+                const username = document.getElementById("username").value;
+                const password = document.getElementById("password").value;
+
+                const { data, error } = await supabaseClient
+                    .from("users")
+                    .select("*")
+                    .eq("username", username)
+                    .single();
+
+                if(error || !data){
+                    return showToast("User tidak ditemukan","error");
+                }
+
+                if(data.password_hash !== password){
+                    return showToast("Password salah","error");
+                }
+
+                sessionStorage.setItem("auth_token", crypto.randomUUID());
+                sessionStorage.setItem("username", username);
+                sessionStorage.setItem("role", data.role);
+
+                await addLogServer("LOGIN", `${username} login`);
+
+                showDashboard();
+
+            });
+
+        });
+
+        function renderCOCSelect(){
+
+            const select = document.getElementById("coc-select");
+            if(!select) return;
+
+            select.innerHTML =
+                `<option value="">-- Pilih COC --</option>` +
+                cocDB.map(c =>
+                    `<option value="${c.coc_no}">
+                        ${c.coc_no}
+                    </option>`
+                ).join("");
+        }
+
+        async function loadCOCServer(cocNo){
+
+            const {data, error} =
+                await supabaseClient
+                .from("coc")
+                .select("*")
+                .eq("coc_no", cocNo)
+                .single();
+
+            if(error || !data){
+                return showToast("COC tidak ditemukan","error");
             }
 
-            if(activeMenu === "view-coc"){
-                renderCOC();
-            }
+            fillCOCForm(data);
+        }
+
+        function fillCOCForm(data){
+
+            const fields = {
+                "coc-coc-no": data.coc_no,
+                "coc-company-name": data.company_name,
+                "coc-company-address": data.company_address,
+                "coc-email-coa": data.email,
+                "coc-phone-no": data.phone,
+                "coc-pic": data.pic,
+                "coc-plan-date": data.plan_date
+            };
+
+            Object.entries(fields).forEach(([id,val])=>{
+                const el = document.getElementById(id);
+                if(el) el.value = val || "";
+            });
+
+            renderCOCSampleTable(data.samples || []);
+        }
+
+        function renderCOCSampleTable(samples){
+
+            const body = document.getElementById("coc-samples-body");
+            if(!body) return;
+
+            body.innerHTML = "";
+
+            samples.forEach((sample,i)=>{
+
+                const row = body.insertRow();
+
+                row.innerHTML = `
+                    <td>${i+1}</td>
+                    <td><input value="${sample.sampleId||''}" /></td>
+                    <td><input value="${sample.description||''}" /></td>
+                    <td><input value="${sample.matrix||''}" /></td>
+                    <td><input value="${sample.container||''}" /></td>
+                `;
+            });
         }
 
         function addLog(action, details) {
@@ -1129,115 +1172,94 @@
             
             logs.unshift(newLog);
             if(logs.length > 500) logs.pop(); 
-            localStorage.setItem('lab_audit_logs', JSON.stringify(logs));
         }
 
-       document.getElementById('login-form').addEventListener('submit', async (e) => {
+       document.getElementById("login-form").addEventListener("submit", async e => {
 
-                e.preventDefault();
+            e.preventDefault();
 
-                const username = document.getElementById('username').value.trim();
-                const password = document.getElementById('password').value.trim();
+            const username = document.getElementById("username").value;
+            const password = document.getElementById("password").value;
 
-                if (!username || !password) {
-                    showToast("Username dan Password wajib diisi!", "error");
-                    return;
-                }
+            const { data, error } = await supabaseClient
+                .from("users")
+                .select("*")
+                .eq("username", username)
+                .single();
 
-                try {
+            if(error || !data){
+                return showToast("User tidak ditemukan","error");
+            }
 
-                    const { data, error } = await window.supabaseClient
-                        .from('users')
-                        .select('*')
-                        .eq('username', username)
-                        .single();
+            if(data.password_hash !== password){
+                return showToast("Password salah","error");
+            }
 
-                    if (error || !data) {
-                        showToast("User tidak ditemukan!", "error");
-                        return;
-                    }
+            sessionStorage.setItem("auth_token", crypto.randomUUID());
+            sessionStorage.setItem("username", username);
 
-                    if (data.password_hash !== password) {
-                        showToast("Password salah!", "error");
-                        return;
-                    }
+            await addLogServer("LOGIN", `${username} login`);
 
-                    sessionStorage.setItem('isAuth','true');
-                    sessionStorage.setItem('role', data.role);
-                    sessionStorage.setItem('user', data.username);
-
-                    addLog("LOGIN", `User ${data.role} login`);
-
-                    showToast("Login berhasil!", "success");
-
-                    setTimeout(()=>{
-                        showDashboard();
-                    },500);
-
-                } catch(err){
-                    console.error(err);
-                    showToast("System error login", "error");
-                }
-
-            });
+            showDashboard();
+        });
 
                     async function showDashboard(){
 
-                    try {
+                        try {
 
-                        const isAuth = sessionStorage.getItem('isAuth');
+                            const token = sessionStorage.getItem("auth_token");
 
-                        if(!isAuth){
-                            location.reload();
-                            return;
+                            if(!token){
+                                location.reload();
+                                return;
+                            }
+
+                            document.getElementById('login-page').style.display='none';
+                            document.getElementById('main-dashboard').style.display='flex';
+
+                            const role = (sessionStorage.getItem('role') || "").toUpperCase();
+
+                            const isAdmin = role === "ADMIN";
+                            const isAnalyst = role === "ANALIS";
+                            const isValidator = role === "VALIDATOR";
+
+                            const logMenu = document.getElementById('m-logs');
+                            const binMenu = document.getElementById('m-recycle');
+                            const cocMenu = document.getElementById('m-coc');
+                            const masterMenu = document.getElementById('m-master');
+                            const sampelMenu = document.getElementById('m-sampel');
+
+                            if(cocMenu){
+                                cocMenu.style.display =
+                                    (isAdmin || isAnalyst || isValidator) ? "block" : "none";
+                            }
+
+                            if(logMenu){
+                                logMenu.style.display = isAdmin ? "block" : "none";
+                            }
+
+                            if(binMenu){
+                                binMenu.style.display = isAdmin ? "block" : "none";
+                            }
+
+                            if(masterMenu){
+                                masterMenu.style.display = isAdmin ? "block" : "none";
+                            }
+
+                            if(sampelMenu){
+                                sampelMenu.style.display =
+                                    (isAdmin || isAnalyst || isValidator) ? "block" : "none";
+                            }
+
+                            updateMasterUI();
+                            renderTables();
+                            updateStats();
+
+                        } catch(err){
+                            console.error(err);
+                            showToast("Error memuat dashboard", "error");
                         }
-
-                        document.getElementById('login-page').style.display='none';
-                        document.getElementById('main-dashboard').style.display='flex';
-
-                        const role = (sessionStorage.getItem('role') || "").toUpperCase();
-
-                        const isAdmin = role === "ADMIN";
-                        const isAnalyst = role === "ANALIS";
-                        const isValidator = role === "VALIDATOR";
-
-                        const logMenu = document.getElementById('m-logs');
-                        const binMenu = document.getElementById('m-recycle');
-                        const cocMenu = document.getElementById('m-coc');
-                        const masterMenu = document.getElementById('m-master');
-                        const sampelMenu = document.getElementById('m-sampel');
-
-                        if(cocMenu){
-                            cocMenu.style.display =
-                                (isAdmin || isAnalyst || isValidator) ? "block" : "none";
-                        }
-
-                        if(logMenu){
-                            logMenu.style.display = isAdmin ? "block" : "none";
-                        }
-
-                        if(binMenu){
-                            binMenu.style.display = isAdmin ? "block" : "none";
-                        }
-
-                        if(masterMenu){
-                            masterMenu.style.display = isAdmin ? "block" : "none";
-                        }
-
-                        if(sampelMenu){
-                            sampelMenu.style.display =
-                                (isAdmin || isAnalyst || isValidator) ? "block" : "none";
-                        }
-
-                        updateMasterUI();
-                        renderTables();
-                        updateStats();
-
-                    } catch(err){
-                        console.error(err);
-                        showToast("Error memuat dashboard", "error");
                     }
-                }
                     
 
                     function logout(){
@@ -1246,8 +1268,6 @@
                     }
 
                     function saveMaster() {
-                        localStorage.setItem('lab_final_reg', JSON.stringify(masterReg));
-                        localStorage.setItem('lab_final_map', JSON.stringify(masterMap));
                         updateMasterUI();
                         showToast("Master Data Disimpan");
                     }
@@ -1423,7 +1443,7 @@
 
                 });
 
-                localStorage.setItem('lab_final_db', JSON.stringify(db));
+                 
 
                 form.reset();
 
@@ -1821,8 +1841,6 @@
 
         function renderTables() {
 
-            db = JSON.parse(localStorage.getItem('lab_final_db')) || [];
-
             const role = (sessionStorage.getItem('role') || "").toUpperCase();
 
             const bA = document.getElementById('body-analisa');
@@ -1916,7 +1934,6 @@
 
             // Update Database & UI
             it.res = hasil.toFixed(4);
-            localStorage.setItem('lab_final_db', JSON.stringify(db));
             
             if (pAkh > 0) {
                     addLog("EDIT DATA", `Update bobot ID: ${it.id} | Parameter: ${it.param}`);
@@ -2000,7 +2017,7 @@
                 }
             }
             
-            localStorage.setItem('lab_final_db', JSON.stringify(db));
+             
             showToast(`Data lapangan ${selectedId} berhasil disimpan!`, "success");
             renderTables();
             updateStats();
@@ -2031,7 +2048,7 @@
                 // Update status
                 db[i].isV = isNowVerifying;
 
-                localStorage.setItem('lab_final_db', JSON.stringify(db));
+                 
 
                 renderTables();
                 updateStats();
@@ -2310,12 +2327,6 @@
                     logs = backup.logs || [];
                     recycleBin = backup.recycleBin || [];
 
-                    localStorage.setItem('lab_final_db', JSON.stringify(db));
-                    localStorage.setItem('lab_final_reg', JSON.stringify(masterReg));
-                    localStorage.setItem('lab_final_map', JSON.stringify(masterMap));
-                    localStorage.setItem('lab_audit_logs', JSON.stringify(logs));
-                    localStorage.setItem('lab_recycle_bin', JSON.stringify(recycleBin));
-
                     updateMasterUI();
                     renderTables();
                     updateStats();
@@ -2328,17 +2339,6 @@
 
             });
 
-        }
-
-
-        function resetDB() {
-
-            if(confirm("Hapus seluruh database sistem?")){
-
-                localStorage.clear();
-                location.reload();
-
-            }
         }
         
 
@@ -2370,9 +2370,6 @@
 
             recycleBin.unshift(it);
             db.splice(i,1);
-
-            localStorage.setItem('lab_final_db', JSON.stringify(db));
-            localStorage.setItem('lab_recycle_bin', JSON.stringify(recycleBin));
 
             addLog("RECYCLE", `ID ${it.id} dipindahkan ke recycle bin`);
 
@@ -2415,9 +2412,6 @@
             recycleBin.splice(idx,1);
             db.push(it);
 
-            localStorage.setItem('lab_final_db', JSON.stringify(db));
-            localStorage.setItem('lab_recycle_bin', JSON.stringify(recycleBin));
-
             addLog("RESTORE", `Restore ID ${it.id}`);
 
             renderRecycleBin();
@@ -2427,58 +2421,33 @@
             showToast(`ID ${it.id} dipulihkan`);
         }
 
-        function updateStats() {
-            if (!db) return;
+        async function updateStats(){
 
-            const totalMasuk = [...new Set(db.map(i => i.id))].length;
-            const totalAnalisa = db.filter(i => i.isV === false).length;
-            const totalSelesai = db.filter(i => i.isV === true).length;
+            try{
 
-            const elMasuk = document.getElementById('stat-total');
-            const elProses = document.getElementById('stat-proses');
-            const elSelesai = document.getElementById('stat-selesai');
+                const { count: total } = await supabaseClient
+                    .from("samples")
+                    .select("*", { count: "exact", head: true });
 
-            if(elMasuk) elMasuk.innerText = totalMasuk;
-            if(elProses) elProses.innerText = totalAnalisa;
-            if(elSelesai) elSelesai.innerText = totalSelesai;
+                const { count: proses } = await supabaseClient
+                    .from("samples")
+                    .select("*", { count: "exact", head: true })
+                    .eq("is_v", false);
 
-            const badgeAnl = document.getElementById('badge-analisa');
-            const badgeSel = document.getElementById('badge-coa');
+                const { count: selesai } = await supabaseClient
+                    .from("samples")
+                    .select("*", { count: "exact", head: true })
+                    .eq("is_v", true);
 
-            if (badgeAnl) {
-                badgeAnl.innerText = totalAnalisa;
-                badgeAnl.style.display = 'inline-block';
-                badgeAnl.style.background = totalAnalisa > 0 ? 'var(--danger)' : '#cbd5e1';
+                document.getElementById("stat-total").innerText = total || 0;
+                document.getElementById("stat-proses").innerText = proses || 0;
+                document.getElementById("stat-selesai").innerText = selesai || 0;
+
+            }catch(err){
+                console.error(err);
             }
 
-            if (badgeSel) {
-                badgeSel.innerText = totalSelesai;
-                badgeSel.style.display = 'inline-block';
-                badgeSel.style.background = totalSelesai > 0 ? 'var(--success)' : '#cbd5e1';
-            }
-
-            // ⭐ SAFE CALL
-            if (typeof updateChart === "function") {
-                updateChart(totalMasuk, totalAnalisa, totalSelesai);
-            }
         }
-        
-
-            function addLog(action, details) {
-                // Ambil role langsung dari sessionStorage setiap kali log dibuat
-                const currentUser = sessionStorage.getItem('role') || 'System'; 
-
-                const newLog = {
-                    timestamp: new Date().toLocaleString('id-ID'),
-                    user: currentUser, // Pastikan variabel ini 'currentUser'
-                    action: action,
-                    details: details
-                };
-                
-                logs.unshift(newLog);
-                if(logs.length > 500) logs.pop(); 
-                localStorage.setItem('lab_audit_logs', JSON.stringify(logs));
-            }
 
             function logWeightChange(sampleId, jenisBobot, oldVal, newVal) {
                 // Hanya catat jika nilai benar-benar berubah
@@ -2507,10 +2476,6 @@
                     db[idx][field] = newVal;
                     addLog('EDIT BOBOT', `ID: ${sampleId} | ${label} [${oldVal || '0'}] -> [${newVal}]`);
                     
-                    // Simpan ke LocalStorage
-                    localStorage.setItem('lab_final_db', JSON.stringify(db));
-                    
-                    // Hitung ulang hasil
                     hitungTotalPartikulat(idx, vol);
                     
                     // Efek visual sukses
