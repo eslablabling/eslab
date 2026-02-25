@@ -1166,11 +1166,10 @@
                             const username = sessionStorage.getItem('user');
 
                             if(!username){
-                                location.reload();
+                                logout();
                                 return;
                             }
 
-                            // Ambil role terbaru dari database (lebih aman daripada sessionStorage)
                             const { data, error } = await supabase
                                 .from('users')
                                 .select('role')
@@ -1182,6 +1181,32 @@
                                 logout();
                                 return;
                             }
+
+                            const r = data.role.toUpperCase();
+
+                            document.getElementById('m-logs').style.display =
+                                r === "ADMIN" ? "block" : "none";
+
+                            document.getElementById('m-recycle').style.display =
+                                r === "ADMIN" ? "block" : "none";
+
+                            document.getElementById('m-master').style.display =
+                                r === "ADMIN" ? "block" : "none";
+
+                            document.getElementById('m-sampel').style.display =
+                                (r === "ADMIN" || r === "ANALIS" || r === "VALIDATOR")
+                                ? "block"
+                                : "none";
+
+                            updateMasterUI();
+                            renderTables();
+                            updateStats();
+
+                        } catch(err){
+                            console.error(err);
+                            showToast("Error memuat dashboard", "error");
+                        }
+                    }
 
                             const r = data.role.toUpperCase();
 
@@ -2824,7 +2849,10 @@
             const supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF1aHlodnd6eGh1bHptZWNiZ2x2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5NjUzNTMsImV4cCI6MjA4NzU0MTM1M30.73s0ubjBvJ-xxBAA6WjLlnXWwe4gpbNuF_cYfavl22o";
 
             // 🔥 PENTING: Gunakan nama lain
-            const supabaseClient = supabase.createClient(supabaseUrl, supabaseKey);
+            const supabase = window.supabase.createClient(
+                supabaseUrl,
+                supabaseKey
+            );
 
     </script>
 </body>
