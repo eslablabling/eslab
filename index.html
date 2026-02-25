@@ -8,10 +8,7 @@
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
         <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
         
-        <script src="https://cdn.jsdelivr.net"></script>
-        <script src="https://cdnjs.cloudflare.com"></script>
         <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-        <script src="https://cdn.jsdelivr.net"></script>
         <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
         <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
         <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
@@ -19,9 +16,8 @@
         <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
         <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.4/moment.min.js"></script>
         <script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.min.js"></script>
-        <script src="https://cdnjs.cloudflare.com"></script>
-        <script src="https://www.shecodes.io/athena/97452-how-to-log-the-current-date-and-time-in-javascript"></script>
-        
+        <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+         
 
         <style>
             :root { 
@@ -490,59 +486,94 @@
     <div id="toast-container" class="toast-container"></div>
 
     <script>
-        const users = { 
-            'admin': {p:'123', r:'ADMIN'}, 
-            'analis': {p:'123', r:'ANALIS'}, 
-            'manajer': {p:'123', r:'VALIDATOR'} 
-        };
 
-        let db = JSON.parse(localStorage.getItem('lab_final_db')) || [];
-        let cocDB = JSON.parse(localStorage.getItem("cocDB")) || [];
-        let logs = JSON.parse(localStorage.getItem('lab_audit_logs')) || [];
-        let recycleBin = JSON.parse(localStorage.getItem('lab_recycle_bin')) || [];
-        let masterReg = JSON.parse(localStorage.getItem('lab_final_reg')) || [];
-        let masterMap = JSON.parse(localStorage.getItem('lab_final_map')) || {};
-        let myChart;
+            let db = [];
+            let cocDB = [];
+            let logs = [];
+            let recycleBin = [];
+            let masterReg = [];
+            let masterMap = {};
 
-        window.onload = () => {
+            let myChart;
 
-            try {
-                cocDB = JSON.parse(localStorage.getItem("cocDB")) || [];
-            } catch (e) {
-                cocDB = [];
-                console.error("Error parsing cocDB:", e);
-            }
+            /*
+            ==================================================
+            LOAD LOCAL DATABASE SAFELY
+            ==================================================
+            */
 
-            if (sessionStorage.getItem('isAuth')) {
-                showDashboard();
+            function loadLocalDB(){
 
-                const lastMenu =
-                    sessionStorage.getItem('activeMenu') || 'view-home';
-
-                const menuBtn =
-                    document.querySelector(`button[onclick*="${lastMenu}"]`);
-
-                if (menuBtn) {
-                    showSection(lastMenu, menuBtn);
+                try{
+                    db = JSON.parse(localStorage.getItem('lab_final_db')) || [];
+                    cocDB = JSON.parse(localStorage.getItem("cocDB")) || [];
+                    logs = JSON.parse(localStorage.getItem('lab_audit_logs')) || [];
+                    recycleBin = JSON.parse(localStorage.getItem('lab_recycle_bin')) || [];
+                    masterReg = JSON.parse(localStorage.getItem('lab_final_reg')) || [];
+                    masterMap = JSON.parse(localStorage.getItem('lab_final_map')) || {};
                 }
+                catch(err){
+                    console.error("Database corrupted, resetting...");
+                    localStorage.clear();
+                }
+
             }
 
-            updateStats();
 
-            // ⭐ Auto New COC setiap reload
-            sessionStorage.setItem("editingCOC", "true");
+            /*
+            ==================================================
+            WINDOW ON LOAD
+            ==================================================
+            */
 
-            const liveDate = document.getElementById('live-date');
-            if (liveDate) {
-                liveDate.innerText =
-                    new Date().toLocaleDateString('id-ID', {
-                        weekday: 'long',
-                        day: 'numeric',
-                        month: 'long',
-                        year: 'long'
-                    });
-            }
-        };
+            window.onload = () => {
+
+                try {
+
+                    loadLocalDB();
+
+                    // Auth check
+                    if (sessionStorage.getItem('isAuth') === 'true') {
+
+                        const loginPage = document.getElementById('login-page');
+                        const dashboard = document.getElementById('main-dashboard');
+
+                        if(loginPage) loginPage.style.display = 'none';
+                        if(dashboard) dashboard.style.display = 'flex';
+
+                        const lastMenu =
+                            sessionStorage.getItem('activeMenu') || 'view-home';
+
+                        const menuBtn =
+                            document.querySelector(`button[onclick*="${lastMenu}"]`);
+
+                        if(menuBtn){
+                            showSection(lastMenu, menuBtn);
+                        }
+
+                    }
+
+                    updateStats();
+
+                    // Live Date
+                    const liveDate = document.getElementById('live-date');
+
+                    if(liveDate){
+                        liveDate.innerText =
+                        new Date().toLocaleDateString('id-ID',{
+                            weekday:'long',
+                            day:'numeric',
+                            month:'long',
+                            year:'numeric'
+                        });
+                    }
+
+                } catch(err){
+                    console.error("Init error:", err);
+                }
+
+            };
+
 
         function bindCascadeDropdown(row, paramValue, methodValue){
 
@@ -1060,27 +1091,59 @@
             localStorage.setItem('lab_audit_logs', JSON.stringify(logs));
         }
 
-        document.getElementById('login-form').addEventListener('submit', (e) => {
+       document.getElementById('login-form').addEventListener('submit', async (e) => {
+
             e.preventDefault();
-            const u = document.getElementById('username').value;
-            const p = document.getElementById('password').value;
 
-            if(users[u] && users[u].p === p) {
-                // 1. Simpan session (Wajib sebelum addLog)
-                sessionStorage.setItem('isAuth', 'true'); 
-                sessionStorage.setItem('role', users[u].r);
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value.trim();
 
-                // 2. Catat Log (Menggunakan role yang baru disimpan)
-                addLog("LOGIN", `User ${users[u].r} berhasil masuk ke sistem`);
-
-                // 3. Tampilkan Dashboard
-                showDashboard();
-            } else { 
-                showToast("Login Gagal! Cek Username/Password", "error"); 
+            if (!username || !password) {
+                showToast("Username dan Password wajib diisi!", "error");
+                return;
             }
+
+            try {
+
+                if (!window.supabase) {
+                    showToast("Supabase belum siap!", "error");
+                    return;
+                }
+
+                const { data, error } = await supabase
+                    .from('users')
+                    .select('*')
+                    .eq('username', username)
+                    .eq('password_hash', password)
+                    .single();
+
+                if (error || !data) {
+                    showToast("Login gagal! Cek username/password", "error");
+                    return;
+                }
+
+                // ✅ Session
+                sessionStorage.setItem('isAuth', 'true');
+                sessionStorage.setItem('role', data.role);
+                sessionStorage.setItem('user', username);
+
+                // ✅ Audit Log
+                addLog("LOGIN", `User ${data.role} login ke sistem`);
+
+                showToast("Login berhasil", "success");
+
+                setTimeout(() => {
+                    showDashboard();
+                }, 500);
+
+            } catch (err) {
+                console.error(err);
+                showToast("Terjadi kesalahan sistem", "error");
+            }
+
         });
 
-                    function showDashboard(){
+                    async function showDashboard(){
 
                         const loginPage = document.getElementById('login-page');
                         const dashboard = document.getElementById('main-dashboard');
@@ -1088,60 +1151,85 @@
                         if(loginPage) loginPage.style.display = 'none';
                         if(dashboard) dashboard.style.display = 'flex';
 
-                        const r = sessionStorage.getItem('role');
+                        try {
 
-                        // Helper role check
-                        const isAdmin = r === 'ADMIN';
-                        const isAnalyst = r === 'ANALIS';
-                        const isValidator = r === 'VALIDATOR';
+                            const username = sessionStorage.getItem('user');
 
-                        // MENU REFERENCES
-                        const logMenu = document.getElementById('m-logs');
-                        const binMenu = document.getElementById('m-recycle');
-                        const cocMenu = document.getElementById('m-coc');
-                        const masterMenu = document.getElementById('m-master');
-                        const sampelMenu = document.getElementById('m-sampel');
+                            if(!username){
+                                location.reload();
+                                return;
+                            }
 
-                        // COC Menu
-                        if(cocMenu){
-                            cocMenu.style.display =
-                                (isAdmin || isAnalyst || isValidator) ? 'block' : 'none';
+                            // Ambil role terbaru dari database (lebih aman daripada sessionStorage)
+                            const { data, error } = await supabase
+                                .from('users')
+                                .select('role')
+                                .eq('username', username)
+                                .single();
+
+                            if(error || !data){
+                                showToast("Session tidak valid", "error");
+                                logout();
+                                return;
+                            }
+
+                            const r = data.role.toUpperCase();
+
+                            const isAdmin = r === 'ADMIN';
+                            const isAnalyst = r === 'ANALIS';
+                            const isValidator = r === 'VALIDATOR';
+
+                            // MENU REFERENCES
+                            const logMenu = document.getElementById('m-logs');
+                            const binMenu = document.getElementById('m-recycle');
+                            const cocMenu = document.getElementById('m-coc');
+                            const masterMenu = document.getElementById('m-master');
+                            const sampelMenu = document.getElementById('m-sampel');
+
+                            if(cocMenu){
+                                cocMenu.style.display =
+                                    (isAdmin || isAnalyst || isValidator) ? 'block' : 'none';
+                            }
+
+                            if(logMenu){
+                                logMenu.style.display = isAdmin ? 'block' : 'none';
+                            }
+
+                            if(binMenu){
+                                binMenu.style.display = isAdmin ? 'block' : 'none';
+                            }
+
+                            if(masterMenu){
+                                masterMenu.style.display = isAdmin ? 'block' : 'none';
+                            }
+
+                            if(sampelMenu){
+                                sampelMenu.style.display =
+                                    (isAdmin || isAnalyst || isValidator) ? 'block' : 'none';
+                            }
+
+                            updateMasterUI();
+                            renderTables();
+                            updateStats();
+
+                        } catch(err){
+                            console.error(err);
+                            showToast("Error memuat dashboard", "error");
                         }
-
-                        // Audit Log
-                        if(logMenu){
-                            logMenu.style.display = isAdmin ? 'block' : 'none';
-                        }
-
-                        // Recycle Bin
-                        if(binMenu){
-                            binMenu.style.display = isAdmin ? 'block' : 'none';
-                        }
-
-                        // Master Data
-                        if(masterMenu){
-                            masterMenu.style.display = isAdmin ? 'block' : 'none';
-                        }
-
-                        // Sampling Menu
-                        if(sampelMenu){
-                            sampelMenu.style.display =
-                                (isAdmin || isAnalyst || isValidator) ? 'block' : 'none';
-                        }
-
-                        updateMasterUI();
-                        renderTables();
-                        updateStats();
                     }
 
-        function logout() { sessionStorage.clear(); location.reload(); }
+                    function logout(){
+                        sessionStorage.clear();
+                        location.reload();
+                    }
 
-        function saveMaster() {
-            localStorage.setItem('lab_final_reg', JSON.stringify(masterReg));
-            localStorage.setItem('lab_final_map', JSON.stringify(masterMap));
-            updateMasterUI(); // Merender ulang list regulasi & dropdown oksigen
-            showToast("Master Data Disimpan");
-        }
+                    function saveMaster() {
+                        localStorage.setItem('lab_final_reg', JSON.stringify(masterReg));
+                        localStorage.setItem('lab_final_map', JSON.stringify(masterMap));
+                        updateMasterUI();
+                        showToast("Master Data Disimpan");
+                    }
+
 
         function addReg() {
             const name = document.getElementById('m-reg-in').value;
@@ -1658,36 +1746,53 @@
         }
 
         function renderTables() {
+
             db = JSON.parse(localStorage.getItem('lab_final_db')) || [];
-            const role = sessionStorage.getItem('role') || ""; // Ambil role terbaru
+
+            const role = (sessionStorage.getItem('role') || "").toUpperCase();
+
             const bA = document.getElementById('body-analisa');
             const bL = document.getElementById('body-logbook');
             const bC = document.getElementById('body-coa');
-            
-            // Reset isi tabel
-            if(bA) bA.innerHTML = ''; 
+
+            // Reset tabel
+            if(bA) bA.innerHTML = '';
             if(bL) bL.innerHTML = '';
             if(bC) bC.innerHTML = '';
 
-            // Definisikan hak akses secara eksplisit
-            const isAdmin = (role.toUpperCase() === 'ADMIN');
-            const isAnalis = (role.toUpperCase() === 'ANALIS');
-            const canVerify = (role.toUpperCase() === 'ADMIN' || role.toUpperCase() === 'VALIDATOR');
+            const isAdmin = role === 'ADMIN';
+            const isAnalis = role === 'ANALIS';
+            const canVerify = role === 'ADMIN' || role === 'VALIDATOR';
+
+            if(!db || db.length === 0){
+                return;
+            }
 
             db.forEach((it, originalIndex) => {
-                const vol = (it.samplingData && it.samplingData.volume > 0) ? parseFloat(it.samplingData.volume) : 1;
 
-                // Render baris logbook
-                renderLogbookRow(bL, it);
-                
-                // Render baris analisa (Pastikan variabel diteruskan lengkap)
-                renderAnalisaRow(bA, it, originalIndex, vol, isAnalis, canVerify, isAdmin);
-                const partikulatCell = buildPartikulatCell(originalIndex, it, vol);
-                const blankoCell = buildBlankoCell(originalIndex, it, vol);
-                // Render baris COA (Hanya jika isV true)
-                if(it.isV) {
+                const vol = (it.samplingData && it.samplingData.volume > 0)
+                    ? parseFloat(it.samplingData.volume)
+                    : 1;
+
+                // Logbook
+                if(bL) renderLogbookRow(bL, it);
+
+                // Analisa
+                if(bA) renderAnalisaRow(
+                    bA,
+                    it,
+                    originalIndex,
+                    vol,
+                    isAnalis,
+                    canVerify,
+                    isAdmin
+                );
+
+                // COA (Hanya jika sudah verified)
+                if(bC && it.isV){
                     renderCoaRow(bC, it, originalIndex, isAdmin, canVerify);
                 }
+
             });
 
             updateSamplingDropdown();
@@ -2070,20 +2175,28 @@
                 system: "LIMS ENVIRONMENT LAB SYSTEM by Muhammad Rifai",
                 version: "1.0",
                 exportedAt: new Date().toLocaleString("id-ID"),
+
+                checksum: btoa(
+                    JSON.stringify({
+                        db,
+                        masterReg,
+                        masterMap
+                    })
+                ),
+
                 totalDB: db.length,
                 totalLogs: logs.length,
                 totalRecycle: recycleBin.length,
 
                 data: {
-                    db: db,
-                    masterReg: masterReg,
-                    masterMap: masterMap,
-                    logs: logs,
-                    recycleBin: recycleBin
+                    db,
+                    masterReg,
+                    masterMap,
+                    logs,
+                    recycleBin
                 }
             };
 
-            // Pretty JSON format (lebih rapi & mudah dibaca)
             const formattedJSON = JSON.stringify(backupData, null, 4);
 
             const blob = new Blob([formattedJSON], { type: "application/json" });
@@ -2102,8 +2215,9 @@
 
             URL.revokeObjectURL(url);
 
-            showToast("Seluruh database (Master + Transaksi + Audit) berhasil diekspor", "success");
+            showToast("Backup berhasil diekspor", "success");
         }
+
 
         function importJSON(e){
 
@@ -2113,35 +2227,42 @@
             file.text().then(result => {
 
                 try{
+
                     const data = JSON.parse(result);
 
-                    // ===== VALIDASI BACKUP STRUCTURE =====
+                    // ===== VALIDASI DASAR =====
+                    if(!data || !data.data){
+                        throw new Error("Backup tidak valid");
+                    }
+
+                    // ===== VALIDASI SIGNATURE SYSTEM =====
                     if(
-                        !data ||
-                        !data.data ||
-                        !Array.isArray(data.data.db) ||
-                        !Array.isArray(data.data.masterReg)
+                        data.system !== "LIMS ENVIRONMENT LAB SYSTEM by Muhammad Rifai" ||
+                        !data.version
                     ){
-                        throw new Error("Backup file tidak valid");
+                        throw new Error("File bukan backup resmi sistem");
                     }
 
                     const backup = data.data;
 
-                    // ===== RESTORE DATABASE =====
+                    if(!Array.isArray(backup.db) || !Array.isArray(backup.masterReg)){
+                        throw new Error("Struktur backup rusak");
+                    }
+
+                    // ===== RESTORE =====
                     db = backup.db || [];
                     masterReg = backup.masterReg || [];
                     masterMap = backup.masterMap || {};
                     logs = backup.logs || [];
                     recycleBin = backup.recycleBin || [];
 
-                    // ===== SAVE TO LOCALSTORAGE =====
+                    // ===== SAVE LOCAL =====
                     localStorage.setItem('lab_final_db', JSON.stringify(db));
                     localStorage.setItem('lab_final_reg', JSON.stringify(masterReg));
                     localStorage.setItem('lab_final_map', JSON.stringify(masterMap));
                     localStorage.setItem('lab_audit_logs', JSON.stringify(logs));
                     localStorage.setItem('lab_recycle_bin', JSON.stringify(recycleBin));
 
-                    // ===== REFRESH UI =====
                     updateMasterUI();
                     renderTables();
                     updateStats();
@@ -2155,15 +2276,23 @@
 
                 }catch(err){
                     console.error(err);
-                    showToast("Format backup tidak valid!", "error");
+                    showToast(err.message || "Format backup tidak valid", "error");
                 }
 
             });
 
         }
 
-        function resetDB() { if(confirm("Hapus permanen?")) { localStorage.clear(); location.reload(); } }
 
+        function resetDB() {
+
+            if(confirm("Hapus seluruh database sistem?")){
+
+                localStorage.clear();
+                location.reload();
+
+            }
+        }
         
 
         function showToast(m, t="success") {
@@ -2174,7 +2303,7 @@
         }
 
         function deleteAnalisa(i) {
-            const it = db[i];
+            const it = JSON.parse(JSON.stringify(db[i]));
             if (confirm(`Pindahkan Sampel ID: ${it.id} ke Tempat Sampah?`)) {
                 // 1. Tambahkan informasi waktu penghapusan
                 it.deletedAt = new Date().toLocaleString('id-ID');
@@ -2222,7 +2351,10 @@
             const it = recycleBin[idx];
             
             // 1. Masukkan kembali ke database utama
-            db.push(it); 
+            if (db.some(d => d.id === it.id)) {
+                showToast("ID sudah ada di sistem!", "error");
+                return;
+            } 
             
             // 2. Hapus dari daftar tempat sampah
             recycleBin.splice(idx, 1); 
@@ -2677,6 +2809,12 @@
 
                 doc.save(fileName);
             }
+
+            const supabaseUrl = "https://quhyhvwzxhulzmecbglv.supabase.co";
+            const supabaseKey = "sb_publishable_ugNkAfIuGiG2TIYGf8U5XQ_3x_KipPf";
+
+            // 🔥 PENTING: Gunakan nama lain
+            const supabaseClient = supabase.createClient(supabaseUrl, supabaseKey);
 
     </script>
 </body>
