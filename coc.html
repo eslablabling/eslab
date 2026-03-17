@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>COC Digital - Envirotama</title>
+    <link rel="stylesheet" href="style.css"> 
+    <style>
+        /* CSS Tambahan khusus halaman COC */
+        /* --- RESET & BASE STYLE --- */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #f8fafc; color: #1e293b; display: flex; min-height: 100vh; }
+
+/* --- SIDEBAR (Persis Master Data) --- */
+.sidebar { 
+    width: 260px; 
+    min-width: 260px; /* Kunci lebar agar tidak menciut */
+    background: #ffffff; 
+    border-right: 1px solid #e2e8f0; 
+    display: flex; 
+    flex-direction: column; 
+    padding: 20px; 
+    position: sticky; 
+    top: 0; 
+    height: 100vh; 
+    box-sizing: border-box; /* Penting agar padding tidak menambah lebar */
+}
+.brand { display: flex; align-items: center; justify-content: center; margin-bottom: 30px; padding: 10px; height: 70px; overflow: hidden; }
+.brand img { max-width: 100%; max-height: 50px; object-fit: contain; }
+
+.nav-label { 
+    font-size: 0.65rem; 
+    font-weight: 800; 
+    color: #94a3b8; 
+    text-transform: uppercase; 
+    letter-spacing: 1px; 
+    margin: 20px 0 10px 10px; 
+}
+
+.nav-item {
+    display: flex;
+    align-items: center;
+    padding: 10px 16px !important; /* Gunakan !important jika masih membandel */
+    color: #64748b; /* Warna abu-abu standar */
+    text-decoration: none;
+    font-weight: 500 !important; /* Ubah ke 500 agar tidak terlalu bold */
+    border-radius: 12px;
+    margin-bottom: 4px;
+    font-size: 0.85rem !important; /* Paksa ukuran font agar konsisten */
+    transition: all 0.2s;
+}
+
+.nav-item:hover, .nav-item.active {
+    background: #eff6ff;
+    color: var(--primary);
+}
+
+/* Pastikan icon di dalam nav-item punya jarak yang pas */
+.nav-item i, .nav-item span {
+    margin-right: 10px;
+}
+
+/* --- TOP BAR (Persis Master Data) --- */
+.main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.top-bar { 
+    background: #f8fafc; 
+    padding: 20px 40px; 
+    display: flex; 
+    justify-content: space-between; 
+    align-items: center; 
+    border-bottom: 1px solid #e2e8f0;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+.welcome-text h2 { font-size: 1.2rem; font-weight: 800; color: #0f172a; }
+.welcome-text p { font-size: 0.8rem; color: #64748b; }
+
+/* --- CONTENT AREA & CARD --- */
+.content-body { padding: 30px 40px; }
+.coc-card { 
+    background: white; 
+    border-radius: 20px; 
+    border: 1px solid #e2e8f0; 
+    padding: 30px; 
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02); 
+}
+
+/* --- TABLE & FORM (Persis Master Data) --- */
+.grid-header { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 30px; }
+.form-group { margin-bottom: 15px; }
+.form-group label { display: block; font-size: 0.75rem; font-weight: 800; color: #64748b; text-transform: uppercase; margin-bottom: 8px; }
+.form-control { width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 10px; outline: none; font-size: 0.85rem; font-family: inherit; }
+
+table { width: 100%; border-collapse: collapse; }
+th { padding: 16px; color: #94a3b8; font-size: 0.7rem; text-transform: uppercase; border-bottom: 2px solid #f1f5f9; text-align: left; }
+td { padding: 16px; font-size: 0.85rem; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+
+.btn-primary { background: #2563eb; color: white; border: none; padding: 12px 24px; border-radius: 12px; font-weight: 700; cursor: pointer; transition: 0.3s; }
+
+
+.btn-add {
+    margin-top: 20px;
+    background: #f1f5f9;
+    color: #475569;
+    border: 2px dashed #cbd5e1;
+    padding: 12px;
+    width: 100%;
+    border-radius: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: 0.2s;
+}
+.btn-add:hover { background: #e2e8f0; color: #1e293b; }
+
+.btn-save {
+    margin-top: 20px;
+    background: #2563eb;
+    color: white;
+    border: none;
+    padding: 16px;
+    width: 100%;
+    border-radius: 12px;
+    font-weight: 800;
+    font-size: 1rem;
+    cursor: pointer;
+    box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);
+    transition: 0.3s;
+}
+.btn-save:hover { background: #1d4ed8; transform: translateY(-2px); }
+
+/* Efek ketika checkbox parameter diklik manual */
+.param-checkbox:checked + span, 
+.param-label:has(.param-checkbox:checked) {
+    border-color: #2563eb !important;
+    background-color: #eff6ff !important;
+    color: #2563eb;
+}
+/* --- TAMPILAN PREVIEW DI LAYAR (MONITOR) --- */
+#printArea {
+    display: none; /* Sembunyikan secara default di layar */
+    background: white;
+    width: 297mm; /* Simulasi lebar A4 Landscape */
+    margin: 30px auto;
+    padding: 20px;
+    box-shadow: 0 0 20px rgba(0,0,0,0.1);
+    border: 1px solid #e2e8f0;
+    color: black;
+    border-radius: 8px;
+}
+
+/* Class pembantu untuk memunculkan preview via JS jika diinginkan */
+#printArea.show-preview {
+    display: block !important;
+}
+/* ============================================================
+   FULL CSS MEDIA PRINT (A4 LANDSCAPE)
+   ============================================================ */
+
+@media print {
+    /* 1. Pengaturan Kertas & Margin Luar (Fisik) */
+    @page {
+        size: A4 landscape;
+        /* Margin fisik kertas: Atas & Bawah sesuai permintaan (0.9cm) */
+        margin: 0.9cm 0.5cm 0.9cm 0.5cm; 
+    }
+
+    /* 2. Teknik Isolasi Area Cetak */
+    body {
+        margin: 0 !important;
+        padding: 0 !important;
+        background: white !important;
+        color: black !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+
+    body * { 
+        visibility: hidden; 
+    }
+
+    #printArea, #printArea * { 
+        visibility: visible; 
+    }
+
+    #printArea {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100% !important;
+        display: block !important;
+        /* Jarak konten ke margin kertas (Internal Margin) */
+        padding-top: 0.8cm;    /* Sesuai permintaan: Header 0.8 */
+        padding-bottom: 0.1cm; /* Sesuai permintaan: Footer 0.1 */
+    }
+
+    /* 3. Sembunyikan Elemen UI */
+    .no-print, .btn-save, .sidebar, .top-bar, button, nav, .btn-add {
+        display: none !important;
+    }
+
+    /* 4. Tabel Utama */
+    .table-main-print {
+        width: 100% !important;
+        border-collapse: collapse !important;
+        table-layout: fixed;
+        margin-top: 5px;
+    }
+
+    .table-main-print thead {
+        display: table-header-group !important; /* Gunakan header-group agar header tabel muncul di tiap halaman jika baris banyak */
+    }
+
+    .table-main-print th {
+        border: 1pt solid black !important;
+        background-color: white !important;
+        color: black !important;
+        padding: 6px !important;
+        font-size: 8.5pt !important;
+        text-align: center !important;
+        font-weight: bold !important;
+        text-transform: uppercase;
+    }
+
+    .table-main-print td {
+        border: 1pt solid black !important;
+        padding: 5px !important;
+        font-size: 8.5pt !important;
+        color: black !important;
+        vertical-align: middle !important;
+        word-wrap: break-word;
+    }
+
+    /* 5. Presisi Lebar Kolom */
+    .col-no { width: 35px; }
+    .col-id { width: 115px; }
+    .col-desc { width: 200px; }
+    .col-reg { width: 160px; }
+    .col-param { width: 180px; }
+    .col-method { width: auto; }
+
+
+    /* 6. Bagian Informasi Kondisi Sampel & Instruksi (TETAP RATA KIRI) */
+    .footer-sign-area {
+        margin-top: 10px;
+        page-break-inside: avoid;
+        color: black !important;
+    }
+
+    .footer-sign-area table {
+        width: 100% !important;
+        border-collapse: collapse !important;
+        border: 1pt solid black !important;
+        margin-bottom: 5px;
+    }
+
+    /* Judul baris (Sample Condition, Special Instruction) */
+    .footer-sign-area th {
+        border: 1pt solid black !important;
+        background-color: white !important; /* Hitam putih bersih */
+        color: black !important;
+        font-size: 8.5pt !important;
+        padding: 4px !important;
+        text-align: center !important; /* Judul grup tetap di tengah */
+        font-weight: bold !important;
+    }
+
+    /* Isi baris a, b, c, d (Rata Kiri agar titik-titik rapi) */
+    .footer-sign-area td {
+        border: 1pt solid black !important;
+        color: black !important;
+        font-size: 8pt !important;
+        padding: 4px 8px !important;
+        text-align: left !important; /* Rata kiri untuk teks instruksi */
+        vertical-align: top !important;
+    }
+
+    /* 7. Pengaturan Khusus KOTAK TANDA TANGAN (FULL CENTER & BLACK) */
+    #printFooterTable {
+        table-layout: fixed !important;
+        width: 100% !important;
+        border: 1pt solid black !important;
+    }
+
+    #printFooterTable th, 
+    #printFooterTable td {
+        text-align: center !important;   /* Rata tengah horizontal */
+        vertical-align: bottom !important; /* Nama diletakkan di dasar kotak */
+        color: black !important;
+        border: 1pt solid black !important;
+    }
+
+    #printFooterTable td {
+        height: 70px; /* Ruang untuk tanda tangan manual */
+        padding-bottom: 5px !important;
+    }
+
+    /* Memastikan teks "Distribution and Verification" juga hitam dan tengah */
+    #printFooterTable thead th[colspan="6"] {
+        background-color: white !important;
+        text-align: center !important;
+        font-weight: bold !important;
+        text-transform: uppercase;
+    }
+
+    /* Lebar Kolom TTD Tetap Sesuai Permintaan */
+    .col-ttd-sm { width: 14%; }
+    .col-ttd-md { width: 18%; }
+    .col-ttd-lg { width: 26%; }
+}
+    </style>
+</head>
+<body>
+
+    <aside class="sidebar no-print">
+        <div class="brand"><img src="eslab-logo.gif" alt="Logo"></div>
+        <nav class="nav-menu" id="dynamicSidebar"></nav>
+    </aside>
+
+    <main class="main">
+        <div class="top-bar no-print">
+            <div class="welcome-text">
+                <h2 id="userName">Memuat...</h2>
+                <p>Digital Chain of Custody (COC) - Emisi Sumber Tidak Bergerak.</p>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 15px;">
+                <div id="currentDate" style="font-size: 0.8rem; font-weight: 700; color: #475569; background: #fff; border: 1px solid #e2e8f0; padding: 10px 20px; border-radius: 12px;">
+                    Memuat tanggal...
+                </div>
+
+                <div style="display: flex; align-items: center; gap: 10px; border-left: 1px solid #e2e8f0; padding-left: 15px;">
+                    <div style="text-align: right;">
+                        <p id="userFullName" style="font-size: 0.8rem; font-weight: 800;">...</p>
+                        <p id="userRoleDisplay" style="font-size: 0.65rem; color: #64748b; text-transform: uppercase;">Role</p>
+                    </div>
+                    <button id="btnLogout" style="background: none; border: none; cursor: pointer; font-size: 1.2rem;">🚪</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="content-body">
+            <div class="coc-card">
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f1f5f9; padding-bottom: 15px; margin-bottom: 25px;">
+                    <h3 style="color: #1e293b;">📋 Form Registrasi Sampel</h3>
+                    <div style="text-align: right;">
+                        <label style="font-size: 0.7rem; font-weight: 800; color: #64748b;">NO. COC</label>
+                        <input type="text" id="nomorCoc" class="form-control" 
+       style="font-weight: bold; color: #2563eb; width: 220px; text-align: center; background: #ffffff; border: 2px solid #e2e8f0;" 
+       placeholder="ES-COC/2026/03/001">
+                    </div>
+                </div>
+
+                <div class="grid-header">
+                    <div class="section-left">
+                        <div class="form-group">
+                            <label>Company Name</label>
+                            <input type="text" id="companyName" class="form-control" placeholder="Nama perusahaan atau klien">
+                        </div>
+                        <div class="form-group">
+                            <label>Address</label>
+                            <textarea id="companyAddress" class="form-control" rows="2" placeholder="Alamat lokasi sampling"></textarea>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Contact Person</label>
+                            <input type="text" id="contactPerson" class="form-control" placeholder="Nama PIC">
+                        </div>
+
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                            <div class="form-group">
+                                <label>Phone Number</label>
+                                <input type="text" id="phoneNumber" class="form-control" placeholder="0812...">
+                            </div>
+                            <div class="form-group">
+                                <label>Email (for COA)</label>
+                                <input type="email" id="emailCoa" class="form-control" placeholder="pic@perusahaan.com">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="section-right">
+                        <div class="form-group">
+                            <label>Quotation No.</label>
+                            <input type="text" id="qtNo" class="form-control" placeholder="ES-QT-2603-000">
+                        </div>
+                        <div class="form-group">
+                            <label>TAT Request (Turnaround Time)</label>
+                            <select id="tatRequest" class="form-control" style="font-weight: 700; color: #1e293b;">
+                                <option value="Normal">Normal (10-14 Hari Kerja)</option>
+                                <option value="Urgent">Urgent (5-7 Hari Kerja)</option>
+                                <option value="Fast Track">Fast Track (3 Hari Kerja)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Sampling Date</label>
+                            <input type="date" id="samplingDate" class="form-control">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Sampling Officers (Max 3)</label>
+                            <div style="display: flex; flex-direction: column; gap: 8px;">
+                                <input type="text" id="officer1" class="form-control" placeholder="Petugas 1 (Lead)">
+                                <input type="text" id="officer2" class="form-control" placeholder="Petugas 2">
+                                <input type="text" id="officer3" class="form-control" placeholder="Petugas 3">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <h4 style="border-left: 5px solid #2563eb; padding-left: 10px; color: #1e293b; margin-top: 30px; margin-bottom: 15px;">📍 Detail Titik Uji & Parameter</h4>
+                <table id="cocTable">
+                    <thead>
+                        <tr>
+                            <th width="3%">No</th>
+                            <th width="12%">Sample ID</th>
+                            <th width="20%">Point Source / Description</th>
+                            <th width="20%">Regulation (Basis)</th>
+                            <th width="40%">Selected Parameters & Methods</th> <th width="5%" class="no-print"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="cocBody">
+                        <tr>
+                            <td>1</td>
+                            <td><input type="text" class="form-control sample-id" readonly style="background: #f8fafc; font-weight: 800; color: #2563eb;" placeholder="Auto"></td>
+                            <td><input type="text" class="form-control titik-uji" placeholder="Nama Titik & Deskripsi"></td>
+                            <td>
+                                <input type="text" class="form-control regulasi-search" list="listRegulasi" onkeypress="if(event.key === 'Enter') addRegulasiTag(this)" placeholder="Ketik & Enter...">
+                                <div class="selected-regulasi-tags" style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px;"></div>
+                            </td>
+                            <td style="vertical-align: top;">
+                                <div class="param-main-wrapper">
+                                    <div class="select-all-area" style="display: none; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 5px;">
+                                        <label style="font-size: 0.75rem; font-weight: 800; color: #2563eb; cursor:pointer;">
+                                            <input type="checkbox" onchange="toggleSelectAll(this)"> SELECT ALL
+                                        </label>
+                                    </div>
+                                    <div class="param-container" style="display: flex; flex-direction: column; gap: 6px;">
+                                        <small style="color: #94a3b8;">Pilih regulasi...</small>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="no-print" style="text-align: center; vertical-align: middle;">
+                                <button type="button" onclick="removeRow(this)" style="background:none; border:none; cursor:pointer; font-size: 1.1rem;">❌</button>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <button type="button" class="btn-add no-print" onclick="addNewRow()">➕ Tambah Titik Uji Baru</button>
+                <button class="btn-save no-print" onclick="saveCoc()">💾 SIMPAN & GENERATE COC DIGITAL</button>
+                <button type="button" class="btn-primary no-print" onclick="openSearchCoc()" style="background:#64748b; margin-bottom:10px;">📂 Buka COC Tersimpan</button>
+            </div>
+        </div>
+
+            <div id="modalSearchCoc" class="no-print" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+                <div style="background:white; width:80%; max-width:900px; border-radius:15px; padding:25px; max-height:80vh; overflow-y:auto;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                        <h3 style="margin:0;">📂 Pilih COC Tersimpan</h3>
+                        <button onclick="closeSearchCoc()" style="border:none; background:none; font-size:1.5rem; cursor:pointer;">&times;</button>
+                    </div>
+                    <div style="margin-bottom:15px;">
+                        <input type="text" id="searchKeyword" class="form-control" placeholder="Cari berdasarkan Nomor COC atau Nama Perusahaan..." oninput="fetchSavedCoc()">
+                    </div>
+                    <table style="width:100%; font-size:0.85rem;">
+                        <thead>
+                            <tr style="background:#f8fafc;">
+                                <th style="padding:10px;">Tanggal</th>
+                                <th style="padding:10px;">No. COC</th>
+                                <th style="padding:10px;">Perusahaan</th>
+                                <th style="padding:10px; text-align:center;">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="listCocSaved">
+                            </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="printArea" class="only-print">
+    
+                <div class="header-lab" style="border: 2px solid black; padding: 10px; margin-bottom: 0;">
+                        <div style="display: flex; align-items: center; justify-content: space-between;">
+                            <div style="width: 120px;">
+                                <img src="logo_es.jfif" style="width: 100%; display: block;">
+                            </div>
+
+                            <div style="flex-grow: 1; padding-left: 20px; text-align: left;">
+                                <h2 style="margin: 0; font-size: 14pt; font-weight: bold; color: #000;">LABORATORIUM PT ENVIROTAMA SOLUSINDO</h2>
+                                <p style="margin: 2px 0; font-size: 8.5pt;">Jl. Jatiwangi No.84 Kamurang, Kel. Cikedokan, Kec. Cikarang Barat, Kab. Bekasi 17530</p>
+                                <p style="margin: 2px 0; font-size: 8.5pt;">Phone: +6221-85934498 Fax: +6221-22143948</p>
+                                <p style="margin: 2px 0; font-size: 8.5pt;">Email: sales2@eslab.co.id | Website: www.eslab.co.id</p>
+                            </div>
+
+                            <div style="width: 250px; text-align: right;">
+                                <h1 style="margin: 0; font-size: 18pt; font-weight: bold; letter-spacing: 0.5px;">CHAIN OF CUSTODY (COC)</h1>
+                            </div>
+                        </div>
+                    
+                    <table class="table-info-print" style="width: 100%; margin-top: 15px; border-collapse: collapse;">
+                        <tr>
+                            <td style="width: 15%; font-weight: bold;">Company Name</td>
+                            <td style="width: 35%;" id="p-companyName">: -</td>
+                            <td style="width: 15%; font-weight: bold;">COC Number</td>
+                            <td style="width: 35%; font-weight: bold; font-size: 11pt;" id="p-nomorCoc">: -</td>
+                        </tr>
+                        <tr>
+                            <td style="font-weight: bold;">Address</td>
+                            <td id="p-address">: -</td>
+                            <td style="font-weight: bold;">Quotation No.</td>
+                            <td id="p-qtNo">: -</td>
+                        </tr>
+                        <tr>
+                            <td style="font-weight: bold;">Contact Person</td>
+                            <td id="p-cp">: -</td>
+                            <td style="font-weight: bold;">Sampling Date</td>
+                            <td id="p-date">: -</td>
+                        </tr>
+                        <tr>
+                            <td style="font-weight: bold;">Phone / Email</td>
+                            <td id="p-contactDetail">: -</td>
+                            <td style="font-weight: bold;">TAT Request</td>
+                            <td id="p-tat">: -</td>
+                        </tr>
+                        <tr>
+                            <td style="font-weight: bold;">Sampling Officer</td>
+                            <td id="p-officerHeader" colspan="3">: -</td>
+                        </tr>
+                    </table>
+                </div>
+
+                <table class="table-main-print">
+                    <thead>
+                        <tr>
+                            <th class="col-no">No</th>
+                            <th class="col-id">Sample ID</th>
+                            <th class="col-desc">Point Source / Description</th>
+                            <th class="col-reg">Regulation (Basis)</th>
+                            <th class="col-param">Testing Parameter</th>
+                            <th class="col-method">Methods / Equipment</th>
+                        </tr>
+                    </thead>
+                    <tbody id="printTableBody">
+                        </tbody>
+                </table>
+
+                <div class="footer-sign-area" style="margin-top: 10px;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 8pt; margin-bottom: 5px;">
+                        <thead>
+                            <tr>
+                                <th colspan="2" style="border: 1pt solid black; background-color: #f1f5f9; padding: 3px; text-align: center;">
+                                    Sample Condition Upon Reception or Sampling
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td style="border: 1pt solid black; width: 30px; text-align: center;">a.</td>
+                                <td style="border: 1pt solid black; padding: 2px 5px;">
+                                    Suitability between information received: ☐ No discrepancy ☐ There is discrepancy : ............................................................
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="border: 1pt solid black; text-align: center;">b.</td>
+                                <td style="border: 1pt solid black; padding: 2px 5px;">
+                                    Conformity with method requirement: ☐ According to requirement ☐ Not in accordance : ............................................................
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="border: 1pt solid black; text-align: center;">c.</td>
+                                <td style="border: 1pt solid black; padding: 2px 5px;">
+                                    Samples condition upon reception: ☐ Good ☐ Not in good condition : ............................................................
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="border: 1pt solid black; text-align: center;">d.</td>
+                                <td style="border: 1pt solid black; padding: 2px 5px;">
+                                    Abnormality sampling condition: ..................................................................................................................................................
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <table style="width: 100%; border-collapse: collapse; font-size: 8pt; margin-bottom: 5px; table-layout: fixed;">
+                        <tr>
+                            <th style="border: 1pt solid black; background-color: #f1f5f9; width: 40%; padding: 3px;">Special Instruction / Request From Customer</th>
+                            <th style="border: 1pt solid black; background-color: #f1f5f9; width: 60%; padding: 3px;">Transportation & Delivered by</th>
+                        </tr>
+                        <tr style="height: 40px;">
+                            <td style="border: 1pt solid black; vertical-align: top; padding: 5px;"></td>
+                            <td style="border: 1pt solid black; vertical-align: top; padding: 5px;">
+                                ☐ Transport by Envirotama Solusindo <br>
+                                ☐ Other: ......................................................................................
+                            </td>
+                        </tr>
+                    </table>
+
+                    <table id="printFooterTable" style="width: 100%; border-collapse: collapse; text-align: center; table-layout: fixed;">
+                        <thead>
+                            <tr>
+                                <th colspan="6" style="border: 1pt solid black; background-color: #f1f5f9; padding: 3px;">Distribution and Verification</th>
+                            </tr>
+                            <tr>
+                                <th style="border: 1pt solid black; width: 14%; font-size: 7.5pt; padding: 5px;">Issued by,</th>
+                                <th style="border: 1pt solid black; width: 15%; font-size: 7.5pt; padding: 5px;">Approved by Tech. Mgr.</th>
+                                <th style="border: 1pt solid black; width: 14%; font-size: 7.5pt; padding: 5px;">Verified by,</th>
+                                <th style="border: 1pt solid black; width: 14%; font-size: 7.5pt; padding: 5px;">Sampling Officer</th>
+                                <th style="border: 1pt solid black; width: 18%; font-size: 7.5pt; padding: 5px;">Received by</th>
+                                <th style="border: 1pt solid black; width: 25%; font-size: 7.5pt; padding: 5px;">Customer Approval</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr style="height: 60px;">
+                                <td style="border: 1pt solid black;"></td>
+                                <td style="border: 1pt solid black;"></td>
+                                <td style="border: 1pt solid black;"></td>
+                                <td id="p-officerList" style="border: 1pt solid black;"></td>
+                                <td style="border: 1pt solid black;"></td>
+                                <td style="border: 1pt solid black;"></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+    </main>
+
+    <datalist id="listRegulasi"></datalist>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="config.js"></script>
+    <script src="auth.js"></script> <script src="coc.js"></script>
+
+</body>
+</html>

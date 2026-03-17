@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cetak CoA | PT Envirotama Solusindo</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --primary: #2563eb;
+            --bg-main: #f8fafc;
+            --bg-card: #ffffff;
+            --text-main: #1e293b;
+            --text-muted: #64748b;
+            --border-color: #e2e8f0;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { 
+            font-family: 'Plus Jakarta Sans', sans-serif; 
+            background-color: var(--bg-main); 
+            color: var(--text-main); 
+            display: flex; 
+            min-height: 100vh; 
+        }
+
+        /* --- SIDEBAR --- */
+        .sidebar { 
+            width: 280px; 
+            background: var(--bg-card); 
+            border-right: 1px solid var(--border-color); 
+            padding: 24px 16px; 
+            position: sticky; 
+            top: 0; 
+            height: 100vh; 
+        }
+
+        .nav-item { 
+            display: flex; 
+            align-items: center; 
+            padding: 12px 16px; 
+            color: var(--text-muted); 
+            text-decoration: none; 
+            font-weight: 600; 
+            border-radius: 12px; 
+            margin-bottom: 4px; 
+            font-size: 0.85rem; 
+        }
+        .nav-item.active { background: #eff6ff; color: var(--primary); }
+
+        /* --- CONTENT AREA --- */
+        .content { flex-grow: 1; padding: 40px; max-width: 1200px; margin: 0 auto; }
+        
+        /* Tombol Aksi (Hanya muncul di layar) */
+        .action-bar { 
+            display: flex; 
+            justify-content: space-between; 
+            margin-bottom: 20px;
+        }
+
+        /* --- COA PAPER STYLE --- */
+        .coa-paper {
+            background: white;
+            padding: 50px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+            min-height: 297mm; /* A4 Height */
+            position: relative;
+        }
+
+        .coa-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 3px solid #0f172a;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+
+        .coa-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        .coa-table th, .coa-table td {
+            border: 1px solid #cbd5e1;
+            padding: 12px;
+            font-size: 0.85rem;
+            text-align: left;
+        }
+        .coa-table th { background: #f8fafc; font-weight: 800; text-transform: uppercase; font-size: 0.75rem; }
+
+        /* --- PRINT LOGIC --- */
+        @media print {
+            .sidebar, .action-bar, .nav-item { display: none !important; }
+            body { background: white; }
+            .content { padding: 0; margin: 0; max-width: 100%; }
+            .coa-paper { border: none; box-shadow: none; padding: 0; }
+        }
+
+        .btn-print {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 12px;
+            font-weight: 800;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        @media print {
+    .coa-page { page-break-after: always; min-height: 100vh; }
+}
+
+.coa-table-v2 {
+    width: 100%;
+    border-collapse: collapse;
+    border: 1.5px solid #0000ff; /* Border biru */
+    font-size: 0.8rem;
+}
+
+.coa-table-v2 th, .coa-table-v2 td {
+    border: 1px solid #0000ff;
+    padding: 6px 8px;
+}
+
+.coa-info-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    border-left: 1.5px solid #0000ff;
+    border-right: 1.5px solid #0000ff;
+    padding: 10px;
+    font-size: 0.85rem;
+}
+/* Pastikan setiap halaman adalah area terisolasi */
+.coa-page {
+    position: relative; /* Kunci perbaikan */
+    width: 210mm; /* Standar A4 */
+    min-height: 297mm;
+    padding: 40px;
+    margin: 20px auto;
+    background: white;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    page-break-after: always; /* Agar rapi saat print */
+    overflow: hidden;
+}
+    </style>
+</head>
+<body>
+
+    <aside class="sidebar no-print">
+        <div style="margin-bottom: 30px; padding: 0 10px;">
+            <img src="eslab-logo.gif" alt="Logo" style="width: 150px;">
+        </div>
+        <nav id="dynamicSidebar">
+            </nav>
+    </aside>
+
+    <main class="content">
+        <div class="action-bar no-print">
+            <button onclick="window.location.href='coa.html'" class="nav-item" style="border:none; cursor:pointer;">🏠 Home CoA</button>
+            
+            <div id="dynamicButtons" style="display: flex; gap: 10px;">
+                <button onclick="window.print()" class="btn-print" id="btnPrint" style="display:none;">🖨️ Cetak Dokumen</button>
+            </div>
+        </div>
+
+        <div id="coaRenderArea">
+            </div>
+    </main>
+
+    <script src="config.js"></script>
+    <script src="auth.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="coa.js"></script>
+</body>
+</html>
