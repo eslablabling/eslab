@@ -1,10 +1,11 @@
-// 1. Ambil URL dan Anon Key dari Dashboard Supabase Anda:
-// Project Settings -> API
-const SUPABASE_URL = 'https://ucpomkfekmuqdappdudf.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjcG9ta2Zla211cWRhcHBkdWRmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIwNTA0MDIsImV4cCI6MjA4NzYyNjQwMn0.nWRYzonk_NG2mmr5EJ_uguOoaoI-YAkNSrqFs6i2HDc';
+// config.js
 
-// 2. Inisialisasi Client Supabase
-const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+// Gunakan URL dan Key Anda
+const SB_URL = 'https://ucpomkfekmuqdappdudf.supabase.co';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjcG9ta2Zla211cWRhcHBkdWRmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIwNTA0MDIsImV4cCI6MjA4NzYyNjQwMn0.nWRYzonk_NG2mmr5EJ_uguOoaoI-YAkNSrqFs6i2HDc';
 
-// Tips: Pastikan variabel _supabase ini bisa diakses secara global 
-// agar file coc.js dan master-data.js bisa menggunakannya.`
+// JANGAN gunakan nama 'supabase' untuk variabel baru.
+// Gunakan '_supabase' dan pasang di window agar global.
+window._supabase = window.supabase.createClient(SB_URL, SB_KEY);
+
+console.log("✅ Supabase Client siap di window._supabase");

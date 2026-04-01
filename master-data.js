@@ -1,41 +1,29 @@
-const SUPABASE_URL = 'https://ucpomkfekmuqdappdudf.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjcG9ta2Zla211cWRhcHBkdWRmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIwNTA0MDIsImV4cCI6MjA4NzYyNjQwMn0.nWRYzonk_NG2mmr5EJ_uguOoaoI-YAkNSrqFs6i2HDc'; 
-const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const paramTableBody = document.getElementById('paramTableBody');
 let currentEditId = null; // Untuk melacak apakah kita sedang edit atau tambah baru
 document.addEventListener('DOMContentLoaded', async () => {
-    // 1. Cek Sesi Autentikasi
-    const { data: { session }, error: sessionError } = await _supabase.auth.getSession();
-    
-    if (sessionError || !session) {
-        window.location.href = 'index.html'; // Tendang ke login jika tidak ada sesi
+    // 1. Cek Sesi
+    const { data: { session } } = await _supabase.auth.getSession();
+    if (!session) {
+        window.location.href = 'index.html';
         return;
     }
 
-    // 2. Ambil Profil User Langsung dari Supabase
-    // Asumsi: Anda punya tabel 'profiles' yang menyimpan id, full_name, dan role
-    const { data: profile, error: profileError } = await _supabase
+    // 2. Ambil Profil (Termasuk Role)
+    const { data: profile, error } = await _supabase
         .from('profiles')
         .select('full_name, role')
         .eq('id', session.user.id)
         .single();
 
-    if (profileError) {
-        console.error("Gagal memuat profil:", profileError);
-        return;
+    if (profile) {
+        // 3. Panggil Fungsi dari auth.js
+        updateTopBar(profile.full_name, profile.role);
+        renderSidebar(profile.role); 
+        
+        // 4. Jalankan fungsi spesifik halaman ini
+        fetchMasterEmisi();
     }
-
-    // 3. Update UI Top Bar dengan Data Real dari DB
-    updateTopBar(profile.full_name, profile.role);
-    
-    // 4. Render Sidebar & Tabel
-    renderSidebar(profile.role);
-    fetchMasterEmisi();
-
-    // 5. Setup Event Listeners
-    document.getElementById('btnLogout').addEventListener('click', handleLogout);
-    setupDynamicInputs();
 });
 
 // Fungsi untuk update tampilan Top Bar
@@ -124,55 +112,7 @@ async function handleLogout() {
     }
 }
 
-function renderSidebar(role) {
-    const navContainer = document.getElementById('dynamicSidebar');
-    
-    // Pemetaan Menu berdasarkan Role (Harus sama dengan logika di Login/Dashboard)
-    const menuMapping = {
-        admin_master: [
-            { title: "Master Data", icon: "🗂️", link: "master-data.html" },
-            { title: "COC Digital", icon: "📑", link: "coc.html" },
-            { title: "Monitoring Sampling", icon: "📍", link: "sampling.html" },
-            { title: "Penerimaan Sampel", icon: "📥", link: "penerimaan.html" },
-            { title: "Log Analisa", icon: "🧪", link: "analisa.html" },
-            { title: "Verifikasi & COA", icon: "📜", link: "coa.html" }
-        ],
-        sampling: [
-            { title: "COC Digital", icon: "📑", link: "coc.html" },
-            { title: "Monitoring Sampling", icon: "📍", link: "sampling.html" }
-        ],
-        penerimaan: [
-            { title: "Penerimaan Sampel", icon: "📥", link: "penerimaan.html" },
-            { title: "Monitoring Sampling", icon: "📍", link: "sampling.html" }
-        ],
-        analis: [
-            { title: "Log Analisa", icon: "🧪", link: "analisa.html" }
-        ],
-        manager: [
-            { title: "Verifikasi & COA", icon: "📜", link: "coa.html" },
-            { title: "Master Data", icon: "🗂️", link: "master-data.html" }
-        ]
-    };
 
-    const activeMenus = menuMapping[role] || [];
-
-    // Header Sidebar tetap (Dashboard Utama)
-    let sidebarHTML = `
-        <div class="nav-label">Main</div>
-        <a href="dashboard.html" class="nav-item">🏠 Dashboard Utama</a>
-        <div class="nav-label">Menu Kerja</div>
-    `;
-
-    // Generate Sub-Menu secara dinamis
-    sidebarHTML += activeMenus.map(item => `
-        <a href="${item.link}" class="nav-item ${window.location.pathname.includes(item.link) ? 'active' : ''}">
-            <span style="font-size: 1.1rem; width: 25px; display: inline-block;">${item.icon}</span> 
-            ${item.title}
-        </a>
-    `).join('');
-
-    navContainer.innerHTML = sidebarHTML;
-}
 
 // Tambahkan listener untuk menutup modal jika user klik di luar area modal
 window.onclick = function(event) {

@@ -87,44 +87,70 @@ async function fetchDataPenerimaan(keyword = '') {
         }
 
         // --- RENDER TABEL ---
-        tableBody.innerHTML = allSamples.map(item => {
-            const isReceived = ['received', 'analyzed', 'verified'].includes(item.status_lab);
-            
-            // Logika TAT: Hitung hari jika tgl_terima_lab ada
-            const jumlahHari = isReceived ? hitungHari(item.tgl_terima_lab) : 0;
-            const tatColor = jumlahHari > 10 ? '#ef4444' : '#64748b'; // Merah jika > 10 hari
+        // --- RENDER TABEL ---
+tableBody.innerHTML = allSamples.map(item => {
+    const isReceived = ['received', 'analyzed', 'verified'].includes(item.status_lab);
+    
+    // 1. Tentukan Durasi Berdasarkan Priority
+    const priority = (item.tat_requested || "NORMAL").toUpperCase();
+    const isUrgent = priority === 'URGENT';
+    const durasiTarget = isUrgent ? 5 : 14; // Urgent 5 hari, Normal 14 hari
 
-            return `
-                <tr>
-                    <td style="font-weight: 800; color: var(--primary);">${item.sample_id}</td>
-                    <td>
-                        <div style="font-weight: 700;">${item.company}</div>
-                        <div style="font-size: 0.75rem; color: var(--text-muted);">${item.description || '-'}</div>
-                        
-                        ${isReceived ? `
-                            <div style="font-size: 0.7rem; margin-top: 5px; font-weight: 700; color: ${tatColor}; display: flex; align-items: center; gap: 4px;">
-                                ⏳ TAT: ${jumlahHari} Hari
-                            </div>
-                        ` : ''}
+    let tatDisplay = "";
 
-                        ${item.isPartikulat ? '<span class="tag" style="background:#f5f3ff; color:#7c3aed; border:1px solid #ddd6fe; font-size:0.6rem; margin-top:5px; display:inline-block;">⚖️ ISOKINETIK</span>' : ''}
-                    </td>
-                    <td>
-                        <span class="tag ${isReceived ? 'tag-green' : 'tag-orange'}">
-                            ${isReceived ? '● DITERIMA LAB' : '○ FISIK DITUNGGU'}
-                        </span>
-                        ${isReceived && item.tgl_terima_lab ? `<div style="font-size:0.65rem; color:#64748b; margin-top:4px;">Masuk: ${item.tgl_terima_lab}</div>` : ''}
-                    </td>
-                    <td style="text-align: right;">
-                        <button onclick="prosesTerimaSampel('${item.db_id}', '${item.sample_id}')" 
-                                class="btn-receive" 
-                                style="${isReceived ? 'background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1;' : ''}">
-                            ${isReceived ? '📝 Edit Tgl' : '📥 Terima'}
-                        </button>
-                    </td>
-                </tr>
-            `;
-        }).join('');
+    if (isReceived && item.tgl_terima_lab) {
+        // 2. Hitung Tanggal Deadline (Tgl Terima + Durasi Target)
+        const tglTerima = new Date(item.tgl_terima_lab);
+        const tglDeadline = new Date(tglTerima);
+        tglDeadline.setDate(tglTerima.getDate() + durasiTarget);
+
+        // 3. Hitung Sisa Hari dari Sekarang ke Deadline
+        const today = new Date();
+        const sisaMs = tglDeadline - today;
+        const sisaHari = Math.ceil(sisaMs / (1000 * 60 * 60 * 24));
+
+        // 4. Tentukan Warna dan Label
+        const labelWarna = sisaHari <= 2 ? '#ef4444' : (isUrgent ? '#f59e0b' : '#64748b');
+        const tglDeadlineStr = tglDeadline.toLocaleDateString('id-ID', { day: '2-digit', month: 'short' });
+
+        tatDisplay = `
+            <div style="margin-top: 8px; padding: 8px; background: #f8fafc; border-radius: 8px; border-left: 3px solid ${labelWarna};">
+                <div style="font-size: 0.65rem; color: #94a3b8; text-transform: uppercase; font-weight: 800;">Target Selesai (${priority})</div>
+                <div style="font-weight: 800; color: ${labelWarna}; font-size: 0.85rem;">📅 ${tglDeadlineStr}</div>
+                <div style="font-size: 0.7rem; color: ${labelWarna}; font-weight: 600;">
+                    ${sisaHari < 0 ? `Terlambat ${Math.abs(sisaHari)} Hari` : `Sisa ${sisaHari} Hari lagi`}
+                </div>
+            </div>
+        `;
+    }
+
+    return `
+        <tr>
+            <td style="font-weight: 800; color: var(--primary);">${item.sample_id}</td>
+            <td>
+                <div style="font-weight: 700;">${item.company}</div>
+                <div style="font-size: 0.75rem; color: var(--text-muted);">${item.description || '-'}</div>
+                
+                ${tatDisplay}
+
+                ${item.isPartikulat ? '<span class="tag" style="background:#f5f3ff; color:#7c3aed; border:1px solid #ddd6fe; font-size:0.6rem; margin-top:8px; display:inline-block;">⚖️ ISOKINETIK</span>' : ''}
+            </td>
+            <td>
+                <span class="tag ${isReceived ? 'tag-green' : 'tag-orange'}">
+                    ${isReceived ? '● DITERIMA LAB' : '○ FISIK DITUNGGU'}
+                </span>
+                ${isReceived && item.tgl_terima_lab ? `<div style="font-size:0.65rem; color:#64748b; margin-top:4px;">Masuk: ${item.tgl_terima_lab}</div>` : ''}
+            </td>
+            <td style="text-align: right;">
+                <button onclick="prosesTerimaSampel('${item.db_id}', '${item.sample_id}')" 
+                        class="btn-receive" 
+                        style="${isReceived ? 'background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1;' : ''}">
+                    ${isReceived ? '📝 Edit Tgl' : '📥 Terima'}
+                </button>
+            </td>
+        </tr>
+    `;
+}).join('');
 
     } catch (err) {
         console.error(err);

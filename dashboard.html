@@ -186,6 +186,60 @@
     text-align: center;
     min-width: 80px;
 }
+/* --- WEATHER & ANALYTICS WIDGET --- */
+.dashboard-top-row {
+    display: grid;
+    grid-template-columns: 1fr 300px;
+    gap: 24px;
+    margin-bottom: 24px;
+}
+
+.weather-card {
+    background: linear-gradient(135deg, #2563eb, #3b82f6);
+    color: white;
+    padding: 20px;
+    border-radius: 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 10px 20px -5px rgba(37, 99, 235, 0.3);
+}
+
+.weather-info h3 { font-size: 1.8rem; font-weight: 800; margin: 5px 0; }
+.weather-info p { font-size: 0.8rem; opacity: 0.9; font-weight: 600; }
+
+.chart-placeholder {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 20px;
+    padding: 20px;
+    height: 150px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+/* Glassmorphism Effect for Menu */
+.menu-card {
+    position: relative;
+    overflow: hidden;
+}
+
+.menu-card::after {
+    content: '';
+    position: absolute;
+    right: -10px;
+    bottom: -10px;
+    font-size: 4rem;
+    opacity: 0.03;
+    font-weight: 900;
+}
+
+/* Kustomisasi Scrollbar */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: #f1f5f9; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
 .tag-orange { background: #fff7ed; color: #c2410c; border: 1px solid #ffedd5; } /* SAMPLING */
 .tag-blue { background: #eff6ff; color: #1d4ed8; border: 1px solid #dbeafe; }   /* ANALISA */
@@ -223,14 +277,17 @@
             </div>
         </div>
     </div>
+    
 
     <div id="menuContainer" class="stats-grid">
     </div>>
 
     <div class="data-container">
-        <div class="table-header">
-            <h3 style="font-size: 1rem; font-weight: 800;">Log COC Emisi Terbaru</h3>
-        </div>
+    <div class="table-header" style="align-items: center;">
+        <h3 style="font-size: 1rem; font-weight: 800;">Log COC Emisi Terbaru</h3>
+        <input type="text" id="searchLog" placeholder="Cari No. COC atau Perusahaan..." 
+               style="padding: 10px 16px; border: 1px solid #e2e8f0; border-radius: 12px; width: 300px; font-size: 0.85rem; outline: none;">
+    </div>
         <table>
             <thead>
                 <tr>
@@ -243,11 +300,12 @@
                     <th>TAT</th> <th>Status</th>
                 </tr>
             </thead>
-            <tbody>
-                </tbody>
+            <tbody id="logTableBody">
+        </tbody>
         </table>
     </div>
 </main>
+<script src="config.js"></script>
 <script src="auth.js"></script>
 <script src="dashboard.js"></script>
 

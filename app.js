@@ -1,8 +1,3 @@
-// 1. Inisialisasi Supabase
-const SUPABASE_URL = 'https://ucpomkfekmuqdappdudf.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjcG9ta2Zla211cWRhcHBkdWRmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIwNTA0MDIsImV4cCI6MjA4NzYyNjQwMn0.nWRYzonk_NG2mmr5EJ_uguOoaoI-YAkNSrqFs6i2HDc';
-const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
 // 2. Referensi Elemen UI
 const loginForm = document.getElementById('loginForm');
 const messageDiv = document.getElementById('message');

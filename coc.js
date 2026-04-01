@@ -95,60 +95,7 @@ function updateTopBar(fullName, role) {
 }
 
 // FUNGSI RENDER SIDEBAR (Sama persis dengan Master Data Anda)
-function renderSidebar(role) {
-    const navContainer = document.getElementById('dynamicSidebar');
-    
-    const menuMapping = {
-        admin_master: [
-            { title: "Master Data", icon: "🗂️", link: "master-data.html" },
-            { title: "COC Digital", icon: "📑", link: "coc.html" },
-            { title: "Monitoring Sampling", icon: "📍", link: "sampling.html" },
-            { title: "Penerimaan Sampel", icon: "📥", link: "penerimaan.html" },
-            { title: "Log Analisa", icon: "🧪", link: "analisa.html" },
-            { title: "Verifikasi & COA", icon: "📜", link: "coa.html" }
-        ],
-        sampling: [
-            { title: "COC Digital", icon: "📑", link: "coc.html" },
-            { title: "Monitoring Sampling", icon: "📍", link: "sampling.html" }
-        ],
-        penerimaan: [
-            { title: "Penerimaan Sampel", icon: "📥", link: "penerimaan.html" },
-            { title: "Monitoring Sampling", icon: "📍", link: "sampling.html" }
-        ],
-        analis: [
-            { title: "Log Analisa", icon: "🧪", link: "analisa.html" }
-        ],
-        manager: [
-            { title: "Verifikasi & COA", icon: "📜", link: "coa.html" },
-            { title: "Master Data", icon: "🗂️", link: "master-data.html" }
-        ]
-    };
 
-    const activeMenus = menuMapping[role] || [];
-
-    let sidebarHTML = `
-        <div class="nav-label">Main</div>
-        <a href="dashboard.html" class="nav-item">
-            <span style="font-size: 1.1rem; width: 25px; display: inline-block;">🏠</span> 
-            Dashboard Utama
-        </a>
-        <div class="nav-label">Menu Kerja</div>
-    `;
-
-    sidebarHTML += activeMenus.map(item => {
-        // Logika deteksi halaman aktif yang akurat
-        const isActive = window.location.pathname.includes(item.link) ? 'active' : '';
-        
-        return `
-            <a href="${item.link}" class="nav-item ${isActive}">
-                <span style="font-size: 1.1rem; width: 25px; display: inline-block;">${item.icon}</span> 
-                ${item.title}
-            </a>
-        `;
-    }).join('');
-
-    navContainer.innerHTML = sidebarHTML;
-}
 
 // Fungsi tambahan untuk mengisi datalist regulasi di form COC
 async function loadRegulasiDropdown() {
