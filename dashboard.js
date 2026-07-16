@@ -183,29 +183,39 @@ function renderMenu(role) {
 
     const menuMapping = {
         admin_master: [
-            { title: "Master Data", icon: "🗂️", link: "master-data.html", desc: "Regulasi & Parameter Uji" },
-            { title: "COC Digital", icon: "📑", link: "coc.html", desc: "Kelola Chain of Custody Emisi" },
-            { title: "Monitoring Sampling", icon: "📍", link: "sampling.html", desc: "Input Data Lapangan & Meteo" },
-            { title: "Penerimaan Sampel", icon: "📥", link: "penerimaan.html", desc: "Registrasi Sampel ke Lab" },
-            { title: "Log Analisa", icon: "🧪", link: "analisa.html", desc: "Input Hasil Analisa & Kadar" },
-            { title: "Verifikasi & COA", icon: "📜", link: "coa.html", desc: "Verifikasi Hasil & Rilis COA" },
-            { title: "Activity Logger", icon: "🛡️", link: "logger.html", desc: "Audit Trail & Keamanan Sistem" }
-        ],
-        manager: [
-            { title: "Penerimaan Sampel", icon: "📥", link: "penerimaan.html", desc: "Registrasi Sampel ke Lab" },
-            { title: "Log Analisa", icon: "🧪", link: "analisa.html", desc: "Input Hasil Analisa & Kadar" },
-            { title: "Verifikasi & COA", icon: "📜", link: "coa.html", desc: "Verifikasi Hasil & Rilis COA" },
-        ],
-        sampling: [
-            { title: "COC Digital", icon: "📑", link: "coc.html", desc: "Kelola Chain of Custody Emisi" },
-            { title: "Monitoring Sampling", icon: "📍", link: "sampling.html", desc: "Input Data Lapangan & Meteo" }
-        ],
-        admin_ts: [
-            { title: "Penerimaan Sampel", icon: "📥", link: "penerimaan.html", desc: "Registrasi Sampel ke Lab" }
-        ],
-        analis: [
-            { title: "Log Analisa", icon: "🧪", link: "analisa.html", desc: "Input Hasil Analisa & Kadar" }
-        ]
+                    { title: "Master Data", icon: "🗂️", link: "master-data.html", cat: "Main" },
+                    { title: "COC Digital", icon: "📑", link: "coc.html", cat: "Menu Kerja" },
+                    { title: "Monitoring Sampling", icon: "📍", link: "sampling.html", cat: "Menu Kerja" },
+                    { title: "Penerimaan Sampel", icon: "📥", link: "penerimaan.html", cat: "Menu Kerja" },
+                    { title: "Log Analisa", icon: "🧪", link: "analisa.html", cat: "Menu Kerja" },
+                    { title: "Verifikasi & COA", icon: "📜", link: "coa.html", cat: "Menu Kerja" },
+                    { title: "Activity Logger", icon: "🛡️", link: "logger.html", cat: "Developer" }
+                ],
+                manager: [
+                    { title: "Master Data", icon: "🗂️", link: "master-data.html", cat: "Main" },
+                    { title: "COC Digital", icon: "📑", link: "coc.html", cat: "Menu Kerja" },
+                    { title: "Monitoring Sampling", icon: "📍", link: "sampling.html", cat: "Menu Kerja" },
+                    { title: "Penerimaan Sampel", icon: "📥", link: "penerimaan.html", cat: "Menu Kerja" },
+                    { title: "Log Analisa", icon: "🧪", link: "analisa.html", cat: "Menu Kerja" },
+                    { title: "Verifikasi & COA", icon: "📜", link: "coa.html", cat: "Menu Kerja" },
+                ],
+                sampling: [
+                    { title: "Master Data", icon: "🗂️", link: "master-data.html", cat: "Main" },
+                    { title: "COC Digital", icon: "📑", link: "coc.html", cat: "Menu Kerja" },
+                    { title: "Monitoring Sampling", icon: "📍", link: "sampling.html", cat: "Menu Kerja" },
+                    { title: "Penerimaan Sampel", icon: "📥", link: "penerimaan.html", cat: "Menu Kerja" },
+                ],
+                admin_ts: [
+                    { title: "Master Data", icon: "🗂️", link: "master-data.html", cat: "Main" },
+                    { title: "COC Digital", icon: "📑", link: "coc.html", cat: "Menu Kerja" },
+                    { title: "Penerimaan Sampel", icon: "📥", link: "penerimaan.html", cat: "Menu Kerja" },
+                    { title: "Verifikasi & COA", icon: "📜", link: "coa.html", cat: "Menu Kerja" },
+                    { title: "Activity Logger", icon: "🛡️", link: "logger.html", cat: "Developer" }
+                ],
+                analis: [
+                    { title: "Penerimaan Sampel", icon: "📥", link: "penerimaan.html", cat: "Menu Kerja" },
+                    { title: "Log Analisa", icon: "🧪", link: "analisa.html", cat: "Menu Kerja" },
+                ],
     };
 
     const activeMenus = menuMapping[role] || menuMapping['sampling'];
