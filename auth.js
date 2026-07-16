@@ -13,20 +13,30 @@ function renderSidebar(role) {
                     { title: "Activity Logger", icon: "🛡️", link: "logger.html", cat: "Developer" }
                 ],
                 manager: [
+                    { title: "Master Data", icon: "🗂️", link: "master-data.html", cat: "Main" },
+                    { title: "COC Digital", icon: "📑", link: "coc.html", cat: "Menu Kerja" },
+                    { title: "Monitoring Sampling", icon: "📍", link: "sampling.html", cat: "Menu Kerja" },
                     { title: "Penerimaan Sampel", icon: "📥", link: "penerimaan.html", cat: "Menu Kerja" },
                     { title: "Log Analisa", icon: "🧪", link: "analisa.html", cat: "Menu Kerja" },
                     { title: "Verifikasi & COA", icon: "📜", link: "coa.html", cat: "Menu Kerja" },
                 ],
                 sampling: [
+                    { title: "Master Data", icon: "🗂️", link: "master-data.html", cat: "Main" },
                     { title: "COC Digital", icon: "📑", link: "coc.html", cat: "Menu Kerja" },
-                    { title: "Monitoring Sampling", icon: "📍", link: "sampling.html", cat: "Menu Kerja" }
+                    { title: "Monitoring Sampling", icon: "📍", link: "sampling.html", cat: "Menu Kerja" },
+                    { title: "Penerimaan Sampel", icon: "📥", link: "penerimaan.html", cat: "Menu Kerja" },
                 ],
                 admin_ts: [
-                    { title: "Penerimaan Sampel", icon: "📥", link: "penerimaan.html", cat: "Menu Kerja" }
+                    { title: "Master Data", icon: "🗂️", link: "master-data.html", cat: "Main" },
+                    { title: "COC Digital", icon: "📑", link: "coc.html", cat: "Menu Kerja" },
+                    { title: "Penerimaan Sampel", icon: "📥", link: "penerimaan.html", cat: "Menu Kerja" },
+                    { title: "Verifikasi & COA", icon: "📜", link: "coa.html", cat: "Menu Kerja" },
+                    { title: "Activity Logger", icon: "🛡️", link: "logger.html", cat: "Developer" }
                 ],
                 analis: [
-                    { title: "Log Analisa", icon: "🧪", link: "analisa.html", cat: "Menu Kerja" }
-                ]
+                    { title: "Penerimaan Sampel", icon: "📥", link: "penerimaan.html", cat: "Menu Kerja" },
+                    { title: "Log Analisa", icon: "🧪", link: "analisa.html", cat: "Menu Kerja" },
+                ],
             };
 
             const activeMenus = menuMapping[role] || menuMapping['sampling'];
