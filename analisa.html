@@ -134,6 +134,51 @@
             font-family: inherit;
             background: #f1f5f9;
         }
+        .tab-btn {
+            padding: 8px 16px;
+            border: none;
+            background: #f1f5f9;
+            color: #64748b;
+            font-weight: 800;
+            font-size: 0.75rem;
+            cursor: pointer;
+            border-radius: 8px;
+            white-space: nowrap;
+            transition: 0.2s;
+            margin-right: 5px;
+        }
+        .tab-btn.active {
+            background: var(--primary);
+            color: white;
+        }
+        .tab-btn:hover:not(.active) {
+            background: #e2e8f0;
+        }
+        .page-btn {
+            padding: 8px 14px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: white;
+            font-weight: 700;
+            cursor: pointer;
+            color: #64748b;
+            font-size: 0.8rem;
+            transition: all 0.2s;
+        }
+        .page-btn:hover {
+            background: #f1f5f9;
+            color: #1e293b;
+            border-color: #cbd5e1;
+        }
+        .page-btn.active {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+        .page-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
@@ -163,6 +208,12 @@
                 <h3 style="font-size: 1.1rem; font-weight: 800;">Antrean Analisa</h3>
                 <input type="text" id="searchAnalisa" placeholder="Cari ID Sampel atau Perusahaan...">
             </div>
+
+            <!-- Tab Filter Status Analisa -->
+            <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                <button id="tabBelumSelesai" class="tab-btn active" onclick="switchAnalisaTab('belum_selesai')">⏳ Belum Selesai</button>
+                <button id="tabSudahSelesai" class="tab-btn" onclick="switchAnalisaTab('sudah_selesai')">✅ Sudah Selesai</button>
+            </div>
             
             <table>
                 <thead>
@@ -181,6 +232,18 @@
                     </tr>
                 </tbody>
             </table>
+
+            <!-- Panel Paginasi -->
+            <div id="paginationControls" style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px; padding-top: 15px; border-top: 1px solid #f1f5f9; font-size: 0.85rem; flex-wrap: wrap; gap: 10px;">
+                <div id="paginationInfo" style="color: #64748b; font-weight: 600;">
+                    Menampilkan 0 - 0 dari 0 data
+                </div>
+                <div style="display: flex; gap: 5px; align-items: center;">
+                    <button id="btnPrevPage" class="page-btn">Sebelumnya</button>
+                    <div id="pageNumbers" style="display: flex; gap: 5px;"></div>
+                    <button id="btnNextPage" class="page-btn">Berikutnya</button>
+                </div>
+            </div>
         </section>
     </main>
 
@@ -202,7 +265,7 @@
     </div>
 
     <script src="config.js"></script>
-    <script src="auth.js"></script>
-    <script src="analisa.js"></script> 
+    <script src="auth.js?v=2"></script>
+    <script src="analisa.js?v=2"></script> 
 </body>
 </html>

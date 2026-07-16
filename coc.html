@@ -113,6 +113,52 @@ td { padding: 16px; font-size: 0.85rem; border-bottom: 1px solid #f1f5f9; vertic
 }
 .btn-add:hover { background: #e2e8f0; color: #1e293b; }
 
+.tab-btn {
+    padding: 8px 16px;
+    border: none;
+    background: #f1f5f9;
+    color: #64748b;
+    font-weight: 800;
+    font-size: 0.75rem;
+    cursor: pointer;
+    border-radius: 8px;
+    white-space: nowrap;
+    transition: 0.2s;
+    margin-right: 5px;
+}
+.tab-btn.active {
+    background: #2563eb;
+    color: white;
+}
+.tab-btn:hover:not(.active) {
+    background: #e2e8f0;
+}
+.page-btn {
+    padding: 8px 14px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: white;
+    font-weight: 700;
+    cursor: pointer;
+    color: #64748b;
+    font-size: 0.8rem;
+    transition: all 0.2s;
+}
+.page-btn:hover {
+    background: #f1f5f9;
+    color: #1e293b;
+    border-color: #cbd5e1;
+}
+.page-btn.active {
+    background: #2563eb;
+    color: white;
+    border-color: #2563eb;
+}
+.page-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 .btn-save {
     margin-top: 20px;
     background: #2563eb;
@@ -338,17 +384,22 @@ td { padding: 16px; font-size: 0.85rem; border-bottom: 1px solid #f1f5f9; vertic
                     <button id="btnLogout" style="background: none; border: none; cursor: pointer; font-size: 1.2rem;">🚪</button>
                 </div>
             </div>
-        </div>
+        </div>        <div class="content-body">
+            <!-- Tab Navigation -->
+            <div style="display: flex; gap: 10px; margin-bottom: 20px;" class="no-print">
+                <button id="tabFormRegistrasi" class="tab-btn active" onclick="switchCocMainTab('form')">📋 Form Registrasi Sampel</button>
+                <button id="tabCocTersimpan" class="tab-btn" onclick="switchCocMainTab('saved')">📂 Buka COC Tersimpan</button>
+            </div>
 
-        <div class="content-body">
-            <div class="coc-card">
+            <!-- Bagian 1: Form Registrasi Sampel -->
+            <div id="cocFormContainer" class="coc-card">
                 <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f1f5f9; padding-bottom: 15px; margin-bottom: 25px;">
                     <h3 style="color: #1e293b;">📋 Form Registrasi Sampel</h3>
                     <div style="text-align: right;">
                         <label style="font-size: 0.7rem; font-weight: 800; color: #64748b;">NO. COC</label>
                         <input type="text" id="nomorCoc" class="form-control" 
-       style="font-weight: bold; color: #2563eb; width: 220px; text-align: center; background: #ffffff; border: 2px solid #e2e8f0;" 
-       placeholder="ES-COC/2026/03/001">
+        style="font-weight: bold; color: #2563eb; width: 220px; text-align: center; background: #ffffff; border: 2px solid #e2e8f0;" 
+        placeholder="ES-COC/2026/03/001">
                     </div>
                 </div>
 
@@ -449,33 +500,41 @@ td { padding: 16px; font-size: 0.85rem; border-bottom: 1px solid #f1f5f9; vertic
 
                 <button type="button" class="btn-add no-print" onclick="addNewRow()">➕ Tambah Titik Uji Baru</button>
                 <button class="btn-save no-print" onclick="saveCoc()">💾 SIMPAN & GENERATE COC DIGITAL</button>
-                <button type="button" class="btn-primary no-print" onclick="openSearchCoc()" style="background:#64748b; margin-bottom:10px;">📂 Buka COC Tersimpan</button>
             </div>
-        </div>
 
-            <div id="modalSearchCoc" class="no-print" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
-                <div style="background:white; width:80%; max-width:900px; border-radius:15px; padding:25px; max-height:80vh; overflow-y:auto;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
-                        <h3 style="margin:0;">📂 Pilih COC Tersimpan</h3>
-                        <button onclick="closeSearchCoc()" style="border:none; background:none; font-size:1.5rem; cursor:pointer;">&times;</button>
+            <!-- Bagian 2: COC Tersimpan -->
+            <div id="cocSavedContainer" class="coc-card" style="display: none;">
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f1f5f9; padding-bottom: 15px; margin-bottom: 25px;">
+                    <h3 style="color: #1e293b;">📂 COC Tersimpan</h3>
+                    <input type="text" id="searchKeyword" class="form-control" placeholder="Cari berdasarkan Nomor COC atau Nama Perusahaan..." style="width: 320px;">
+                </div>
+
+                <table style="width: 100%; font-size: 0.85rem;">
+                    <thead>
+                        <tr style="background: #f8fafc;">
+                            <th style="padding: 10px;">Tanggal</th>
+                            <th style="padding: 10px;">No. COC</th>
+                            <th style="padding: 10px;">Perusahaan</th>
+                            <th style="padding: 10px; text-align: center;">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody id="listCocSaved">
+                    </tbody>
+                </table>
+
+                <!-- Panel Paginasi -->
+                <div id="paginationControls" style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px; padding-top: 15px; border-top: 1px solid #f1f5f9; font-size: 0.85rem; flex-wrap: wrap; gap: 10px;">
+                    <div id="paginationInfo" style="color: #64748b; font-weight: 600;">
+                        Menampilkan 0 - 0 dari 0 data
                     </div>
-                    <div style="margin-bottom:15px;">
-                        <input type="text" id="searchKeyword" class="form-control" placeholder="Cari berdasarkan Nomor COC atau Nama Perusahaan..." oninput="fetchSavedCoc()">
+                    <div style="display: flex; gap: 5px; align-items: center;">
+                        <button id="btnPrevPage" class="page-btn">Sebelumnya</button>
+                        <div id="pageNumbers" style="display: flex; gap: 5px;"></div>
+                        <button id="btnNextPage" class="page-btn">Berikutnya</button>
                     </div>
-                    <table style="width:100%; font-size:0.85rem;">
-                        <thead>
-                            <tr style="background:#f8fafc;">
-                                <th style="padding:10px;">Tanggal</th>
-                                <th style="padding:10px;">No. COC</th>
-                                <th style="padding:10px;">Perusahaan</th>
-                                <th style="padding:10px; text-align:center;">Aksi</th>
-                            </tr>
-                        </thead>
-                        <tbody id="listCocSaved">
-                            </tbody>
-                    </table>
                 </div>
             </div>
+        </div>
 
             <div id="printArea" class="only-print">
     
@@ -630,7 +689,8 @@ td { padding: 16px; font-size: 0.85rem; border-bottom: 1px solid #f1f5f9; vertic
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="config.js"></script>
-    <script src="auth.js"></script> <script src="coc.js"></script>
+    <script src="auth.js?v=2"></script>
+    <script src="coc.js?v=2"></script>
 
 </body>
 </html>

@@ -16,28 +16,15 @@ loginForm.addEventListener('submit', async (e) => {
     const emailInternal = `${username}@lab.id`;
 
     try {
-        // 1. Cek apakah username ada di database (tabel profiles)
-        const { data: userProfile, error: checkError } = await _supabase
-            .from('profiles')
-            .select('username')
-            .eq('username', username)
-            .maybeSingle(); // Menggunakan maybeSingle() lebih aman daripada .single()
-
-        if (checkError || !userProfile) {
-            displayStatus("Username tidak terdaftar", "error");
-            toggleLoading(false);
-            return;
-        }
-
-        // 2. Jika username ada, baru coba login (cek password)
+        // 1. Langsung lakukan autentikasi ke Supabase Auth
         const { data, error: loginError } = await _supabase.auth.signInWithPassword({
             email: emailInternal,
             password: password
         });
 
         if (loginError) {
-            // Jika masuk ke sini, berarti username benar tapi password salah
-            displayStatus("Password yang Anda masukkan salah", "error");
+            // Jika masuk ke sini, berarti username atau password salah
+            displayStatus("Username atau password salah", "error");
             toggleLoading(false);
             return;
         }

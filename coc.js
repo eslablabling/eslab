@@ -1,3 +1,8 @@
+let currentCocTab = 'form';
+let currentPage = 1;
+const pageSize = 10;
+let filteredCocList = [];
+let rawCocListData = [];
 
 document.addEventListener('DOMContentLoaded', async () => {
     // 1. Cek Sesi Autentikasi
@@ -52,6 +57,36 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         });
 
+        // 6. Setup Paginasi & Pencarian COC Tersimpan
+        const searchKeyword = document.getElementById('searchKeyword');
+        if (searchKeyword) {
+            searchKeyword.addEventListener('input', (e) => {
+                fetchSavedCoc(e.target.value.toLowerCase());
+            });
+        }
+
+        const btnPrevPage = document.getElementById('btnPrevPage');
+        if (btnPrevPage) {
+            btnPrevPage.addEventListener('click', () => {
+                if (currentPage > 1) {
+                    currentPage--;
+                    renderCocTableRows();
+                    renderCocPaginationControls();
+                }
+            });
+        }
+
+        const btnNextPage = document.getElementById('btnNextPage');
+        if (btnNextPage) {
+            btnNextPage.addEventListener('click', () => {
+                const totalPages = Math.ceil(filteredCocList.length / pageSize);
+                if (currentPage < totalPages) {
+                    currentPage++;
+                    renderCocTableRows();
+                    renderCocPaginationControls();
+                }
+            });
+        }
 });
 
 async function generateCocNumber() {
@@ -536,30 +571,82 @@ function syncMethods(checkbox) {
     metodeInput.value = uniqueMethods.join("\n"); 
 }
 
-// --- FUNGSI MODAL ---
-function openSearchCoc() {
-    document.getElementById('modalSearchCoc').style.display = 'flex';
-    fetchSavedCoc();
-}
-
-function closeSearchCoc() {
-    document.getElementById('modalSearchCoc').style.display = 'none';
-}
-
-// --- AMBIL DATA DARI SUPABASE ---
-async function fetchSavedCoc() {
-    const keyword = document.getElementById('searchKeyword').value;
-    let query = _supabase.from('coc_emisi').select('*').order('created_at', { ascending: false }).limit(20);
-
-    if (keyword) {
-        query = query.or(`nomor_coc.ilike.%${keyword}%,company_name.ilike.%${keyword}%`);
+// --- TABS & TERSIMPAN LOGIC ---
+window.switchCocMainTab = function(tabName) {
+    currentCocTab = tabName;
+    
+    const btnForm = document.getElementById('tabFormRegistrasi');
+    const btnSaved = document.getElementById('tabCocTersimpan');
+    if (btnForm && btnSaved) {
+        btnForm.classList.toggle('active', tabName === 'form');
+        btnSaved.classList.toggle('active', tabName === 'saved');
     }
 
-    const { data, error } = await query;
-    const container = document.getElementById('listCocSaved');
-    container.innerHTML = '';
+    const formContainer = document.getElementById('cocFormContainer');
+    const savedContainer = document.getElementById('cocSavedContainer');
+    if (formContainer && savedContainer) {
+        formContainer.style.display = tabName === 'form' ? 'block' : 'none';
+        savedContainer.style.display = tabName === 'saved' ? 'block' : 'none';
+    }
 
-    data.forEach(item => {
+    if (tabName === 'saved') {
+        fetchSavedCoc();
+    }
+};
+
+window.goToCocPage = function(pageNumber) {
+    const totalPages = Math.ceil(filteredCocList.length / pageSize) || 1;
+    if (pageNumber >= 1 && pageNumber <= totalPages) {
+        currentPage = pageNumber;
+        renderCocTableRows();
+        renderCocPaginationControls();
+    }
+};
+
+async function fetchSavedCoc(keyword = '') {
+    try {
+        const { data, error } = await _supabase
+            .from('coc_emisi')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        rawCocListData = data;
+        
+        let filtered = rawCocListData;
+        if (keyword) {
+            filtered = filtered.filter(item => 
+                (item.nomor_coc && item.nomor_coc.toLowerCase().includes(keyword)) ||
+                (item.company_name && item.company_name.toLowerCase().includes(keyword))
+            );
+        }
+
+        filteredCocList = filtered;
+        currentPage = 1;
+
+        renderCocTableRows();
+        renderCocPaginationControls();
+    } catch (err) {
+        console.error("Error loading saved COC:", err);
+    }
+}
+
+function renderCocTableRows() {
+    const container = document.getElementById('listCocSaved');
+    if (!container) return;
+
+    const startIndex = (currentPage - 1) * pageSize;
+    const endIndex = Math.min(startIndex + pageSize, filteredCocList.length);
+    const paginated = filteredCocList.slice(startIndex, endIndex);
+
+    container.innerHTML = '';
+    if (paginated.length === 0) {
+        container.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:20px; color:#64748b;">Tidak ada data COC tersimpan.</td></tr>`;
+        return;
+    }
+
+    paginated.forEach(item => {
         container.innerHTML += `
             <tr>
                 <td style="padding:10px;">${new Date(item.sampling_date).toLocaleDateString('id-ID')}</td>
@@ -574,6 +661,43 @@ async function fetchSavedCoc() {
     });
 }
 
+function renderCocPaginationControls() {
+    const prevBtn = document.getElementById('btnPrevPage');
+    const nextBtn = document.getElementById('btnNextPage');
+    const pageNumbersContainer = document.getElementById('pageNumbers');
+    const infoContainer = document.getElementById('paginationInfo');
+
+    if (!prevBtn || !nextBtn || !pageNumbersContainer || !infoContainer) return;
+
+    const totalItems = filteredCocList.length;
+    const totalPages = Math.ceil(totalItems / pageSize) || 1;
+
+    prevBtn.disabled = currentPage === 1;
+    nextBtn.disabled = currentPage === totalPages;
+
+    const startRange = totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+    const endRange = Math.min(currentPage * pageSize, totalItems);
+    infoContainer.innerText = `Menampilkan ${startRange} - ${endRange} dari ${totalItems} data`;
+
+    let pagesHtml = "";
+    let startPage = Math.max(1, currentPage - 2);
+    let endPage = Math.min(totalPages, startPage + 4);
+    
+    if (endPage - startPage < 4) {
+        startPage = Math.max(1, endPage - 4);
+    }
+
+    for (let i = startPage; i <= endPage; i++) {
+        pagesHtml += `
+            <button class="page-btn ${i === currentPage ? 'active' : ''}" onclick="goToCocPage(${i})">
+                ${i}
+            </button>
+        `;
+    }
+
+    pageNumbersContainer.innerHTML = pagesHtml;
+}
+
 async function directPrint(id) {
     const { data, error } = await _supabase.from('coc_emisi').select('*').eq('id', id).single();
     
@@ -582,7 +706,6 @@ async function directPrint(id) {
         return;
     }
 
-    // Siapkan payload yang strukturnya sama dengan fungsi saveCoc
     const cocData = {
         nomor_coc: data.nomor_coc,
         company_name: data.company_name,
@@ -593,10 +716,8 @@ async function directPrint(id) {
         sampling_officer: data.sampling_officer
     };
 
-    // Panggil fungsi pengisi template yang kita buat sebelumnya
     fillPrintTemplate(cocData, data.samples_data);
 
-    // Beri sedikit jeda agar DOM ter-render sebelum jendela print muncul
     setTimeout(() => {
         window.print();
     }, 500);
@@ -618,7 +739,6 @@ async function loadCocToForm(id) {
     document.getElementById('tatRequest').value = data.tat_requested;
     document.getElementById('samplingDate').value = data.sampling_date;
 
-    // Load Officer (pecah kembali dari string)
     const officers = data.sampling_officer ? data.sampling_officer.split(', ') : [];
     document.getElementById('officer1').value = officers[0] || '';
     document.getElementById('officer2').value = officers[1] || '';
@@ -626,7 +746,7 @@ async function loadCocToForm(id) {
 
     // 2. Load Items (Titik Uji)
     const tbody = document.getElementById('cocBody');
-    tbody.innerHTML = ''; // Kosongkan tabel yang sekarang
+    tbody.innerHTML = '';
 
     for (const [index, item] of data.samples_data.entries()) {
         const row = document.createElement('tr');
@@ -652,17 +772,14 @@ async function loadCocToForm(id) {
         `;
         tbody.appendChild(row);
 
-        // Render Parameter dan centang yang tersimpan
         const tagContainer = row.querySelector('.selected-regulasi-tags');
-        await updateParametersByTags(tagContainer); // Panggil fungsi render param yang sudah ada
+        await updateParametersByTags(tagContainer);
 
-        // Centang parameter yang tersimpan
         item.parameters.forEach(p => {
             const cb = row.querySelector(`.param-checkbox[value="${p.parameter}"]`);
             if (cb) {
                 cb.checked = true;
                 renderMethodDropdown(cb);
-                // Set value dropdown metodenya
                 setTimeout(() => {
                     const sel = row.querySelector(`select[data-param="${p.parameter}"]`);
                     if (sel) sel.value = p.method;
@@ -670,7 +787,7 @@ async function loadCocToForm(id) {
             }
         });
     }
-        let existingPrintBtn = document.getElementById('extraPrintBtn');
+    let existingPrintBtn = document.getElementById('extraPrintBtn');
     if (!existingPrintBtn) {
         const printBtn = document.createElement('button');
         printBtn.id = 'extraPrintBtn';
@@ -682,7 +799,7 @@ async function loadCocToForm(id) {
         document.querySelector('.coc-card').appendChild(printBtn);
     }
 
-    closeSearchCoc();
+    switchCocMainTab('form');
     alert("Data COC berhasil dimuat!");
 }
 

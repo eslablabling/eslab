@@ -75,6 +75,21 @@ function renderSidebar(role) {
             }
         }
 
+// Fungsi Global untuk Logout
+async function processLogout() {
+    if (confirm("Apakah Anda yakin ingin keluar?")) {
+        // 1. Catat Log Logout dulu
+        await saveSecurityLog('LOGOUT');
+        
+        // 2. Hapus status session storage
+        sessionStorage.removeItem('logged_in_event');
+
+        // 3. Baru jalankan SignOut
+        await _supabase.auth.signOut();
+        window.location.href = "index.html";
+    }
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
     // 1. Inisialisasi Elemen UI
     const userNameEl = document.getElementById('userName');
@@ -140,21 +155,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // 4. Fungsi Render Sidebar Dinamis
         
-
-    // Di dalam fungsi processLogout()
-        async function processLogout() {
-            if (confirm("Apakah Anda yakin ingin keluar?")) {
-                // 1. Catat Log Logout dulu
-                await saveSecurityLog('LOGOUT');
-                
-                // 2. Hapus status session storage
-                sessionStorage.removeItem('logged_in_event');
-
-                // 3. Baru jalankan SignOut
-                await _supabase.auth.signOut();
-                window.location.href = "index.html";
-            }
-        }
 
     // 5. Event Listener Logout (Top Bar)
     if (btnLogout) {

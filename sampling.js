@@ -1,6 +1,11 @@
 let currentCocId = null;
 let samplesDataArray = [];
 let activeTab = 'identitas';
+let userRole = null;
+let currentFilterTab = 'belum_verif';
+let currentPage = 1;
+const pageSize = 10;
+let filteredSamplesList = [];
 
 document.addEventListener('DOMContentLoaded', async () => {
     // 1. Pastikan Sesi Auth Valid sebelum memuat data berat
@@ -11,11 +16,23 @@ document.addEventListener('DOMContentLoaded', async () => {
         return; 
     }
 
-    // 2. Jika sesi aman, muat data sampling
-    console.log("Sesi diverifikasi, memuat data sampling...");
+    // 2. AMBIL ROLE (Tunggu sampai dapat)
+    userRole = session.user.user_metadata?.role;
+    if (!userRole) {
+        const { data: profile } = await _supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', session.user.id)
+            .single();
+        userRole = profile?.role;
+    }
+
+    console.log("Role terkonfirmasi di sampling:", userRole);
+
+    // 3. Jika sesi aman, muat data sampling
     await fetchSamplingData();
 
-    // 3. Inisialisasi Event Listeners (Gunakan Optional Chaining ?. untuk keamanan)
+    // 4. Inisialisasi Event Listeners
     const searchBox = document.getElementById('searchBox');
     if (searchBox) {
         searchBox.addEventListener('input', (e) => fetchSamplingData(e.target.value));
@@ -40,7 +57,57 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (btnSaveSampling) {
         btnSaveSampling.addEventListener('click', saveAllSamplingData);
     }
+
+    // 5. Inisialisasi Paginasi
+    const btnPrevPage = document.getElementById('btnPrevPage');
+    if (btnPrevPage) {
+        btnPrevPage.addEventListener('click', () => {
+            if (currentPage > 1) {
+                currentPage--;
+                renderTableRows();
+                renderPaginationControls();
+            }
+        });
+    }
+
+    const btnNextPage = document.getElementById('btnNextPage');
+    if (btnNextPage) {
+        btnNextPage.addEventListener('click', () => {
+            const totalPages = Math.ceil(filteredSamplesList.length / pageSize);
+            if (currentPage < totalPages) {
+                currentPage++;
+                renderTableRows();
+                renderPaginationControls();
+            }
+        });
+    }
 });
+
+// Expose global functions to window
+window.switchSamplingTab = function(tabName) {
+    currentFilterTab = tabName;
+    currentPage = 1; // Reset to page 1
+    
+    // Update active class on buttons
+    const btnBelum = document.getElementById('tabBelumVerif');
+    const btnSudah = document.getElementById('tabSudahVerif');
+    if (btnBelum && btnSudah) {
+        btnBelum.classList.toggle('active', tabName === 'belum_verif');
+        btnSudah.classList.toggle('active', tabName === 'sudah_verif');
+    }
+    
+    // Refresh table view
+    fetchSamplingData(document.getElementById('searchBox')?.value || '');
+};
+
+window.goToPage = function(pageNumber) {
+    const totalPages = Math.ceil(filteredSamplesList.length / pageSize) || 1;
+    if (pageNumber >= 1 && pageNumber <= totalPages) {
+        currentPage = pageNumber;
+        renderTableRows();
+        renderPaginationControls();
+    }
+};
 
 // 1. Ambil data dari Supabase
 async function fetchSamplingData(keyword = '') {
@@ -49,29 +116,135 @@ async function fetchSamplingData(keyword = '') {
 
     const { data, error } = await query;
     if (error) return console.error("Fetch Error:", error);
-    renderTable(data);
+
+    // Saring data berdasarkan tab aktif secara lokal
+    const filteredData = data.filter(item => {
+        const status = item.status_sampling || 'Pending';
+        if (currentFilterTab === 'belum_verif') {
+            return status !== 'Verified';
+        } else {
+            return status === 'Verified';
+        }
+    });
+
+    filteredSamplesList = filteredData;
+    currentPage = 1;
+
+    renderTableRows();
+    renderPaginationControls();
 }
 
 // 2. Render Tabel Utama
-function renderTable(data) {
+function renderTableRows() {
     const tbody = document.getElementById('samplingTableBody');
-    tbody.innerHTML = data.map(item => {
+    if (!tbody) return;
+
+    const startIndex = (currentPage - 1) * pageSize;
+    const endIndex = Math.min(startIndex + pageSize, filteredSamplesList.length);
+    
+    const paginatedSamples = filteredSamplesList.slice(startIndex, endIndex);
+
+    if (paginatedSamples.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:30px; color:#64748b; font-weight:600;">Tidak ada data sampling.</td></tr>`;
+        return;
+    }
+
+    const canVerify = ['manager', 'admin_master'].includes(userRole);
+
+    tbody.innerHTML = paginatedSamples.map(item => {
         const total = item.samples_data ? item.samples_data.length : 0;
         const done = item.samples_data ? item.samples_data.filter(s => s.status === 'Done').length : 0;
+        const isVerified = item.status_sampling === 'Verified';
+        const isSelesai = item.status_sampling === 'Selesai';
+
+        // Styling Badge Status
+        let badgeClass = "badge-progress";
+        let statusLabel = item.status_sampling || 'Pending';
+        let badgeStyle = "";
+
+        if (isVerified) {
+            statusLabel = "🔒 Verified";
+            badgeStyle = "background: #eff6ff; color: #1d4ed8; border: 1px solid #dbeafe; padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 700;";
+        } else if (isSelesai) {
+            statusLabel = "Selesai";
+            badgeClass = "badge-done";
+        }
+
+        // Generate Tombol Aksi
+        let aksiHtml = '';
+        if (isVerified) {
+            // Lihat Data (ReadOnly = true)
+            aksiHtml += `<button class="btn-input" style="background:#f1f5f9; color:#475569; border:1px solid #cbd5e1;" onclick="openSamplingModal('${item.id}', true)">👁️ Lihat Data</button>`;
+            
+            // Tombol Batal Verif (hanya untuk Manager / Admin Master)
+            if (canVerify) {
+                aksiHtml += `<button class="btn-input" style="background:#fff1f2; color:#e11d48; border:1px solid #ffe4e6; margin-left:6px;" onclick="unverifikasiSampling('${item.id}', '${item.nomor_coc}')">🔓 Batal Verif</button>`;
+            }
+        } else {
+            // Input Data (ReadOnly = false)
+            aksiHtml += `<button class="btn-input" onclick="openSamplingModal('${item.id}', false)">📝 Input Data</button>`;
+            
+            // Tombol Verifikasi (hanya untuk Manager / Admin Master dan statusnya sudah 'Selesai')
+            if (isSelesai && canVerify) {
+                aksiHtml += `<button class="btn-input" style="background:#22c55e; color:white; border:none; margin-left:6px; box-shadow:0 4px 12px rgba(34, 197, 94, 0.2);" onclick="verifikasiSampling('${item.id}', '${item.nomor_coc}')">✅ Verifikasi</button>`;
+            }
+        }
+
         return `
             <tr style="border-bottom: 1px solid #eee;">
                 <td style="padding: 15px; font-weight: 800; color: #2563eb;">${item.nomor_coc}</td>
                 <td>${item.company_name}</td>
                 <td>${item.sampling_date || '-'}</td>
                 <td><small>${done} / ${total} Selesai</small></td>
-                <td><span class="status-badge ${item.status_sampling === 'Selesai' ? 'badge-done' : 'badge-progress'}">${item.status_sampling || 'Pending'}</span></td>
-                <td><button class="btn-input" onclick="openSamplingModal('${item.id}')">INPUT DATA</button></td>
+                <td><span class="status-badge ${badgeClass}" style="${badgeStyle}">${statusLabel}</span></td>
+                <td>
+                    <div style="display:flex; align-items:center;">
+                        ${aksiHtml}
+                    </div>
+                </td>
             </tr>`;
     }).join('');
 }
 
+function renderPaginationControls() {
+    const prevBtn = document.getElementById('btnPrevPage');
+    const nextBtn = document.getElementById('btnNextPage');
+    const pageNumbersContainer = document.getElementById('pageNumbers');
+    const infoContainer = document.getElementById('paginationInfo');
+
+    if (!prevBtn || !nextBtn || !pageNumbersContainer || !infoContainer) return;
+
+    const totalItems = filteredSamplesList.length;
+    const totalPages = Math.ceil(totalItems / pageSize) || 1;
+
+    prevBtn.disabled = currentPage === 1;
+    nextBtn.disabled = currentPage === totalPages;
+
+    const startRange = totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+    const endRange = Math.min(currentPage * pageSize, totalItems);
+    infoContainer.innerText = `Menampilkan ${startRange} - ${endRange} dari ${totalItems} data`;
+
+    let pagesHtml = "";
+    let startPage = Math.max(1, currentPage - 2);
+    let endPage = Math.min(totalPages, startPage + 4);
+    
+    if (endPage - startPage < 4) {
+        startPage = Math.max(1, endPage - 4);
+    }
+
+    for (let i = startPage; i <= endPage; i++) {
+        pagesHtml += `
+            <button class="page-btn ${i === currentPage ? 'active' : ''}" onclick="goToPage(${i})">
+                ${i}
+            </button>
+        `;
+    }
+
+    pageNumbersContainer.innerHTML = pagesHtml;
+}
+
 // 3. Logika Modal & Tab
-async function openSamplingModal(id) {
+async function openSamplingModal(id, readOnly = false) {
     const { data, error } = await _supabase.from('coc_emisi').select('*').eq('id', id).single();
     if (error) return alert("Gagal mengambil detail");
 
@@ -82,18 +255,102 @@ async function openSamplingModal(id) {
     document.getElementById('mdlNoCoc').innerText = data.nomor_coc;
     document.getElementById('mdlCompany').innerText = data.company_name;
     
-    renderTabNavigation();
-    renderSamplingForm();
+    renderTabNavigation(readOnly);
+    renderSamplingForm(readOnly);
+    
+    const btnSave = document.getElementById('btnSaveSampling');
+    if (btnSave) {
+        if (readOnly) {
+            btnSave.style.display = 'none';
+        } else {
+            btnSave.style.display = 'inline-block';
+        }
+    }
+    
     document.getElementById('modalSamplingInput').style.display = 'flex';
 }
 
-function renderTabNavigation() {
+function renderTabNavigation(readOnly = false) {
+    const isIdentitasIncomplete = samplesDataArray.some(s => 
+        !s.nama_cerobong?.trim() || 
+        !s.bahan_bakar?.trim() || 
+        !s.koordinat?.trim() || 
+        !s.tgl_sampling
+    );
+
+    const isGasIncomplete = samplesDataArray.some(s => {
+        const hasGasParams = s.parameters.some(p => {
+            const name = p.parameter.toUpperCase();
+            return ['NO', 'NO2', 'NOX', 'SO2', 'CO', 'O2', 'CO2', 'VELOCITY'].some(key => name.includes(key));
+        });
+        if (!hasGasParams) return false;
+        
+        if (!s.waktu_gas || !s.no_alat_gas?.trim() || !s.temp_gas || !s.tekanan_atm) return true;
+
+        return s.parameters.some(p => {
+            const name = p.parameter.toUpperCase();
+            const isGas = ['NO', 'NO2', 'NOX', 'SO2', 'CO', 'O2', 'CO2', 'VELOCITY'].some(key => name.includes(key));
+            if (!isGas) return false;
+            if (name.includes('NOX') || name.includes('NITROGEN OXIDE')) return false;
+            return p.konsentrasi_1 === undefined || p.konsentrasi_1 === '' ||
+                   p.konsentrasi_2 === undefined || p.konsentrasi_2 === '' ||
+                   p.konsentrasi_3 === undefined || p.konsentrasi_3 === '';
+        });
+    });
+
+    const isOpacityIncomplete = samplesDataArray.some(s => {
+        const hasOpacity = s.parameters.some(p => p.parameter.toUpperCase().includes('OPACITY') || p.parameter.toUpperCase().includes('OPASITAS'));
+        if (!hasOpacity) return false;
+
+        if (!s.jarak_pengamat_awal || !s.jarak_pengamat_akhir || !s.arah_pengamat_awal || !s.arah_pengamat_akhir ||
+            !s.warna_emisi_awal || !s.warna_emisi_akhir || !s.latar_asap_awal || !s.latar_asap_akhir ||
+            !s.kondisi_langit_awal || !s.kondisi_langit_akhir || !s.temp_ambien_awal || !s.temp_ambien_akhir ||
+            !s.kelembaban_awal || !s.kelembaban_akhir || !s.kec_angin_awal || !s.kec_angin_akhir ||
+            !s.arah_angin_awal || !s.arah_angin_akhir || !s.opasitas_mulai || !s.opasitas_akhir) {
+            return true;
+        }
+
+        if (!s.opasitas_matrix) return true;
+        for (let r = 0; r < 6; r++) {
+            for (let c = 0; c < 4; c++) {
+                if (s.opasitas_matrix[r][c] === undefined || s.opasitas_matrix[r][c] === '') return true;
+            }
+        }
+        return false;
+    });
+
+    const isIsokineticIncomplete = samplesDataArray.some(s => {
+        const hasIsokinetic = s.parameters.some(p => {
+            const name = p.parameter.toUpperCase();
+            return ['VELOCITY', 'WATER VAPOR', 'ISOKINETIC', 'PARTICULATE'].some(k => name.includes(k));
+        });
+        if (!hasIsokinetic) return false;
+
+        return s.parameters.some(p => {
+            const name = p.parameter.toUpperCase();
+            const isTech = ['VELOCITY', 'VOLUMETRIC FLOW RATE', 'WATER VAPOR', 'NUM OF TRAVERSE POINT', 'PERCENT OF ISOKINETIC'].some(k => name.includes(k));
+            const isParticulate = name.includes('PARTICULATE');
+
+            if (isTech && (p.konsentrasi_1 === undefined || p.konsentrasi_1 === '')) return true;
+            if (isParticulate && (!p.no_filter || p.volume_meter === undefined || p.volume_meter === '')) return true;
+            return false;
+        });
+    });
+
     const navHtml = `
         <div class="modal-tabs" style="display: flex; gap: 5px; margin-bottom: 20px; border-bottom: 2px solid #f1f5f9; padding-bottom: 10px; overflow-x: auto;">
-            <button class="tab-btn ${activeTab === 'identitas' ? 'active' : ''}" onclick="switchTab('identitas')">📋 IDENTITAS & METEO</button>
-            <button class="tab-btn ${activeTab === 'gas' ? 'active' : ''}" onclick="switchTab('gas')">📟 GAS DIRECT</button>
-            <button class="tab-btn ${activeTab === 'opacity' ? 'active' : ''}" onclick="switchTab('opacity')">☁️ OPASITAS</button>
-            <button class="tab-btn ${activeTab === 'isokinetic' ? 'active' : ''}" onclick="switchTab('isokinetic')">🏗️ ISOKINETIK</button>
+            <button class="tab-btn ${activeTab === 'identitas' ? 'active' : ''}" onclick="switchTab('identitas', ${readOnly})">
+                📋 IDENTITAS & METEO ${isIdentitasIncomplete ? '<span style="color:#ef4444; font-weight:bold; margin-left:4px;">⚠️</span>' : ''}
+            </button>
+            <button class="tab-btn ${activeTab === 'gas' ? 'active' : ''}" onclick="switchTab('gas', ${readOnly})">
+                📟 GAS DIRECT ${isGasIncomplete ? '<span style="color:#ef4444; font-weight:bold; margin-left:4px;">⚠️</span>' : ''}
+            </button>
+            <button class="tab-btn ${activeTab === 'opacity' ? 'active' : ''}" onclick="switchTab('opacity', ${readOnly})">
+                ☁️ OPASITAS ${isOpacityIncomplete ? '<span style="color:#ef4444; font-weight:bold; margin-left:4px;">⚠️</span>' : ''}
+            </button>
+            <button class="tab-btn ${activeTab === 'isokinetic' ? 'active' : ''}" onclick="switchTab('isokinetic', ${readOnly})">
+                🏗️ ISOKINETIK ${isIsokineticIncomplete ? '<span style="color:#ef4444; font-weight:bold; margin-left:4px;">⚠️</span>' : ''}
+            </button>
         </div>
     `;
     const container = document.getElementById('samplingDetailContainer');
@@ -104,39 +361,210 @@ function renderTabNavigation() {
     }
 }
 
-function switchTab(tabName) {
+function switchTab(tabName, readOnly = false) {
     activeTab = tabName;
-    renderTabNavigation();
-    renderSamplingForm();
+    renderTabNavigation(readOnly);
+    renderSamplingForm(readOnly);
 }
 
-// 4. Render Form Berdasarkan Tab
-function renderSamplingForm() {
+function renderSamplingForm(readOnly = false) {
     const container = document.getElementById('samplingDetailContainer');
+    const disabledAttr = readOnly ? 'disabled style="background: #f1f5f9; cursor: not-allowed;"' : '';
     
-    container.innerHTML = samplesDataArray.map((s, idx) => {
+    // --- EVALUATE INCOMPLETE FIELDS FOR WARNING BANNER ---
+    const missingFields = [];
+
+    if (activeTab === 'identitas') {
+        const checkMap = {
+            'nama_cerobong': 'Nama Cerobong',
+            'bahan_bakar': 'Bahan Bakar',
+            'koordinat': 'Koordinat',
+            'tgl_sampling': 'Tgl Sampling',
+            'temp_ambien': 'Ambien (°C)',
+            'kelembaban': 'Lembab (%)',
+            'kec_angin': 'Kec. Angin (m/s)',
+            'catatan_cuaca': 'Cuaca'
+        };
+        const missingSet = new Set();
+        samplesDataArray.forEach(s => {
+            Object.keys(checkMap).forEach(key => {
+                const val = s[key];
+                if (val === undefined || val === null || (typeof val === 'string' && val.trim() === '')) {
+                    missingSet.add(checkMap[key]);
+                }
+            });
+        });
+        if (missingSet.size > 0) {
+            missingFields.push(...missingSet);
+        }
+    }
+
+    if (activeTab === 'gas') {
+        const headerMap = {
+            'waktu_gas': 'Waktu Gas Analyzer',
+            'no_alat_gas': 'No. Alat Gas Analyzer',
+            'temp_gas': 'Suhu Gas (°C)',
+            'tekanan_atm': 'Tekanan ATM (mmHg)'
+        };
+        const missingSet = new Set();
+        samplesDataArray.forEach(s => {
+            Object.keys(headerMap).forEach(key => {
+                const val = s[key];
+                if (val === undefined || val === null || (typeof val === 'string' && val.trim() === '')) {
+                    missingSet.add(headerMap[key]);
+                }
+            });
+
+            const hasGasParams = s.parameters.some(p => {
+                const name = p.parameter.toUpperCase();
+                return ['NO', 'NO2', 'NOX', 'SO2', 'CO', 'O2', 'CO2', 'VELOCITY'].some(key => name.includes(key));
+            });
+            if (hasGasParams) {
+                s.parameters.forEach(p => {
+                    const name = p.parameter.toUpperCase();
+                    const isGas = ['NO', 'NO2', 'NOX', 'SO2', 'CO', 'O2', 'CO2', 'VELOCITY'].some(key => name.includes(key));
+                    if (!isGas) return;
+                    if (name.includes('NOX') || name.includes('NITROGEN OXIDE')) return;
+                    
+                    if (p.konsentrasi_1 === undefined || p.konsentrasi_1 === '' ||
+                        p.konsentrasi_2 === undefined || p.konsentrasi_2 === '' ||
+                        p.konsentrasi_3 === undefined || p.konsentrasi_3 === '') {
+                        missingSet.add(`Hasil Pembacaan Gas (${p.parameter})`);
+                    }
+                });
+            }
+        });
+        if (missingSet.size > 0) {
+            missingFields.push(...missingSet);
+        }
+    }
+
+    if (activeTab === 'opacity') {
+        const opacityMap = {
+            'jarak_pengamat_awal': 'Jarak Pengamat Awal',
+            'jarak_pengamat_akhir': 'Jarak Pengamat Akhir',
+            'arah_pengamat_awal': 'Arah Pengamat Awal',
+            'arah_pengamat_akhir': 'Arah Pengamat Akhir',
+            'warna_emisi_awal': 'Warna Emisi Awal',
+            'warna_emisi_akhir': 'Warna Emisi Akhir',
+            'latar_asap_awal': 'Latar Belakang Awal',
+            'latar_asap_akhir': 'Latar Belakang Akhir',
+            'kondisi_langit_awal': 'Kondisi Langit Awal',
+            'kondisi_langit_akhir': 'Kondisi Langit Akhir',
+            'temp_ambien_awal': 'Temp Ambien Awal',
+            'temp_ambien_akhir': 'Temp Ambien Akhir',
+            'kelembaban_awal': 'Kelembaban Awal',
+            'kelembaban_akhir': 'Kelembaban Akhir',
+            'kec_angin_awal': 'Kec. Angin Awal',
+            'kec_angin_akhir': 'Kec. Angin Akhir',
+            'arah_angin_awal': 'Arah Angin Awal',
+            'arah_angin_akhir': 'Arah Angin Akhir',
+            'opasitas_mulai': 'Opasitas Waktu Mulai',
+            'opasitas_akhir': 'Opasitas Waktu Akhir'
+        };
+        const missingSet = new Set();
+        samplesDataArray.forEach(s => {
+            const hasOpacity = s.parameters.some(p => p.parameter.toUpperCase().includes('OPACITY') || p.parameter.toUpperCase().includes('OPASITAS'));
+            if (!hasOpacity) return;
+
+            Object.keys(opacityMap).forEach(key => {
+                const val = s[key];
+                if (val === undefined || val === null || (typeof val === 'string' && val.trim() === '')) {
+                    missingSet.add(opacityMap[key]);
+                }
+            });
+
+            let matrixIncomplete = false;
+            if (!s.opasitas_matrix) {
+                matrixIncomplete = true;
+            } else {
+                for (let r = 0; r < 6; r++) {
+                    for (let c = 0; c < 4; c++) {
+                        if (s.opasitas_matrix[r][c] === undefined || s.opasitas_matrix[r][c] === '') {
+                            matrixIncomplete = true;
+                            break;
+                        }
+                    }
+                    if (matrixIncomplete) break;
+                }
+            }
+            if (matrixIncomplete) {
+                missingSet.add('Tabel Matrix Pembacaan Opasitas');
+            }
+        });
+        if (missingSet.size > 0) {
+            missingFields.push(...missingSet);
+        }
+    }
+
+    if (activeTab === 'isokinetic') {
+        const missingSet = new Set();
+        samplesDataArray.forEach(s => {
+            const hasIsokinetic = s.parameters.some(p => {
+                const name = p.parameter.toUpperCase();
+                return ['VELOCITY', 'WATER VAPOR', 'ISOKINETIC', 'PARTICULATE'].some(k => name.includes(k));
+            });
+            if (!hasIsokinetic) return;
+
+            s.parameters.forEach(p => {
+                const name = p.parameter.toUpperCase();
+                const isTech = ['VELOCITY', 'VOLUMETRIC FLOW RATE', 'WATER VAPOR', 'NUM OF TRAVERSE POINT', 'PERCENT OF ISOKINETIC'].some(k => name.includes(k));
+                const isParticulate = name.includes('PARTICULATE');
+
+                if (isTech && (p.konsentrasi_1 === undefined || p.konsentrasi_1 === '')) {
+                    missingSet.add(`Konsentrasi ${p.parameter}`);
+                }
+                if (isParticulate) {
+                    if (!p.no_filter) {
+                        missingSet.add(`No. Filter ${p.parameter}`);
+                    }
+                    if (p.volume_meter === undefined || p.volume_meter === '') {
+                        missingSet.add(`Vol Gas Meter ${p.parameter}`);
+                    }
+                }
+            });
+        });
+        if (missingSet.size > 0) {
+            missingFields.push(...missingSet);
+        }
+    }
+
+    let warningBannerHtml = "";
+    if (missingFields.length > 0) {
+        warningBannerHtml = `
+            <div style="background: #fffbeb; border: 1.5px solid #f59e0b; border-radius: 8px; padding: 12px 15px; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; box-shadow: 0 2px 4px rgba(245, 158, 11, 0.05);">
+                <span style="font-size: 1.3rem;">⚠️</span>
+                <div style="font-size: 0.8rem; color: #b45309; font-weight: 600; line-height: 1.4;">
+                    Beberapa kolom pengisian belum lengkap pada tab ini: 
+                    <span style="font-weight: 800; color: #92400e;">${missingFields.join(', ')}</span>.
+                </div>
+            </div>
+        `;
+    }
+
+    const cardsHtml = samplesDataArray.map((s, idx) => {
         // --- LOGIKA AWAL (Identitas & Meteo) ---
         if (activeTab === 'identitas') {
             return `
             <div class="sampling-card-item">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
                     <h4 style="margin:0; color:#0f172a;">📍 ${s.sample_id} - ${s.description || ''}</h4>
-                    <select class="inp-field" style="width:120px; font-weight:700;" onchange="updateLocalData(${idx}, 'status', this.value)">
+                    <select class="inp-field" style="width:120px; font-weight:700;" ${disabledAttr} onchange="updateLocalData(${idx}, 'status', this.value)">
                         <option value="Pending" ${s.status === 'Pending' ? 'selected' : ''}>Pending</option>
                         <option value="Done" ${s.status === 'Done' ? 'selected' : ''}>Done</option>
                     </select>
                 </div>
                 <div class="grid-field">
-                    <div><label class="input-label">Nama Cerobong</label><input type="text" class="inp-field" value="${s.nama_cerobong || s.description || ''}" oninput="updateLocalData(${idx}, 'nama_cerobong', this.value)"></div>
-                    <div><label class="input-label">Bahan Bakar</label><input type="text" class="inp-field" value="${s.bahan_bakar || ''}" oninput="updateLocalData(${idx}, 'bahan_bakar', this.value)"></div>
-                    <div><label class="input-label">Koordinat</label><input type="text" class="inp-field" value="${s.koordinat || ''}" oninput="updateLocalData(${idx}, 'koordinat', this.value)"></div>
-                    <div><label class="input-label">Tgl Sampling</label><input type="date" class="inp-field" value="${s.tgl_sampling || ''}" oninput="updateLocalData(${idx}, 'tgl_sampling', this.value)"></div>
+                    <div><label class="input-label">Nama Cerobong</label><input type="text" class="inp-field" ${disabledAttr} value="${s.nama_cerobong || s.description || ''}" oninput="updateLocalData(${idx}, 'nama_cerobong', this.value)"></div>
+                    <div><label class="input-label">Bahan Bakar</label><input type="text" class="inp-field" ${disabledAttr} value="${s.bahan_bakar || ''}" oninput="updateLocalData(${idx}, 'bahan_bakar', this.value)"></div>
+                    <div><label class="input-label">Koordinat</label><input type="text" class="inp-field" ${disabledAttr} value="${s.koordinat || ''}" oninput="updateLocalData(${idx}, 'koordinat', this.value)"></div>
+                    <div><label class="input-label">Tgl Sampling</label><input type="date" class="inp-field" ${disabledAttr} value="${s.tgl_sampling || ''}" oninput="updateLocalData(${idx}, 'tgl_sampling', this.value)"></div>
                 </div>
                 <div style="background:#f8fafc; padding:15px; border-radius:10px; margin-top:15px; display:grid; grid-template-columns:repeat(4,1fr); gap:10px; border: 1px solid #e2e8f0;">
-                    <div><label class="input-label">Ambien (°C)</label><input type="number" step="0.1" class="inp-field" value="${s.temp_ambien || ''}" oninput="updateLocalData(${idx}, 'temp_ambien', this.value)"></div>
-                    <div><label class="input-label">Lembab (%)</label><input type="number" step="0.1" class="inp-field" value="${s.kelembaban || ''}" oninput="updateLocalData(${idx}, 'kelembaban', this.value)"></div>
-                    <div><label class="input-label">Kec. Angin (m/s)</label><input type="number" step="0.1" class="inp-field" value="${s.kec_angin || ''}" oninput="updateLocalData(${idx}, 'kec_angin', this.value)"></div>
-                    <div><label class="input-label">Cuaca</label><input type="text" class="inp-field" placeholder="Cerah" value="${s.catatan_cuaca || ''}" oninput="updateLocalData(${idx}, 'catatan_cuaca', this.value)"></div>
+                    <div><label class="input-label">Ambien (°C)</label><input type="number" step="0.1" class="inp-field" ${disabledAttr} value="${s.temp_ambien || ''}" oninput="updateLocalData(${idx}, 'temp_ambien', this.value)"></div>
+                    <div><label class="input-label">Lembab (%)</label><input type="number" step="0.1" class="inp-field" ${disabledAttr} value="${s.kelembaban || ''}" oninput="updateLocalData(${idx}, 'kelembaban', this.value)"></div>
+                    <div><label class="input-label">Kec. Angin (m/s)</label><input type="number" step="0.1" class="inp-field" ${disabledAttr} value="${s.kec_angin || ''}" oninput="updateLocalData(${idx}, 'kec_angin', this.value)"></div>
+                    <div><label class="input-label">Cuaca</label><input type="text" class="inp-field" ${disabledAttr} placeholder="Cerah" value="${s.catatan_cuaca || ''}" oninput="updateLocalData(${idx}, 'catatan_cuaca', this.value)"></div>
                 </div>
             </div>`;
         }
@@ -213,6 +641,8 @@ function renderSamplingForm() {
 
                 if (paramName.includes("Oxygen") || paramName.includes("CO2")) {
                     displayHtml = `<span style="font-size:0.75rem; color:#166534; font-weight:800; background:#f0fdf4; padding:3px 10px; border-radius:6px; border:1px solid #bbf7d0;">Average: ${currentAvg.toFixed(2)} %</span>`;
+                } else if (paramName.toUpperCase().includes("VELOCITY")) {
+                    displayHtml = `<span style="font-size:0.75rem; color:#334155; font-weight:800; background:#f8fafc; padding:3px 10px; border-radius:6px; border:1px solid #e2e8f0;">Average: ${currentAvg.toFixed(2)} m/s</span>`;
                 } else if (isNox) {
                     const mgNO = parseFloat(calculateGasMg("Nitrogen Monoxide (NO)", getAvgVal(noObj))) || 0;
                     const mgNO2 = parseFloat(calculateGasMg("Nitrogen Dioxide (NO2)", getAvgVal(no2Obj))) || 0;
@@ -234,9 +664,9 @@ function renderSamplingForm() {
                 <div style="border-bottom:1px solid #f1f5f9; padding:12px 0;">
                     <div style="display:grid; grid-template-columns:1.5fr 1fr 1fr 1fr; gap:12px; align-items:center; padding:0 10px;">
                         <div style="font-size:0.8rem; font-weight:700; color:#1e293b;">${paramName}</div>
-                        <input type="number" step="0.01" class="inp-field" id="inp-${idx}-${actualPIdx}-konsentrasi_1" value="${currentP.konsentrasi_1 || ''}" ${isNox ? 'readonly style="background:#f1f5f9;"' : ''} onchange="updateParamFieldWithLogic(${idx}, ${actualPIdx}, 'konsentrasi_1', this.value)">
-                        <input type="number" step="0.01" class="inp-field" id="inp-${idx}-${actualPIdx}-konsentrasi_2" value="${currentP.konsentrasi_2 || ''}" ${isNox ? 'readonly style="background:#f1f5f9;"' : ''} onchange="updateParamFieldWithLogic(${idx}, ${actualPIdx}, 'konsentrasi_2', this.value)">
-                        <input type="number" step="0.01" class="inp-field" id="inp-${idx}-${actualPIdx}-konsentrasi_3" value="${currentP.konsentrasi_3 || ''}" ${isNox ? 'readonly style="background:#f1f5f9;"' : ''} onchange="updateParamFieldWithLogic(${idx}, ${actualPIdx}, 'konsentrasi_3', this.value)">
+                        <input type="number" step="0.01" class="inp-field" ${disabledAttr} id="inp-${idx}-${actualPIdx}-konsentrasi_1" value="${currentP.konsentrasi_1 || ''}" ${isNox ? 'readonly style="background:#f1f5f9;"' : ''} onchange="updateParamFieldWithLogic(${idx}, ${actualPIdx}, 'konsentrasi_1', this.value)">
+                        <input type="number" step="0.01" class="inp-field" ${disabledAttr} id="inp-${idx}-${actualPIdx}-konsentrasi_2" value="${currentP.konsentrasi_2 || ''}" ${isNox ? 'readonly style="background:#f1f5f9;"' : ''} onchange="updateParamFieldWithLogic(${idx}, ${actualPIdx}, 'konsentrasi_2', this.value)">
+                        <input type="number" step="0.01" class="inp-field" ${disabledAttr} id="inp-${idx}-${actualPIdx}-konsentrasi_3" value="${currentP.konsentrasi_3 || ''}" ${isNox ? 'readonly style="background:#f1f5f9;"' : ''} onchange="updateParamFieldWithLogic(${idx}, ${actualPIdx}, 'konsentrasi_3', this.value)">
                     </div>
                     <div id="display-container-${idx}-${actualPIdx}" style="display:flex; justify-content:flex-end; margin-top:8px; padding:0 15px;">
                         ${displayHtml}
@@ -254,8 +684,8 @@ function renderSamplingForm() {
                     <div style="background:#f0fdf4; padding:12px; border-radius:0 0 8px 8px; margin-bottom:15px; border: 1px solid #bbf7d0; border-top:none; display:flex; justify-content:space-between; align-items:center;">
                         <span style="font-weight:700; color:#166534; font-size:0.8rem;">📟 GAS ANALYZER</span>
                         <div style="display:flex; gap:8px;">
-                            <input type="time" class="inp-field" style="width:100px; height:30px;" value="${s.waktu_gas || ''}" oninput="updateLocalData(${idx}, 'waktu_gas', this.value)">
-                            <input type="text" class="inp-field" style="width:100px; height:30px;" placeholder="No. Alat" value="${s.no_alat_gas || ''}" oninput="updateLocalData(${idx}, 'no_alat_gas', this.value)">
+                            <input type="time" class="inp-field" ${disabledAttr} style="width:100px; height:30px;" value="${s.waktu_gas || ''}" oninput="updateLocalData(${idx}, 'waktu_gas', this.value)">
+                            <input type="text" class="inp-field" ${disabledAttr} style="width:100px; height:30px;" placeholder="No. Alat" value="${s.no_alat_gas || ''}" oninput="updateLocalData(${idx}, 'no_alat_gas', this.value)">
                         </div>
                     </div>
                     <div style="display:grid; grid-template-columns:1.5fr 1fr 1fr 1fr; gap:10px; margin-bottom:10px; padding:0 10px;">
@@ -266,16 +696,16 @@ function renderSamplingForm() {
                         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px;">
                             <div>
                                 <label style="font-size:0.65rem; font-weight:800; color:#475569; display:block; margin-bottom:5px;">SUHU GAS (°C)</label>
-                                <input type="number" step="0.1" class="inp-field" value="${s.temp_gas || ''}" oninput="updateLocalData(${idx}, 'temp_gas', this.value)">
+                                <input type="number" step="0.1" class="inp-field" ${disabledAttr} value="${s.temp_gas || ''}" oninput="updateLocalData(${idx}, 'temp_gas', this.value)">
                             </div>
                             <div>
                                 <label style="font-size:0.65rem; font-weight:800; color:#475569; display:block; margin-bottom:5px;">TEKANAN ATM (mmHg)</label>
-                                <input type="number" step="0.1" class="inp-field" value="${s.tekanan_atm || ''}" oninput="updateLocalData(${idx}, 'tekanan_atm', this.value)">
+                                <input type="number" step="0.1" class="inp-field" ${disabledAttr} value="${s.tekanan_atm || ''}" oninput="updateLocalData(${idx}, 'tekanan_atm', this.value)">
                             </div>
                         </div>
                     </div>
                 </div>`;
-        } // <--- Pastikan ini adalah penutup activeTab === 'gas'
+        } 
 
         // --- TAB 3: OPASITAS (Kondisi Lingkungan Awal/Akhir + Matrix Pembacaan) ---
         if (activeTab === 'opacity') {
@@ -303,63 +733,63 @@ function renderSamplingForm() {
                             <tbody class="opasitas-input-grid">
                                 <tr>
                                     <td>Jarak Pengamat (m)</td>
-                                    <td><input type="number" class="inp-field" value="${s.jarak_pengamat_awal || ''}" oninput="updateLocalData(${idx}, 'jarak_pengamat_awal', this.value)"></td>
-                                    <td><input type="number" class="inp-field" value="${s.jarak_pengamat_akhir || ''}" oninput="updateLocalData(${idx}, 'jarak_pengamat_akhir', this.value)"></td>
+                                    <td><input type="number" class="inp-field" ${disabledAttr} value="${s.jarak_pengamat_awal || ''}" oninput="updateLocalData(${idx}, 'jarak_pengamat_awal', this.value)"></td>
+                                    <td><input type="number" class="inp-field" ${disabledAttr} value="${s.jarak_pengamat_akhir || ''}" oninput="updateLocalData(${idx}, 'jarak_pengamat_akhir', this.value)"></td>
                                 </tr>
                                 <tr>
                                     <td>Arah Pengamat</td>
-                                    <td><input type="text" class="inp-field" value="${s.arah_pengamat_awal || ''}" oninput="updateLocalData(${idx}, 'arah_pengamat_awal', this.value)"></td>
-                                    <td><input type="text" class="inp-field" value="${s.arah_pengamat_akhir || ''}" oninput="updateLocalData(${idx}, 'arah_pengamat_akhir', this.value)"></td>
+                                    <td><input type="text" class="inp-field" ${disabledAttr} value="${s.arah_pengamat_awal || ''}" oninput="updateLocalData(${idx}, 'arah_pengamat_awal', this.value)"></td>
+                                    <td><input type="text" class="inp-field" ${disabledAttr} value="${s.arah_pengamat_akhir || ''}" oninput="updateLocalData(${idx}, 'arah_pengamat_akhir', this.value)"></td>
                                 </tr>
                                 <tr>
                                     <td>Warna Emisi</td>
-                                    <td><input type="text" class="inp-field" value="${s.warna_emisi_awal || ''}" oninput="updateLocalData(${idx}, 'warna_emisi_awal', this.value)"></td>
-                                    <td><input type="text" class="inp-field" value="${s.warna_emisi_akhir || ''}" oninput="updateLocalData(${idx}, 'warna_emisi_akhir', this.value)"></td>
+                                    <td><input type="text" class="inp-field" ${disabledAttr} value="${s.warna_emisi_awal || ''}" oninput="updateLocalData(${idx}, 'warna_emisi_awal', this.value)"></td>
+                                    <td><input type="text" class="inp-field" ${disabledAttr} value="${s.warna_emisi_akhir || ''}" oninput="updateLocalData(${idx}, 'warna_emisi_akhir', this.value)"></td>
                                 </tr>
                                 <tr>
                                     <td>Latar Belakang</td>
-                                    <td><input type="text" class="inp-field" value="${s.latar_asap_awal || ''}" oninput="updateLocalData(${idx}, 'latar_asap_awal', this.value)"></td>
-                                    <td><input type="text" class="inp-field" value="${s.latar_asap_akhir || ''}" oninput="updateLocalData(${idx}, 'latar_asap_akhir', this.value)"></td>
+                                    <td><input type="text" class="inp-field" ${disabledAttr} value="${s.latar_asap_awal || ''}" oninput="updateLocalData(${idx}, 'latar_asap_awal', this.value)"></td>
+                                    <td><input type="text" class="inp-field" ${disabledAttr} value="${s.latar_asap_akhir || ''}" oninput="updateLocalData(${idx}, 'latar_asap_akhir', this.value)"></td>
                                 </tr>
                                 <tr>
                                     <td>Kondisi Langit</td>
-                                    <td><input type="text" class="inp-field" value="${s.kondisi_langit_awal || ''}" oninput="updateLocalData(${idx}, 'kondisi_langit_awal', this.value)"></td>
-                                    <td><input type="text" class="inp-field" value="${s.kondisi_langit_akhir || ''}" oninput="updateLocalData(${idx}, 'kondisi_langit_akhir', this.value)"></td>
+                                    <td><input type="text" class="inp-field" ${disabledAttr} value="${s.kondisi_langit_awal || ''}" oninput="updateLocalData(${idx}, 'kondisi_langit_awal', this.value)"></td>
+                                    <td><input type="text" class="inp-field" ${disabledAttr} value="${s.kondisi_langit_akhir || ''}" oninput="updateLocalData(${idx}, 'kondisi_langit_akhir', this.value)"></td>
                                 </tr>
                                 <tr>
                                     <td>Temp Ambien (°C)</td>
-                                    <td><input type="number" class="inp-field" value="${s.temp_ambien_awal || ''}" oninput="updateLocalData(${idx}, 'temp_ambien_awal', this.value)"></td>
-                                    <td><input type="number" class="inp-field" value="${s.temp_ambien_akhir || ''}" oninput="updateLocalData(${idx}, 'temp_ambien_akhir', this.value)"></td>
+                                    <td><input type="number" class="inp-field" ${disabledAttr} value="${s.temp_ambien_awal || ''}" oninput="updateLocalData(${idx}, 'temp_ambien_awal', this.value)"></td>
+                                    <td><input type="number" class="inp-field" ${disabledAttr} value="${s.temp_ambien_akhir || ''}" oninput="updateLocalData(${idx}, 'temp_ambien_akhir', this.value)"></td>
                                 </tr>
                                 <tr>
                                     <td>Kelembaban (%)</td>
-                                    <td><input type="number" class="inp-field" value="${s.kelembaban_awal || ''}" oninput="updateLocalData(${idx}, 'kelembaban_awal', this.value)"></td>
-                                    <td><input type="number" class="inp-field" value="${s.kelembaban_akhir || ''}" oninput="updateLocalData(${idx}, 'kelembaban_akhir', this.value)"></td>
+                                    <td><input type="number" class="inp-field" ${disabledAttr} value="${s.kelembaban_awal || ''}" oninput="updateLocalData(${idx}, 'kelembaban_awal', this.value)"></td>
+                                    <td><input type="number" class="inp-field" ${disabledAttr} value="${s.kelembaban_akhir || ''}" oninput="updateLocalData(${idx}, 'kelembaban_akhir', this.value)"></td>
                                 </tr>
                                 <tr>
                                     <td>Kec. Angin (m/s)</td>
-                                    <td><input type="number" step="0.1" class="inp-field" value="${s.kec_angin_awal || ''}" oninput="updateLocalData(${idx}, 'kec_angin_awal', this.value)"></td>
-                                    <td><input type="number" step="0.1" class="inp-field" value="${s.kec_angin_akhir || ''}" oninput="updateLocalData(${idx}, 'kec_angin_akhir', this.value)"></td>
+                                    <td><input type="number" step="0.1" class="inp-field" ${disabledAttr} value="${s.kec_angin_awal || ''}" oninput="updateLocalData(${idx}, 'kec_angin_awal', this.value)"></td>
+                                    <td><input type="number" step="0.1" class="inp-field" ${disabledAttr} value="${s.kec_angin_akhir || ''}" oninput="updateLocalData(${idx}, 'kec_angin_akhir', this.value)"></td>
                                 </tr>
                                 <tr>
                                     <td>Arah Angin</td>
-                                    <td><input type="text" class="inp-field" value="${s.arah_angin_awal || ''}" oninput="updateLocalData(${idx}, 'arah_angin_awal', this.value)"></td>
-                                    <td><input type="text" class="inp-field" value="${s.arah_angin_akhir || ''}" oninput="updateLocalData(${idx}, 'arah_angin_akhir', this.value)"></td>
+                                    <td><input type="text" class="inp-field" ${disabledAttr} value="${s.arah_angin_awal || ''}" oninput="updateLocalData(${idx}, 'arah_angin_awal', this.value)"></td>
+                                    <td><input type="text" class="inp-field" ${disabledAttr} value="${s.arah_angin_akhir || ''}" oninput="updateLocalData(${idx}, 'arah_angin_akhir', this.value)"></td>
                                 </tr>
                             </tbody>
                         </table>
                         <div style="margin-top:10px;">
                             <label class="input-label">Deskripsi Emisi</label>
-                            <textarea class="inp-field" style="height:40px;" placeholder="Deskripsi tambahan..." oninput="updateLocalData(${idx}, 'desc_emisi', this.value)">${s.desc_emisi || ''}</textarea>
+                            <textarea class="inp-field" style="height:40px;" ${disabledAttr} placeholder="Deskripsi tambahan..." oninput="updateLocalData(${idx}, 'desc_emisi', this.value)">${s.desc_emisi || ''}</textarea>
                         </div>
                     </div>
 
                     <h4 style="color:#065f46; font-size:0.8rem; margin-bottom:10px; display:flex; align-items:center; gap:5px;">
                         📊 HASIL PEMBACAAN (DETIK)
                         <div style="display:flex; gap:5px; margin-left:auto;">
-                            <input type="time" class="inp-field" style="width:90px; height:25px; font-size:0.7rem;" value="${s.opasitas_mulai || ''}" oninput="updateLocalData(${idx}, 'opasitas_mulai', this.value)">
+                            <input type="time" class="inp-field" ${disabledAttr} style="width:90px; height:25px; font-size:0.7rem;" value="${s.opasitas_mulai || ''}" oninput="updateLocalData(${idx}, 'opasitas_mulai', this.value)">
                             <span style="font-size:0.7rem; color:#64748b;">s/d</span>
-                            <input type="time" class="inp-field" style="width:90px; height:25px; font-size:0.7rem;" value="${s.opasitas_akhir || ''}" oninput="updateLocalData(${idx}, 'opasitas_akhir', this.value)">
+                            <input type="time" class="inp-field" ${disabledAttr} style="width:90px; height:25px; font-size:0.7rem;" value="${s.opasitas_akhir || ''}" oninput="updateLocalData(${idx}, 'opasitas_akhir', this.value)">
                         </div>
                     </h4>
 
@@ -384,13 +814,13 @@ function renderSamplingForm() {
                                         <td style="background:#f1f5f9; font-weight:bold; border:1px solid #cbd5e1;">${m}</td>
                                         ${[0,1,2,3].map(dIdx => `
                                             <td style="border:1px solid #cbd5e1; padding:0;">
-                                                <input type="number" class="inp-table" style="text-align:center;" 
+                                                <input type="number" class="inp-table" style="text-align:center;" ${disabledAttr} 
                                                     value="${s.opasitas_matrix[mIdx][dIdx] || ''}" 
                                                     oninput="updateOpasitasMatrix(${idx}, ${mIdx}, ${dIdx}, this.value)">
                                             </td>
                                         `).join('')}
                                         <td style="border:1px solid #cbd5e1; padding:0;">
-                                            <input type="text" class="inp-table" placeholder="..." 
+                                            <input type="text" class="inp-table" placeholder="..." ${disabledAttr} 
                                                 value="${s['opasitas_ket_'+m] || ''}" 
                                                 oninput="updateLocalData(${idx}, 'opasitas_ket_${m}', this.value)">
                                         </td>
@@ -453,7 +883,7 @@ function renderSamplingForm() {
                                 return `
                                 <div style="display: grid; grid-template-columns: 1.5fr 1fr; gap: 10px; margin-bottom: 12px; align-items: center;">
                                     <span style="font-size: 0.75rem; font-weight: 700; color: #475569;">${p.parameter} (${p.displayUnit})</span>
-                                    <input type="number" step="0.0001" class="inp-field" 
+                                    <input type="number" step="0.0001" class="inp-field" ${disabledAttr} 
                                         style="${isoStyle}"
                                         value="${p.konsentrasi_1 || ''}" 
                                         oninput="updateParamFieldWithCalc(${idx}, ${pIdx}, 'konsentrasi_1', this.value, '${p.parameter}')">
@@ -474,13 +904,13 @@ function renderSamplingForm() {
                                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                                         <div>
                                             <label class="input-label">No. Filter</label>
-                                            <input type="text" class="inp-field" style="background: #fff; font-weight: 600;" 
+                                            <input type="text" class="inp-field" ${disabledAttr} style="background: #fff; font-weight: 600;" 
                                                 value="${currentFilterVal}" 
                                                 oninput="updateParamField(${idx}, ${pIdx}, 'no_filter', this.value)">
                                         </div>
                                         <div>
                                             <label class="input-label">Vol Gas Meter (m³)</label>
-                                            <input type="number" step="0.0001" class="inp-field" 
+                                            <input type="number" step="0.0001" class="inp-field" ${disabledAttr} 
                                                 value="${p.volume_meter || ''}" 
                                                 oninput="updateParamField(${idx}, ${pIdx}, 'volume_meter', this.value)">
                                         </div>
@@ -492,6 +922,7 @@ function renderSamplingForm() {
                 </div>`;
             }
     }).join('');
+    container.innerHTML = warningBannerHtml + cardsHtml;
 }
 
 function updateParamFieldWithCalc(sampleIdx, paramIdx, key, val, paramName) {
@@ -533,6 +964,7 @@ function updateParamFieldWithCalc(sampleIdx, paramIdx, key, val, paramName) {
             s.parameters[gasVelocityIdx][key] = val;
         }
     }
+    triggerTabCompletenessUpdate();
 }
 
 const PARAM_CONFIG = {
@@ -553,12 +985,18 @@ function getParamCategory(paramName) {
 }
 
 
+function triggerTabCompletenessUpdate() {
+    const isReadOnly = document.getElementById('btnSaveSampling')?.style.display === 'none';
+    renderTabNavigation(isReadOnly);
+}
+
 function updateOpasitasMatrix(idx, menitIdx, detikIdx, val) {
     if (!samplesDataArray[idx].opasitas_matrix) {
         samplesDataArray[idx].opasitas_matrix = Array(6).fill().map(() => Array(4).fill(''));
     }
     samplesDataArray[idx].opasitas_matrix[menitIdx][detikIdx] = val;
     calculateOpasitasAverage(idx);
+    triggerTabCompletenessUpdate();
 }
 
 // 5. Helper Functions
@@ -574,10 +1012,12 @@ function syncGasFields(sampleIdx, key, val) {
 function updateParamField(sampleIdx, paramIdx, key, val) {
     if (!samplesDataArray[sampleIdx].parameters[paramIdx]) samplesDataArray[sampleIdx].parameters[paramIdx] = {};
     samplesDataArray[sampleIdx].parameters[paramIdx][key] = val;
+    triggerTabCompletenessUpdate();
 }
 
 function updateLocalData(idx, key, val) {
     samplesDataArray[idx][key] = val;
+    triggerTabCompletenessUpdate();
 }
 
 async function saveAllSamplingData() {
@@ -728,6 +1168,7 @@ function updateParamFieldWithLogic(sampleIdx, paramIdx, key, val) {
 
     // Update label hasil (mg/Nm3) untuk baris yang sedang diketik
     updateSingleDisplay(sampleIdx, paramIdx);
+    triggerTabCompletenessUpdate();
 }
 function updateSingleDisplay(sampleIdx, paramIdx) {
     const s = samplesDataArray[sampleIdx];
@@ -750,7 +1191,7 @@ function updateSingleDisplay(sampleIdx, paramIdx) {
     if (pName.includes("Oxygen") || pName.includes("Carbon Dioxide")) {
         html = `<span style="font-size:0.75rem; color:#166534; font-weight:800; background:#f0fdf4; padding:3px 10px; border-radius:6px; border:1px solid #bbf7d0;">Average: ${currentAvg.toFixed(2)} %</span>`;
     } 
-    else if (pName === "Velocity") {
+    else if (pName.toUpperCase().includes("VELOCITY")) {
         html = `<span style="font-size:0.75rem; color:#334155; font-weight:800; background:#f8fafc; padding:3px 10px; border-radius:6px; border:1px solid #e2e8f0;">Average: ${currentAvg.toFixed(2)} m/s</span>`;
     } 
     else {
@@ -793,3 +1234,76 @@ const getParamByKey = (params, key) => {
         return cleanName.includes(cleanKey);
     });
 };
+
+async function verifikasiSampling(id, nomorCoc) {
+    if (!confirm(`Apakah Anda yakin ingin memverifikasi data sampling untuk COC ${nomorCoc}? Data ini akan dikunci dan tidak bisa diedit.`)) return;
+
+    try {
+        const { error } = await _supabase
+            .from('coc_emisi')
+            .update({ 
+                status_sampling: 'Verified',
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', id);
+
+        if (error) throw error;
+
+        // Log audit
+        const { data: { session } } = await _supabase.auth.getSession();
+        if (session) {
+            await _supabase.from('audit_logs').insert([{
+                user_id: session.user.id,
+                username: session.user.email,
+                action_type: 'VERIFY_SAMPLING',
+                table_name: 'coc_emisi',
+                description: `Memverifikasi data sampling untuk COC ${nomorCoc}`,
+                new_data: { status_sampling: 'Verified' }
+            }]);
+        }
+
+        alert("Data sampling berhasil diverifikasi!");
+        fetchSamplingData();
+    } catch (err) {
+        alert("Gagal memverifikasi: " + err.message);
+    }
+}
+
+async function unverifikasiSampling(id, nomorCoc) {
+    if (!confirm(`Apakah Anda yakin ingin membatalkan verifikasi data sampling untuk COC ${nomorCoc}? Status akan kembali menjadi 'Selesai' dan data dapat diedit kembali.`)) return;
+
+    try {
+        const { error } = await _supabase
+            .from('coc_emisi')
+            .update({ 
+                status_sampling: 'Selesai',
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', id);
+
+        if (error) throw error;
+
+        // Log audit
+        const { data: { session } } = await _supabase.auth.getSession();
+        if (session) {
+            await _supabase.from('audit_logs').insert([{
+                user_id: session.user.id,
+                username: session.user.email,
+                action_type: 'UNVERIFY_SAMPLING',
+                table_name: 'coc_emisi',
+                description: `Membatalkan verifikasi data sampling untuk COC ${nomorCoc}`,
+                new_data: { status_sampling: 'Selesai' }
+            }]);
+        }
+
+        alert("Verifikasi data sampling berhasil dibatalkan!");
+        fetchSamplingData();
+    } catch (err) {
+        alert("Gagal membatalkan verifikasi: " + err.message);
+    }
+}
+
+// Bind to window for HTML onclick attributes
+window.verifikasiSampling = verifikasiSampling;
+window.unverifikasiSampling = unverifikasiSampling;
+window.openSamplingModal = openSamplingModal;;

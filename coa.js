@@ -1,3 +1,9 @@
+let userRole = null;
+let currentFilterTab = 'belum_verif';
+let currentPage = 1;
+const pageSize = 10;
+let filteredSamplesList = [];
+let rawCoAListData = [];
 
 document.addEventListener('DOMContentLoaded', async () => {
     // 1. Ambil user secara mandiri
@@ -9,6 +15,17 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
         user = session.user;
+
+        userRole = session.user.user_metadata?.role;
+        if (!userRole) {
+            const { data: profile } = await _supabase
+                .from('profiles')
+                .select('role')
+                .eq('id', session.user.id)
+                .single();
+            userRole = profile?.role;
+        }
+        console.log("Role terkonfirmasi di COA:", userRole);
     } catch (e) {
         console.error("Auth Error:", e);
         return;
@@ -25,13 +42,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     const urlParams = new URLSearchParams(window.location.search);
     const docId = urlParams.get('id');
 
-    // --- PERUBAHAN DI SINI ---
     if (!docId) {
         // Jika tidak ada ID di URL, tampilkan daftar semua CoA yang tersedia
         renderCoAList(); 
         return;
     }
-    // -------------------------
 
     // 4. Ambil data spesifik dari Supabase (Jika docId ada)
     try {
@@ -74,13 +89,98 @@ function exportToExcel(data) {
     XLSX.writeFile(workbook, `Rekap_CoA_ESLab_${new Date().toISOString().split('T')[0]}.xlsx`);
 }
 
-// 2. Fungsi renderCoAList yang sudah ditambahkan tombol Export
+// 2. Fungsi renderCoAList yang sudah ditambahkan tombol Export, Search, Tabs, dan Paginasi
 async function renderCoAList() {
     const area = document.getElementById('coaRenderArea');
-    area.innerHTML = `<div style="text-align:center; padding:50px;">🔍 Mencari daftar sertifikat...</div>`;
+    
+    area.innerHTML = `
+        <div style="max-width: 900px; margin: 0 auto; padding: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px;">
+                <h2 style="color: var(--primary); font-weight: 800; letter-spacing: -0.02em; margin: 0;">Daftar Sertifikat (CoA)</h2>
+                <input type="text" id="searchCoA" placeholder="Cari No. Quotation atau Perusahaan..." style="padding: 10px 16px; border: 1px solid #cbd5e1; border-radius: 8px; font-family: inherit; width: 300px;">
+            </div>
 
+            <!-- Tab Filter Status CoA -->
+            <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                <button id="tabBelumVerif" class="tab-btn ${currentFilterTab === 'belum_verif' ? 'active' : ''}" onclick="switchCoATab('belum_verif')">⏳ Belum Verifikasi</button>
+                <button id="tabSudahVerif" class="tab-btn ${currentFilterTab === 'sudah_verif' ? 'active' : ''}" onclick="switchCoATab('sudah_verif')">✅ Sudah Verifikasi</button>
+            </div>
+
+            <div style="background: white; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead style="background: #f8fafc; border-bottom: 1px solid #e2e8f0;">
+                        <tr>
+                            <th style="padding: 15px; text-align: left; font-size: 0.75rem; text-transform: uppercase; color: #64748b; font-weight: 800;">No. Quotation</th>
+                            <th style="padding: 15px; text-align: left; font-size: 0.75rem; text-transform: uppercase; color: #64748b; font-weight: 800;">Nama Perusahaan</th>
+                            <th style="padding: 15px; text-align: center; font-size: 0.75rem; text-transform: uppercase; color: #64748b; font-weight: 800; width: 300px;">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody id="coaTableBody">
+                        <tr>
+                            <td colspan="3" style="text-align: center; padding: 40px; color: #64748b;">
+                                Memuat data...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <!-- Panel Paginasi -->
+                <div id="paginationControls" style="display: flex; justify-content: space-between; align-items: center; padding: 15px; border-top: 1px solid #f1f5f9; font-size: 0.85rem; flex-wrap: wrap; gap: 10px;">
+                    <div id="paginationInfo" style="color: #64748b; font-weight: 600;">
+                        Menampilkan 0 - 0 dari 0 data
+                    </div>
+                    <div style="display: flex; gap: 5px; align-items: center;">
+                        <button id="btnPrevPage" class="page-btn">Sebelumnya</button>
+                        <div id="pageNumbers" style="display: flex; gap: 5px;"></div>
+                        <button id="btnNextPage" class="page-btn">Berikutnya</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="margin-top: 20px; display: flex; justify-content: flex-end;">
+                <button onclick="exportCoAList()" class="btn-print" style="font-size: 0.8rem; padding: 10px 20px;">📊 Export Rekap Excel</button>
+            </div>
+        </div>
+    `;
+
+    // Bind search event listener
+    const searchBox = document.getElementById('searchCoA');
+    if (searchBox) {
+        searchBox.addEventListener('input', (e) => {
+            fetchCoAList(e.target.value.toLowerCase());
+        });
+    }
+
+    // Bind pagination listeners
+    const btnPrevPage = document.getElementById('btnPrevPage');
+    if (btnPrevPage) {
+        btnPrevPage.addEventListener('click', () => {
+            if (currentPage > 1) {
+                currentPage--;
+                renderCoATableRows();
+                renderCoAPaginationControls();
+            }
+        });
+    }
+
+    const btnNextPage = document.getElementById('btnNextPage');
+    if (btnNextPage) {
+        btnNextPage.addEventListener('click', () => {
+            const totalPages = Math.ceil(filteredSamplesList.length / pageSize);
+            if (currentPage < totalPages) {
+                currentPage++;
+                renderCoATableRows();
+                renderCoAPaginationControls();
+            }
+        });
+    }
+
+    // Ambil data pertama kali
+    await fetchCoAList();
+}
+
+async function fetchCoAList(keyword = '') {
     try {
-        // Ambil data tanpa filter .eq() ketat agar kita bisa debug
         const { data, error } = await _supabase
             .from('coc_emisi')
             .select('id, company_name, qt_no, updated_at, status_sampling')
@@ -88,53 +188,230 @@ async function renderCoAList() {
 
         if (error) throw error;
 
-        // Filter di JavaScript agar tidak sensitif terhadap huruf besar/kecil atau spasi
-        const dataSelesai = data.filter(item => 
-            item.status_sampling && item.status_sampling.trim().toLowerCase() === 'selesai'
-        );
+        rawCoAListData = data;
 
-        if (dataSelesai.length === 0) {
-            area.innerHTML = `
-                <div style="text-align:center; padding:50px; color:var(--text-muted);">
-                    <h3>Data Tidak Ditemukan</h3>
-                    <p>Status yang ada di database saat ini: <b>${[...new Set(data.map(d => d.status_sampling))].join(', ') || 'Kosong'}</b></p>
-                </div>`;
-            return;
+        // Filter locally by tab and keyword
+        let filtered = rawCoAListData.filter(item => {
+            const status = item.status_sampling ? item.status_sampling.trim().toLowerCase() : 'pending';
+            const isVerified = status === 'verified';
+            const isSelesai = status === 'selesai';
+
+            if (currentFilterTab === 'belum_verif') {
+                return isSelesai;
+            } else {
+                return isVerified;
+            }
+        });
+
+        // Filter locally by search keyword
+        if (keyword) {
+            filtered = filtered.filter(item => 
+                (item.qt_no && item.qt_no.toLowerCase().includes(keyword)) ||
+                (item.company_name && item.company_name.toLowerCase().includes(keyword))
+            );
         }
 
-        // Render Tabel (Gunakan dataSelesai)
-        area.innerHTML = `
-            <div style="max-width: 900px; margin: 0 auto; padding: 20px;">
-                <h2 style="color: var(--primary);">Daftar Sertifikat (CoA)</h2>
-                <div style="background: white; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden;">
-                    <table style="width: 100%; border-collapse: collapse;">
-                        <thead style="background: #f8fafc;">
-                            <tr>
-                                <th style="padding: 15px; text-align: left;">No. Quotation</th>
-                                <th style="padding: 15px; text-align: left;">Nama Perusahaan</th>
-                                <th style="padding: 15px; text-align: center;">Aksi</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${dataSelesai.map(item => `
-                                <tr style="border-bottom: 1px solid #f1f5f9;">
-                                    <td style="padding: 15px; font-family: monospace;">${item.qt_no}</td>
-                                    <td style="padding: 15px; font-weight: 600;">${item.company_name}</td>
-                                    <td style="padding: 15px; text-align: center;">
-                                        <a href="coa.html?id=${item.id}" style="background: var(--primary); color: white; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-size: 0.8rem;">Buka CoA 📄</a>
-                                    </td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                </div>
-            </div>`;
+        filteredSamplesList = filtered;
+        currentPage = 1;
 
+        renderCoATableRows();
+        renderCoAPaginationControls();
     } catch (err) {
-        console.error("Error:", err);
-        area.innerHTML = `<div style="text-align:center; color:red; padding:50px;">Gagal memuat: ${err.message}</div>`;
+        console.error("Error fetching CoA list:", err);
+        const tbody = document.getElementById('coaTableBody');
+        if (tbody) {
+            tbody.innerHTML = `<tr><td colspan="3" style="text-align:center; color:red; padding:30px;">Gagal memuat data: ${err.message}</td></tr>`;
+        }
     }
 }
+
+function renderCoATableRows() {
+    const tbody = document.getElementById('coaTableBody');
+    if (!tbody) return;
+
+    const startIndex = (currentPage - 1) * pageSize;
+    const endIndex = Math.min(startIndex + pageSize, filteredSamplesList.length);
+    const paginated = filteredSamplesList.slice(startIndex, endIndex);
+
+    if (paginated.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="3" style="text-align:center; padding:30px; color:#64748b;">Tidak ada data sertifikat (CoA).</td></tr>`;
+        return;
+    }
+
+    const canVerify = ['manager', 'admin_master'].includes(userRole);
+
+    tbody.innerHTML = paginated.map(item => {
+        const isVerified = (item.status_sampling || '').trim().toLowerCase() === 'verified';
+
+        let verifyBtnHtml = '';
+        if (canVerify) {
+            if (isVerified) {
+                verifyBtnHtml = `
+                    <button onclick="unverifikasiCoASampling('${item.id}', '${item.qt_no}')" 
+                            style="background: #fff1f2; color: #e11d48; border: 1px solid #ffe4e6; padding: 6px 12px; border-radius: 6px; font-size: 0.8rem; font-weight: 700; cursor: pointer; margin-right: 6px;">
+                        🔓 Batal Verif
+                    </button>
+                `;
+            } else {
+                verifyBtnHtml = `
+                    <button onclick="verifikasiCoASampling('${item.id}', '${item.qt_no}')" 
+                            style="background: #22c55e; color: white; border: none; padding: 6px 12px; border-radius: 6px; font-size: 0.8rem; font-weight: 700; cursor: pointer; margin-right: 6px; box-shadow: 0 2px 4px rgba(34,197,94,0.2);">
+                        ✅ Verifikasi
+                    </button>
+                `;
+            }
+        }
+
+        return `
+            <tr style="border-bottom: 1px solid #f1f5f9;">
+                <td style="padding: 15px; font-family: monospace;">${item.qt_no || '-'}</td>
+                <td style="padding: 15px; font-weight: 600;">${item.company_name}</td>
+                <td style="padding: 15px; text-align: center; white-space: nowrap;">
+                    <div style="display: flex; align-items: center; justify-content: center;">
+                        ${verifyBtnHtml}
+                        <a href="coa.html?id=${item.id}" style="background: var(--primary); color: white; padding: 6px 12px; border-radius: 6px; text-decoration: none; font-size: 0.8rem; font-weight: 700;">
+                            Buka CoA 📄
+                        </a>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function renderCoAPaginationControls() {
+    const prevBtn = document.getElementById('btnPrevPage');
+    const nextBtn = document.getElementById('btnNextPage');
+    const pageNumbersContainer = document.getElementById('pageNumbers');
+    const infoContainer = document.getElementById('paginationInfo');
+
+    if (!prevBtn || !nextBtn || !pageNumbersContainer || !infoContainer) return;
+
+    const totalItems = filteredSamplesList.length;
+    const totalPages = Math.ceil(totalItems / pageSize) || 1;
+
+    prevBtn.disabled = currentPage === 1;
+    nextBtn.disabled = currentPage === totalPages;
+
+    const startRange = totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+    const endRange = Math.min(currentPage * pageSize, totalItems);
+    infoContainer.innerText = `Menampilkan ${startRange} - ${endRange} dari ${totalItems} data`;
+
+    let pagesHtml = "";
+    let startPage = Math.max(1, currentPage - 2);
+    let endPage = Math.min(totalPages, startPage + 4);
+    
+    if (endPage - startPage < 4) {
+        startPage = Math.max(1, endPage - 4);
+    }
+
+    for (let i = startPage; i <= endPage; i++) {
+        pagesHtml += `
+            <button class="page-btn ${i === currentPage ? 'active' : ''}" onclick="goToCoAPage(${i})">
+                ${i}
+            </button>
+        `;
+    }
+
+    pageNumbersContainer.innerHTML = pagesHtml;
+}
+
+window.switchCoATab = function(tabName) {
+    currentFilterTab = tabName;
+    currentPage = 1;
+    
+    const tabBelum = document.getElementById('tabBelumVerif');
+    const tabSudah = document.getElementById('tabSudahVerif');
+    if (tabBelum && tabSudah) {
+        tabBelum.classList.toggle('active', tabName === 'belum_verif');
+        tabSudah.classList.toggle('active', tabName === 'sudah_verif');
+    }
+    
+    fetchCoAList(document.getElementById('searchCoA')?.value || '');
+};
+
+window.goToCoAPage = function(pageNumber) {
+    const totalPages = Math.ceil(filteredSamplesList.length / pageSize) || 1;
+    if (pageNumber >= 1 && pageNumber <= totalPages) {
+        currentPage = pageNumber;
+        renderCoATableRows();
+        renderCoAPaginationControls();
+    }
+};
+
+window.exportCoAList = function() {
+    exportToExcel(filteredSamplesList);
+};
+
+async function verifikasiCoASampling(id, nomorCoc) {
+    if (!confirm(`Apakah Anda yakin ingin memverifikasi sertifikat untuk quotation ${nomorCoc}? Status sampling akan diubah menjadi Verified.`)) return;
+
+    try {
+        const { error } = await _supabase
+            .from('coc_emisi')
+            .update({ 
+                status_sampling: 'Verified',
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', id);
+
+        if (error) throw error;
+
+        const { data: { session } } = await _supabase.auth.getSession();
+        if (session) {
+            await _supabase.from('audit_logs').insert([{
+                user_id: session.user.id,
+                username: session.user.email,
+                action_type: 'VERIFY_COA',
+                table_name: 'coc_emisi',
+                description: `Memverifikasi sertifikat (CoA) untuk quotation ${nomorCoc}`,
+                new_data: { status_sampling: 'Verified' }
+            }]);
+        }
+
+        alert("Data sertifikat berhasil diverifikasi!");
+        fetchCoAList(document.getElementById('searchCoA')?.value || '');
+    } catch (err) {
+        alert("Gagal memverifikasi: " + err.message);
+    }
+}
+
+async function unverifikasiCoASampling(id, nomorCoc) {
+    if (!confirm(`Apakah Anda yakin ingin membatalkan verifikasi sertifikat untuk quotation ${nomorCoc}? Status akan kembali menjadi Selesai.`)) return;
+
+    try {
+        const { error } = await _supabase
+            .from('coc_emisi')
+            .update({ 
+                status_sampling: 'Selesai',
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', id);
+
+        if (error) throw error;
+
+        const { data: { session } } = await _supabase.auth.getSession();
+        if (session) {
+            await _supabase.from('audit_logs').insert([{
+                user_id: session.user.id,
+                username: session.user.email,
+                action_type: 'UNVERIFY_COA',
+                table_name: 'coc_emisi',
+                description: `Membatalkan verifikasi sertifikat (CoA) untuk quotation ${nomorCoc}`,
+                new_data: { status_sampling: 'Selesai' }
+            }]);
+        }
+
+        alert("Verifikasi data sertifikat berhasil dibatalkan!");
+        fetchCoAList(document.getElementById('searchCoA')?.value || '');
+    } catch (err) {
+        alert("Gagal membatalkan verifikasi: " + err.message);
+    }
+}
+
+// Bind window functions
+window.verifikasiCoASampling = verifikasiCoASampling;
+window.unverifikasiCoASampling = unverifikasiCoASampling;
 
 function renderCoA(data) {
     const area = document.getElementById('coaRenderArea');

@@ -4,6 +4,11 @@
 
 let currentEditSample = { dbId: null, sampleId: null };
 let userRole = null;
+let currentFilterTab = 'belum_selesai';
+let currentPage = 1;
+const pageSize = 10;
+let filteredSamplesList = [];
+
 document.addEventListener('DOMContentLoaded', async () => {
     // 1. Pastikan Session Ada
     const { data: { session } } = await _supabase.auth.getSession();
@@ -13,9 +18,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // 2. AMBIL ROLE (Tunggu sampai dapat)
-    // Coba ambil dari metadata dulu, jika tidak ada ambil dari table profiles
     userRole = session.user.user_metadata?.role;
-
     if (!userRole) {
         const { data: profile } = await _supabase
             .from('profiles')
@@ -25,7 +28,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         userRole = profile?.role;
     }
 
-    // Simpan ke sessionStorage agar bisa dipakai fungsi lain tanpa await lagi
     if (userRole) {
         sessionStorage.setItem('userRole', userRole);
     }
@@ -36,28 +38,257 @@ document.addEventListener('DOMContentLoaded', async () => {
     fetchAntreanAnalisa();
 
     // Listener lainnya...
-    document.getElementById('searchAnalisa').addEventListener('input', (e) => {
-        fetchAntreanAnalisa(e.target.value.toLowerCase());
-    });
+    const searchAnalisa = document.getElementById('searchAnalisa');
+    if (searchAnalisa) {
+        searchAnalisa.addEventListener('input', (e) => {
+            fetchAntreanAnalisa(e.target.value.toLowerCase());
+        });
+    }
+
+    // 4. Listener untuk Paginasi
+    const btnPrevPage = document.getElementById('btnPrevPage');
+    if (btnPrevPage) {
+        btnPrevPage.addEventListener('click', () => {
+            if (currentPage > 1) {
+                currentPage--;
+                renderTableRows();
+                renderPaginationControls();
+            }
+        });
+    }
+
+    const btnNextPage = document.getElementById('btnNextPage');
+    if (btnNextPage) {
+        btnNextPage.addEventListener('click', () => {
+            const totalPages = Math.ceil(filteredSamplesList.length / pageSize);
+            if (currentPage < totalPages) {
+                currentPage++;
+                renderTableRows();
+                renderPaginationControls();
+            }
+        });
+    }
 });
+
+// Expose global functions to window
+window.switchAnalisaTab = function(tabName) {
+    currentFilterTab = tabName;
+    currentPage = 1;
+    
+    // Update active class on buttons
+    document.getElementById('tabBelumSelesai').classList.toggle('active', tabName === 'belum_selesai');
+    document.getElementById('tabSudahSelesai').classList.toggle('active', tabName === 'sudah_selesai');
+    
+    // Refresh table view
+    fetchAntreanAnalisa(document.getElementById('searchAnalisa')?.value || '');
+};
+
+window.goToPage = function(pageNumber) {
+    const totalPages = Math.ceil(filteredSamplesList.length / pageSize) || 1;
+    if (pageNumber >= 1 && pageNumber <= totalPages) {
+        currentPage = pageNumber;
+        renderTableRows();
+        renderPaginationControls();
+    }
+};
+
+function renderTableRows() {
+    const tableBody = document.getElementById('analisaTableBody');
+    if (!tableBody) return;
+
+    const startIndex = (currentPage - 1) * pageSize;
+    const endIndex = Math.min(startIndex + pageSize, filteredSamplesList.length);
+    
+    const paginatedSamples = filteredSamplesList.slice(startIndex, endIndex);
+
+    if (paginatedSamples.length === 0) {
+        tableBody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:50px; color:var(--text-muted);">Tidak ada antrean analisa.</td></tr>`;
+        return;
+    }
+
+    const canVerify = ['manager', 'admin_master'].includes(userRole);
+
+    tableBody.innerHTML = paginatedSamples.map(item => {
+        const isDone = item.status_lab === 'analyzed';
+        const isVerified = item.status_lab === 'verified';
+        let tglAnalisaDisplay = "";
+        if (item.analyzed_at) {
+            const d = new Date(item.analyzed_at);
+            tglAnalisaDisplay = d.toLocaleDateString('id-ID', { 
+                day: '2-digit', 
+                month: 'short', 
+                year: 'numeric' 
+            });
+        }
+        
+        // Warna badge mengikuti status
+        let labColor = '#f1f5f9';
+        let labTextColor = '#64748b';
+        let labText = '🔹 DIRECT READING';
+
+        if (item.needLab) {
+            if (isVerified) {
+                labColor = '#dcfce7'; // Hijau muda
+                labTextColor = '#15803d';
+                labText = '🔒 TERVERIFIKASI';
+            } else if (isDone) {
+                labColor = '#f0fdf4';
+                labTextColor = '#166534';
+                labText = '✅ ANALISA SELESAI';
+            } else {
+                labColor = '#fff7ed';
+                labTextColor = '#c2410c';
+                labText = '⏳ TUNGGU PARTIKULAT';
+            }
+        }
+
+        const pPart = item.parameters.find(p => p.parameter.toLowerCase().includes('particulate'));
+        let displayVolume = 'V.DGM: -';
+        let displayHasil = '-';
+        let metodeLabel = '';
+
+        const hitungAvg = (val1, val2) => {
+            const n1 = parseFloat(val1) || 0;
+            const n2 = parseFloat(val2) || 0;
+            if (n1 > 0 && n2 > 0) return (n1 + n2) / 2;
+            return n1 || n2;
+        };
+        
+        if (pPart) {
+            const vDgm = parseFloat(pPart.volume_meter || 0);
+            displayVolume = `V.DGM: ${vDgm.toFixed(4)} m³`;
+            metodeLabel = pPart.method || '';
+
+            if (pPart.grav_data) {
+                const d = pPart.grav_data;
+                const isSNI2021 = metodeLabel.includes('7117-21:2021');
+
+                const fAwal = hitungAvg(d.s_f_awal_1, d.s_f_awal_2);
+                const fAkhir = hitungAvg(d.s_f_akhir_1, d.s_f_akhir_2);
+                let totalNetGram = fAkhir - fAwal;
+
+                if (!isSNI2021) {
+                    const cAwal = hitungAvg(d.s_c_awal_1, d.s_c_awal_2);
+                    const cAkhir = hitungAvg(d.s_c_akhir_1, d.s_c_akhir_2);
+                    totalNetGram += (cAkhir - cAwal);
+                }
+
+                const totalNetMg = totalNetGram * 1000;
+
+                if (vDgm > 0) {
+                    const konsentrasi = (totalNetMg / vDgm).toFixed(2);
+                    if (totalNetMg < 0) {
+                        displayHasil = `<span style="color: #ef4444; font-weight: bold;">${konsentrasi} mg/m³ ⚠️</span>`;
+                    } else {
+                        displayHasil = `${konsentrasi} mg/m³`;
+                    }
+                } else {
+                    displayHasil = `<span style="color: #f59e0b;">Cek V.DGM</span>`;
+                }
+            }
+        }
+
+        return `
+            <tr>
+                <td style="font-weight: 800; color: var(--primary);">${item.sample_id}</td>
+                <td>
+                    <div style="font-weight: 700;">${item.company}</div>
+                    <div style="font-size: 0.65rem; color: #64748b;">${metodeLabel}</div>
+                    <div style="font-size: 0.7rem; font-weight: 600; color: var(--primary);">${displayVolume}</div>
+                </td>
+                <td>
+                    <div style="font-weight: 800; color: #0f172a; font-size: 1.1rem;">${displayHasil}</div>
+                    <div style="font-size: 0.6rem; color: var(--text-muted);">Hasil Akhir (mg/m³)</div>
+                </td>
+                <td>
+                    <span class="badge" style="background:${labColor}; color:${labTextColor};">
+                        ${labText}
+                    </span>
+                    ${item.analyzed_at ? `
+                        <div style="font-size: 0.65rem; color: #64748b; margin-top: 6px; font-weight: 600; display: flex; align-items: center; gap: 4px;">
+                            📅 Analisa: <span style="color: #0f172a;">${tglAnalisaDisplay}</span>
+                        </div>
+                    ` : ''}
+                </td>
+                <td style="text-align: right; white-space: nowrap;">
+                    ${!isVerified ? `
+                        <button onclick="bukaModalAnalisa('${item.db_id}', '${item.sample_id}')" class="btn-small">
+                            ${isDone ? '📝 Edit' : '🧪 Input'}
+                        </button>
+                    ` : ''}
+
+                    ${(isDone && !isVerified && canVerify) ? `
+                        <button onclick="verifikasiHasil('${item.db_id}', '${item.sample_id}')" class="btn-small" style="background:#22c55e; color:white; border:none; margin-left:4px;">
+                            ✅ Verif
+                        </button>
+                    ` : ''}
+                    
+                    ${isVerified ? `
+                        <div style="display: flex; align-items: center; gap: 8px; justify-content: flex-end;">
+                            <span style="color:#22c55e; font-size:0.7rem; font-weight:bold;">Selesai</span>
+                            ${canVerify ? `
+                                <button onclick="unverifikasiHasil('${item.db_id}', '${item.sample_id}')" class="btn-small" style="background:#f1f5f9; color:#ef4444; border:1px solid #fee2e2;">
+                                    🔓 Unverif
+                                </button>
+                            ` : ''}
+                            <button onclick="window.location.assign('coa.html?id=' + '${item.db_id}')" class="btn-small" style="background:#6366f1; color:white; border:none;">
+                                📜 Lihat CoA
+                            </button>
+                        </div>
+                    ` : ''}
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function renderPaginationControls() {
+    const prevBtn = document.getElementById('btnPrevPage');
+    const nextBtn = document.getElementById('btnNextPage');
+    const pageNumbersContainer = document.getElementById('pageNumbers');
+    const infoContainer = document.getElementById('paginationInfo');
+
+    if (!prevBtn || !nextBtn || !pageNumbersContainer || !infoContainer) return;
+
+    const totalItems = filteredSamplesList.length;
+    const totalPages = Math.ceil(totalItems / pageSize) || 1;
+
+    prevBtn.disabled = currentPage === 1;
+    nextBtn.disabled = currentPage === totalPages;
+
+    const startRange = totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+    const endRange = Math.min(currentPage * pageSize, totalItems);
+    infoContainer.innerText = `Menampilkan ${startRange} - ${endRange} dari ${totalItems} data`;
+
+    let pagesHtml = "";
+    let startPage = Math.max(1, currentPage - 2);
+    let endPage = Math.min(totalPages, startPage + 4);
+    
+    if (endPage - startPage < 4) {
+        startPage = Math.max(1, endPage - 4);
+    }
+
+    for (let i = startPage; i <= endPage; i++) {
+        pagesHtml += `
+            <button class="page-btn ${i === currentPage ? 'active' : ''}" onclick="goToPage(${i})">
+                ${i}
+            </button>
+        `;
+    }
+
+    pageNumbersContainer.innerHTML = pagesHtml;
+}
 
 async function fetchAntreanAnalisa(keyword = '') {
     const tableBody = document.getElementById('analisaTableBody');
-    
-    // Pastikan fungsi hitungTAT tersedia
-    const hitungTAT = (tglTerima) => {
-        if (!tglTerima) return 0;
-        const start = new Date(tglTerima);
-        const now = new Date();
-        const diff = Math.floor((now - start) / (1000 * 60 * 60 * 24));
-        return diff >= 0 ? diff : 0;
-    };
+    if (tableBody) {
+        tableBody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:50px;">Memuat antrean analisa...</td></tr>';
+    }
 
     try {
         const { data: cocList, error } = await _supabase
             .from('coc_emisi')
             .select('*')
-            // .eq('status_sampling', 'Selesai')
             .order('updated_at', { ascending: false });
 
         if (error) throw error;
@@ -71,29 +302,40 @@ async function fetchAntreanAnalisa(keyword = '') {
                 let isAllowed = false;
 
                 if (isAdmin) {
-                    // MANAGER & ADMIN MASTER: Munculkan SEMUA status 
-                    // (Received, Analyzed, maupun Verified agar bisa dipantau terus)
                     const allStatus = ['received', 'analyzed', 'verified'];
                     isAllowed = allStatus.includes(s.status_lab);
                 } else {
-                    // ANALIS: Hanya munculkan yang belum dikunci oleh Manager
-                    // Begitu status jadi 'verified', otomatis HILANG dari layar analis
                     const analisStatus = ['received', 'analyzed'];
                     isAllowed = analisStatus.includes(s.status_lab);
                 }
 
                 if (isAllowed) {
-                    // Cek apakah sampel punya parameter "Particulate"
                     const hasLabWork = s.parameters.some(p => 
                         p.parameter && p.parameter.toLowerCase().includes('particulate')
                     );
 
-                    antreanSamples.push({
+                    const isReceived = s.status_lab === 'received';
+                    const isDone = s.status_lab === 'analyzed' || s.status_lab === 'verified';
+
+                    const sampleObj = {
                         ...s,
                         db_id: coc.id,
                         company: coc.company_name,
                         needLab: hasLabWork
-                    });
+                    };
+
+                    // Saring lokal berdasarkan tab aktif
+                    if (currentFilterTab === 'belum_selesai') {
+                        // Belum selesai: Butuh analisa lab (needLab === true) dan belum di-input hasil analisanya (isReceived === true)
+                        if (hasLabWork && isReceived) {
+                            antreanSamples.push(sampleObj);
+                        }
+                    } else {
+                        // Sudah selesai: Analisa lab selesai/terverifikasi (isDone === true) ATAU Direct Reading (hasLabWork === false)
+                        if (isDone || !hasLabWork) {
+                            antreanSamples.push(sampleObj);
+                        }
+                    }
                 }
             });
         });
@@ -104,150 +346,20 @@ async function fetchAntreanAnalisa(keyword = '') {
             );
         }
 
-        if (antreanSamples.length === 0) {
-            tableBody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:50px; color:var(--text-muted);">Tidak ada antrean analisa yang sudah diterima lab.</td></tr>`;
-            return;
-        }
-        const canVerify = ['manager', 'admin_master'].includes(userRole);
-        console.log("Status canVerify:", canVerify);
-        tableBody.innerHTML = antreanSamples.map(item => {
-            // 1. Tambah logika status Verified
-            const isDone = item.status_lab === 'analyzed';
-            const isVerified = item.status_lab === 'verified';
-            let tglAnalisaDisplay = "";
-            if (item.analyzed_at) {
-                const d = new Date(item.analyzed_at);
-                tglAnalisaDisplay = d.toLocaleDateString('id-ID', { 
-                    day: '2-digit', 
-                    month: 'short', 
-                    year: 'numeric' 
-                });
-            }
-            // Warna badge mengikuti status
-            let labColor = '#f1f5f9';
-            let labTextColor = '#64748b';
-            let labText = '🔹 DIRECT READING';
+        filteredSamplesList = antreanSamples;
+        currentPage = 1;
 
-            if (item.needLab) {
-                if (isVerified) {
-                    labColor = '#dcfce7'; // Hijau muda
-                    labTextColor = '#15803d';
-                    labText = '🔒 TERVERIFIKASI';
-                } else if (isDone) {
-                    labColor = '#f0fdf4';
-                    labTextColor = '#166534';
-                    labText = '✅ ANALISA SELESAI';
-                } else {
-                    labColor = '#fff7ed';
-                    labTextColor = '#c2410c';
-                    labText = '⏳ TUNGGU PARTIKULAT';
-                }
-            }
-
-            const pPart = item.parameters.find(p => p.parameter.toLowerCase().includes('particulate'));
-            let displayVolume = 'V.DGM: -';
-            let displayHasil = '-';
-            let metodeLabel = '';
-
-            const hitungAvg = (val1, val2) => {
-                const n1 = parseFloat(val1) || 0;
-                const n2 = parseFloat(val2) || 0;
-                if (n1 > 0 && n2 > 0) return (n1 + n2) / 2;
-                return n1 || n2;
-            };
-            
-            if (pPart) {
-                const vDgm = parseFloat(pPart.volume_meter || 0);
-                displayVolume = `V.DGM: ${vDgm.toFixed(4)} m³`;
-                metodeLabel = pPart.method || '';
-
-                if (pPart.grav_data) {
-                    const d = pPart.grav_data;
-                    const isSNI2021 = metodeLabel.includes('7117-21:2021');
-
-                    const fAwal = hitungAvg(d.s_f_awal_1, d.s_f_awal_2);
-                    const fAkhir = hitungAvg(d.s_f_akhir_1, d.s_f_akhir_2);
-                    let totalNetGram = fAkhir - fAwal;
-
-                    if (!isSNI2021) {
-                        const cAwal = hitungAvg(d.s_c_awal_1, d.s_c_awal_2);
-                        const cAkhir = hitungAvg(d.s_c_akhir_1, d.s_c_akhir_2);
-                        totalNetGram += (cAkhir - cAwal);
-                    }
-
-                    const totalNetMg = totalNetGram * 1000;
-
-                    if (vDgm > 0) {
-                        const konsentrasi = (totalNetMg / vDgm).toFixed(2);
-                        if (totalNetMg < 0) {
-                            displayHasil = `<span style="color: #ef4444; font-weight: bold;">${konsentrasi} mg/m³ ⚠️</span>`;
-                        } else {
-                            displayHasil = `${konsentrasi} mg/m³`;
-                        }
-                    } else {
-                        displayHasil = `<span style="color: #f59e0b;">Cek V.DGM</span>`;
-                    }
-                }
-            }
-
-            return `
-    <tr>
-        <td style="font-weight: 800; color: var(--primary);">${item.sample_id}</td>
-        <td>
-            <div style="font-weight: 700;">${item.company}</div>
-            <div style="font-size: 0.65rem; color: #64748b;">${metodeLabel}</div>
-            <div style="font-size: 0.7rem; font-weight: 600; color: var(--primary);">${displayVolume}</div>
-        </td>
-        <td>
-            <div style="font-weight: 800; color: #0f172a; font-size: 1.1rem;">${displayHasil}</div>
-            <div style="font-size: 0.6rem; color: var(--text-muted);">Hasil Akhir (mg/m³)</div>
-        </td>
-        <td>
-            <span class="badge" style="background:${labColor}; color:${labTextColor};">
-                ${labText}
-            </span>
-            ${item.analyzed_at ? `
-                <div style="font-size: 0.65rem; color: #64748b; margin-top: 6px; font-weight: 600; display: flex; align-items: center; gap: 4px;">
-                    📅 Analisa: <span style="color: #0f172a;">${tglAnalisaDisplay}</span>
-                </div>
-            ` : ''}
-        </td>
-        
-        <td style="text-align: right; white-space: nowrap;">
-            ${!isVerified ? `
-                <button onclick="bukaModalAnalisa('${item.db_id}', '${item.sample_id}')" class="btn-small">
-                    ${isDone ? '📝 Edit' : '🧪 Input'}
-                </button>
-            ` : ''}
-
-            ${(isDone && !isVerified && canVerify) ? `
-                <button onclick="verifikasiHasil('${item.db_id}', '${item.sample_id}')" class="btn-small" style="background:#22c55e; color:white; border:none; margin-left:4px;">
-                    ✅ Verif
-                </button>
-            ` : ''}
-            
-            ${isVerified ? `
-                <div style="display: flex; align-items: center; gap: 8px; justify-content: flex-end;">
-                    <span style="color:#22c55e; font-size:0.7rem; font-weight:bold;">Selesai</span>
-                    ${canVerify ? `
-                        <button onclick="unverifikasiHasil('${item.db_id}', '${item.sample_id}')" class="btn-small" style="background:#f1f5f9; color:#ef4444; border:1px solid #fee2e2;">
-                            🔓 Unverif
-                        </button>
-                    ` : ''}
-                    <button onclick="window.location.assign('coa.html?id=' + '${item.db_id}')" class="btn-small" style="background:#6366f1; color:white; border:none;">
-                        📜 Lihat CoA
-                    </button>
-                </div>
-            ` : ''} </td>
-    </tr>
-`;
-}).join('');
+        renderTableRows();
+        renderPaginationControls();
 
     } catch (err) {
-        console.error("Debug Error:", err);
-        tableBody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:red; padding:20px;">Gagal memuat antrean: ${err.message}</td></tr>`;
+        console.error(err);
+        if (tableBody) {
+            tableBody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:red;">Koneksi Gagal.</td></tr>`;
+        }
     }
 }
+
 async function unverifikasiHasil(dbId, sampleId) {
     // Gunakan konfirmasi untuk mencegah ketidaksengajaan
     if (!confirm(`Buka kembali kunci data untuk ${sampleId}? Status akan kembali ke 'Analisa Selesai'.`)) return;

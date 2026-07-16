@@ -37,6 +37,7 @@
         .data-container {
             background: #ffffff; border: 1px solid #e2e8f0;
             border-radius: 24px; padding: 24px; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.04);
+            overflow-x: auto;
         }
         table { width: 100%; border-collapse: collapse; }
         th { padding: 16px; color: #64748b; font-size: 0.75rem; text-transform: uppercase; border-bottom: 2px solid #f1f5f9; text-align: left;}
@@ -172,6 +173,31 @@
 .btn-input i {
     font-size: 0.9rem;
 }
+.page-btn {
+    padding: 8px 14px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: white;
+    font-weight: 700;
+    cursor: pointer;
+    color: #64748b;
+    font-size: 0.8rem;
+    transition: all 0.2s;
+}
+.page-btn:hover {
+    background: #f1f5f9;
+    color: #1e293b;
+    border-color: #cbd5e1;
+}
+.page-btn.active {
+    background: #2563eb;
+    color: white;
+    border-color: #2563eb;
+}
+.page-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
 </style>
 </head>
 <body>
@@ -197,6 +223,11 @@
                 </div>
             </div>
         </div>
+        <!-- Tab Filter Status Sampling -->
+        <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+            <button id="tabBelumVerif" class="tab-btn active" onclick="switchSamplingTab('belum_verif')">⏳ Belum Verifikasi</button>
+            <button id="tabSudahVerif" class="tab-btn" onclick="switchSamplingTab('sudah_verif')">✅ Sudah Verifikasi</button>
+        </div>
 
         <div class="data-container">
             <table>
@@ -213,6 +244,18 @@
                 <tbody id="samplingTableBody">
                     </tbody>
             </table>
+            
+            <!-- Panel Paginasi -->
+            <div id="paginationControls" style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px; padding-top: 15px; border-top: 1px solid #f1f5f9; font-size: 0.85rem; flex-wrap: wrap; gap: 10px;">
+                <div id="paginationInfo" style="color: #64748b; font-weight: 600;">
+                    Menampilkan 0 - 0 dari 0 data
+                </div>
+                <div style="display: flex; gap: 5px; align-items: center;">
+                    <button id="btnPrevPage" class="page-btn">Sebelumnya</button>
+                    <div id="pageNumbers" style="display: flex; gap: 5px;"></div>
+                    <button id="btnNextPage" class="page-btn">Berikutnya</button>
+                </div>
+            </div>
         </div>
     </main>
 
@@ -242,7 +285,7 @@
     </div>
 
     <script src="config.js"></script>
-    <script src="auth.js"></script>
-    <script src="sampling.js"></script>
+    <script src="auth.js?v=2"></script>
+    <script src="sampling.js?v=3"></script>
 </body>
 </html>
