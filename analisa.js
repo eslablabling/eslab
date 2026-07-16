@@ -362,7 +362,7 @@ async function fetchAntreanAnalisa(keyword = '') {
 
 async function unverifikasiHasil(dbId, sampleId) {
     // Gunakan konfirmasi untuk mencegah ketidaksengajaan
-    if (!confirm(`Buka kembali kunci data untuk ${sampleId}? Status akan kembali ke 'Analisa Selesai'.`)) return;
+    if (!confirm(`Buka kembali kunci data untuk ${sampleId}? Status akan kembali ke 'Belum Selesai'.`)) return;
 
     try {
         const { data: coc } = await _supabase
@@ -377,11 +377,11 @@ async function unverifikasiHasil(dbId, sampleId) {
 
         const updated = samples.map(s => {
             if (s.sample_id === sampleId) {
-                // Menghapus flag verifikasi
-                const { is_verified, verified_at, ...rest } = s; 
+                // Menghapus flag verifikasi dan mengembalikan ke 'received' (Belum Selesai)
+                const { is_verified, verified_at, analyzed_at, ...rest } = s; 
                 return { 
                     ...rest, 
-                    status_lab: 'analyzed', // Kembali ke status analisa
+                    status_lab: 'received', 
                     is_verified: false,
                     updated_at: new Date().toISOString()
                 };

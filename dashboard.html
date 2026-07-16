@@ -352,7 +352,29 @@
     <div id="menuContainer" class="stats-grid" style="margin-top: 10px; margin-bottom: 30px;">
     </div>
 
-    <h3 style="font-size: 1.1rem; font-weight: 800; color: #0f172a; margin-top: 10px; margin-bottom: 15px; display: flex; align-items: center; gap: 8px;">📊 Ringkasan Statistik Sampel</h3>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px; margin-bottom: 15px; flex-wrap: wrap; gap: 15px;">
+        <h3 style="font-size: 1.1rem; font-weight: 800; color: #0f172a; display: flex; align-items: center; gap: 8px; margin: 0;">📊 Ringkasan Statistik Sampel</h3>
+        <div style="display: flex; gap: 10px; align-items: center;">
+            <select id="filterStatsMonth" style="padding: 10px 16px; border: 1px solid #e2e8f0; border-radius: 12px; font-size: 0.85rem; font-weight: 700; color: #1e293b; background: white; cursor: pointer; outline: none; transition: all 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+                <option value="all">Semua Bulan</option>
+                <option value="0">Januari</option>
+                <option value="1">Februari</option>
+                <option value="2">Maret</option>
+                <option value="3">April</option>
+                <option value="4">Mei</option>
+                <option value="5">Juni</option>
+                <option value="6">Juli</option>
+                <option value="7">Agustus</option>
+                <option value="8">September</option>
+                <option value="9">Oktober</option>
+                <option value="10">November</option>
+                <option value="11">Desember</option>
+            </select>
+            <select id="filterStatsYear" style="padding: 10px 16px; border: 1px solid #e2e8f0; border-radius: 12px; font-size: 0.85rem; font-weight: 700; color: #1e293b; background: white; cursor: pointer; outline: none; transition: all 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+                <option value="all">Semua Tahun</option>
+            </select>
+        </div>
+    </div>
     <div id="statsContainer" class="stats-grid" style="margin-top: 10px; margin-bottom: 30px;">
         <!-- Stats cards will be rendered here dynamically -->
     </div>

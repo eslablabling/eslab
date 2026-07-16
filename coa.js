@@ -183,7 +183,7 @@ async function fetchCoAList(keyword = '') {
     try {
         const { data, error } = await _supabase
             .from('coc_emisi')
-            .select('id, company_name, qt_no, updated_at, status_sampling')
+            .select('id, company_name, qt_no, updated_at, status_sampling, samples_data')
             .order('updated_at', { ascending: false });
 
         if (error) throw error;
@@ -243,6 +243,15 @@ function renderCoATableRows() {
     tbody.innerHTML = paginated.map(item => {
         const isVerified = (item.status_sampling || '').trim().toLowerCase() === 'verified';
 
+        // Hitung titik belum diverifikasi
+        let samples = [];
+        try {
+            samples = typeof item.samples_data === 'string' ? JSON.parse(item.samples_data) : (item.samples_data || []);
+        } catch (e) {}
+        const totalCount = samples.length;
+        const verifiedCount = samples.filter(s => s.status_lab && s.status_lab.toLowerCase() === 'verified').length;
+        const unverifiedCount = totalCount - verifiedCount;
+
         let verifyBtnHtml = '';
         if (canVerify) {
             if (isVerified) {
@@ -265,7 +274,13 @@ function renderCoATableRows() {
         return `
             <tr style="border-bottom: 1px solid #f1f5f9;">
                 <td style="padding: 15px; font-family: monospace;">${item.qt_no || '-'}</td>
-                <td style="padding: 15px; font-weight: 600;">${item.company_name}</td>
+                <td style="padding: 15px;">
+                    <div style="font-weight: 600; color: var(--text-main);">${item.company_name}</div>
+                    ${unverifiedCount > 0 
+                        ? `<div style="color: #ea580c; font-size: 0.75rem; margin-top: 4px; font-weight: 700;">⚠️ ${unverifiedCount} titik belum diverifikasi</div>` 
+                        : `<div style="color: #16a34a; font-size: 0.75rem; margin-top: 4px; font-weight: 700;">✅ Semua titik terverifikasi</div>`
+                    }
+                </td>
                 <td style="padding: 15px; text-align: center; white-space: nowrap;">
                     <div style="display: flex; align-items: center; justify-content: center;">
                         ${verifyBtnHtml}
@@ -344,7 +359,21 @@ window.exportCoAList = function() {
 };
 
 async function verifikasiCoASampling(id, nomorCoc) {
-    if (!confirm(`Apakah Anda yakin ingin memverifikasi sertifikat untuk quotation ${nomorCoc}? Status sampling akan diubah menjadi Verified.`)) return;
+    const item = rawCoAListData.find(d => d.id === id);
+    let samples = [];
+    if (item && item.samples_data) {
+        samples = typeof item.samples_data === 'string' ? JSON.parse(item.samples_data) : item.samples_data;
+    }
+    const totalCount = samples.length;
+    const verifiedCount = samples.filter(s => s.status_lab && s.status_lab.toLowerCase() === 'verified').length;
+    const unverifiedCount = totalCount - verifiedCount;
+
+    let confirmMsg = `Apakah Anda yakin ingin memverifikasi sertifikat untuk quotation ${nomorCoc}? Status sampling akan diubah menjadi Verified.`;
+    if (unverifiedCount > 0) {
+        confirmMsg = `⚠️ PERHATIAN: Terdapat ${unverifiedCount} dari ${totalCount} titik yang BELUM diverifikasi di log analisa.\n\nApakah Anda yakin ingin tetap memverifikasi sertifikat untuk quotation ${nomorCoc}?`;
+    }
+
+    if (!confirm(confirmMsg)) return;
 
     try {
         const { error } = await _supabase
@@ -423,11 +452,24 @@ function renderCoA(data) {
     } catch (e) { console.error("Error parsing:", e); }
 
     const verifiedSamples = samples.filter(s => 
-    s.status_lab && typeof s.status_lab === 'string' && s.status_lab.toLowerCase() === 'verified'
-);
+        s.status_lab && typeof s.status_lab === 'string' && s.status_lab.toLowerCase() === 'verified'
+    );
+
+    const totalCount = samples.length;
+    const verifiedCount = verifiedSamples.length;
+    const unverifiedCount = totalCount - verifiedCount;
+
+    let warningBanner = '';
+    if (unverifiedCount > 0) {
+        warningBanner = `
+            <div class="no-print" style="max-width: 210mm; margin: 10px auto; background: #fff7ed; border: 1.5px solid #ffedd5; padding: 16px; border-radius: 12px; color: #c2410c; font-weight: 700; font-size: 0.85rem; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+                <span>⚠️ Catatan: Terdapat <strong>${unverifiedCount} titik</strong> yang belum diverifikasi di log analisa dan tidak dicetak pada CoA ini. (Hanya ${verifiedCount} dari ${totalCount} titik yang tercetak).</span>
+            </div>
+        `;
+    }
 
     // 1. Render Cover Page (Halaman 1)
-    let htmlContent = `
+    let htmlContent = warningBanner + `
         <div class="coa-page coa-cover">
             <div style="text-align:center; border-bottom: 2px solid #000; padding-bottom: 10px;">
                 <h1 style="margin:0; font-size: 22px;">CERTIFICATE OF ANALYSIS</h1>

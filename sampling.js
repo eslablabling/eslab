@@ -6,6 +6,7 @@ let currentFilterTab = 'belum_verif';
 let currentPage = 1;
 const pageSize = 10;
 let filteredSamplesList = [];
+let currentSampleIdx = 0;
 
 document.addEventListener('DOMContentLoaded', async () => {
     // 1. Pastikan Sesi Auth Valid sebelum memuat data berat
@@ -250,6 +251,7 @@ async function openSamplingModal(id, readOnly = false) {
 
     currentCocId = id;
     samplesDataArray = data.samples_data || [];
+    currentSampleIdx = 0;
     activeTab = 'identitas'; 
     
     document.getElementById('mdlNoCoc').innerText = data.nomor_coc;
@@ -373,8 +375,9 @@ function renderSamplingForm(readOnly = false) {
     
     // --- EVALUATE INCOMPLETE FIELDS FOR WARNING BANNER ---
     const missingFields = [];
+    const currentSample = samplesDataArray[currentSampleIdx];
 
-    if (activeTab === 'identitas') {
+    if (activeTab === 'identitas' && currentSample) {
         const checkMap = {
             'nama_cerobong': 'Nama Cerobong',
             'bahan_bakar': 'Bahan Bakar',
@@ -386,52 +389,10 @@ function renderSamplingForm(readOnly = false) {
             'catatan_cuaca': 'Cuaca'
         };
         const missingSet = new Set();
-        samplesDataArray.forEach(s => {
-            Object.keys(checkMap).forEach(key => {
-                const val = s[key];
-                if (val === undefined || val === null || (typeof val === 'string' && val.trim() === '')) {
-                    missingSet.add(checkMap[key]);
-                }
-            });
-        });
-        if (missingSet.size > 0) {
-            missingFields.push(...missingSet);
-        }
-    }
-
-    if (activeTab === 'gas') {
-        const headerMap = {
-            'waktu_gas': 'Waktu Gas Analyzer',
-            'no_alat_gas': 'No. Alat Gas Analyzer',
-            'temp_gas': 'Suhu Gas (°C)',
-            'tekanan_atm': 'Tekanan ATM (mmHg)'
-        };
-        const missingSet = new Set();
-        samplesDataArray.forEach(s => {
-            Object.keys(headerMap).forEach(key => {
-                const val = s[key];
-                if (val === undefined || val === null || (typeof val === 'string' && val.trim() === '')) {
-                    missingSet.add(headerMap[key]);
-                }
-            });
-
-            const hasGasParams = s.parameters.some(p => {
-                const name = p.parameter.toUpperCase();
-                return ['NO', 'NO2', 'NOX', 'SO2', 'CO', 'O2', 'CO2', 'VELOCITY'].some(key => name.includes(key));
-            });
-            if (hasGasParams) {
-                s.parameters.forEach(p => {
-                    const name = p.parameter.toUpperCase();
-                    const isGas = ['NO', 'NO2', 'NOX', 'SO2', 'CO', 'O2', 'CO2', 'VELOCITY'].some(key => name.includes(key));
-                    if (!isGas) return;
-                    if (name.includes('NOX') || name.includes('NITROGEN OXIDE')) return;
-                    
-                    if (p.konsentrasi_1 === undefined || p.konsentrasi_1 === '' ||
-                        p.konsentrasi_2 === undefined || p.konsentrasi_2 === '' ||
-                        p.konsentrasi_3 === undefined || p.konsentrasi_3 === '') {
-                        missingSet.add(`Hasil Pembacaan Gas (${p.parameter})`);
-                    }
-                });
+        Object.keys(checkMap).forEach(key => {
+            const val = currentSample[key];
+            if (val === undefined || val === null || (typeof val === 'string' && val.trim() === '')) {
+                missingSet.add(checkMap[key]);
             }
         });
         if (missingSet.size > 0) {
@@ -439,7 +400,45 @@ function renderSamplingForm(readOnly = false) {
         }
     }
 
-    if (activeTab === 'opacity') {
+    if (activeTab === 'gas' && currentSample) {
+        const headerMap = {
+            'waktu_gas': 'Waktu Gas Analyzer',
+            'no_alat_gas': 'No. Alat Gas Analyzer',
+            'temp_gas': 'Suhu Gas (°C)',
+            'tekanan_atm': 'Tekanan ATM (mmHg)'
+        };
+        const missingSet = new Set();
+        Object.keys(headerMap).forEach(key => {
+            const val = currentSample[key];
+            if (val === undefined || val === null || (typeof val === 'string' && val.trim() === '')) {
+                missingSet.add(headerMap[key]);
+            }
+        });
+
+        const hasGasParams = currentSample.parameters.some(p => {
+            const name = p.parameter.toUpperCase();
+            return ['NO', 'NO2', 'NOX', 'SO2', 'CO', 'O2', 'CO2', 'VELOCITY'].some(key => name.includes(key));
+        });
+        if (hasGasParams) {
+            currentSample.parameters.forEach(p => {
+                const name = p.parameter.toUpperCase();
+                const isGas = ['NO', 'NO2', 'NOX', 'SO2', 'CO', 'O2', 'CO2', 'VELOCITY'].some(key => name.includes(key));
+                if (!isGas) return;
+                if (name.includes('NOX') || name.includes('NITROGEN OXIDE')) return;
+                
+                if (p.konsentrasi_1 === undefined || p.konsentrasi_1 === '' ||
+                    p.konsentrasi_2 === undefined || p.konsentrasi_2 === '' ||
+                    p.konsentrasi_3 === undefined || p.konsentrasi_3 === '') {
+                    missingSet.add(`Hasil Pembacaan Gas (${p.parameter})`);
+                }
+            });
+        }
+        if (missingSet.size > 0) {
+            missingFields.push(...missingSet);
+        }
+    }
+
+    if (activeTab === 'opacity' && currentSample) {
         const opacityMap = {
             'jarak_pengamat_awal': 'Jarak Pengamat Awal',
             'jarak_pengamat_akhir': 'Jarak Pengamat Akhir',
@@ -463,24 +462,22 @@ function renderSamplingForm(readOnly = false) {
             'opasitas_akhir': 'Opasitas Waktu Akhir'
         };
         const missingSet = new Set();
-        samplesDataArray.forEach(s => {
-            const hasOpacity = s.parameters.some(p => p.parameter.toUpperCase().includes('OPACITY') || p.parameter.toUpperCase().includes('OPASITAS'));
-            if (!hasOpacity) return;
-
+        const hasOpacity = currentSample.parameters.some(p => p.parameter.toUpperCase().includes('OPACITY') || p.parameter.toUpperCase().includes('OPASITAS'));
+        if (hasOpacity) {
             Object.keys(opacityMap).forEach(key => {
-                const val = s[key];
+                const val = currentSample[key];
                 if (val === undefined || val === null || (typeof val === 'string' && val.trim() === '')) {
                     missingSet.add(opacityMap[key]);
                 }
             });
 
             let matrixIncomplete = false;
-            if (!s.opasitas_matrix) {
+            if (!currentSample.opasitas_matrix) {
                 matrixIncomplete = true;
             } else {
                 for (let r = 0; r < 6; r++) {
                     for (let c = 0; c < 4; c++) {
-                        if (s.opasitas_matrix[r][c] === undefined || s.opasitas_matrix[r][c] === '') {
+                        if (currentSample.opasitas_matrix[r][c] === undefined || currentSample.opasitas_matrix[r][c] === '') {
                             matrixIncomplete = true;
                             break;
                         }
@@ -491,22 +488,20 @@ function renderSamplingForm(readOnly = false) {
             if (matrixIncomplete) {
                 missingSet.add('Tabel Matrix Pembacaan Opasitas');
             }
-        });
+        }
         if (missingSet.size > 0) {
             missingFields.push(...missingSet);
         }
     }
 
-    if (activeTab === 'isokinetic') {
+    if (activeTab === 'isokinetic' && currentSample) {
         const missingSet = new Set();
-        samplesDataArray.forEach(s => {
-            const hasIsokinetic = s.parameters.some(p => {
-                const name = p.parameter.toUpperCase();
-                return ['VELOCITY', 'WATER VAPOR', 'ISOKINETIC', 'PARTICULATE'].some(k => name.includes(k));
-            });
-            if (!hasIsokinetic) return;
-
-            s.parameters.forEach(p => {
+        const hasIsokinetic = currentSample.parameters.some(p => {
+            const name = p.parameter.toUpperCase();
+            return ['VELOCITY', 'WATER VAPOR', 'ISOKINETIC', 'PARTICULATE'].some(k => name.includes(k));
+        });
+        if (hasIsokinetic) {
+            currentSample.parameters.forEach(p => {
                 const name = p.parameter.toUpperCase();
                 const isTech = ['VELOCITY', 'VOLUMETRIC FLOW RATE', 'WATER VAPOR', 'NUM OF TRAVERSE POINT', 'PERCENT OF ISOKINETIC'].some(k => name.includes(k));
                 const isParticulate = name.includes('PARTICULATE');
@@ -523,7 +518,7 @@ function renderSamplingForm(readOnly = false) {
                     }
                 }
             });
-        });
+        }
         if (missingSet.size > 0) {
             missingFields.push(...missingSet);
         }
@@ -542,7 +537,30 @@ function renderSamplingForm(readOnly = false) {
         `;
     }
 
+    let sampleSelectorHtml = "";
+    if (samplesDataArray.length > 0) {
+        sampleSelectorHtml = `
+            <div class="sample-selector-bar" style="display: flex; gap: 8px; margin-bottom: 20px; align-items: center; background: #f8fafc; padding: 12px; border-radius: 12px; border: 1px solid #e2e8f0; overflow-x: auto;">
+                <span style="font-size: 0.75rem; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap;">Pilih Titik/ID Sampel:</span>
+                <div style="display: flex; gap: 6px; overflow-x: auto;">
+                    ${samplesDataArray.map((s, idx) => {
+                        const isActive = idx === currentSampleIdx;
+                        const activeStyle = isActive 
+                            ? 'background: #2563eb; color: white; border-color: #2563eb; box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);' 
+                            : 'background: white; color: #475569; border-color: #cbd5e1;';
+                        return `
+                            <button type="button" class="page-btn" style="padding: 6px 14px; font-size: 0.8rem; font-weight: 700; border: 1px solid; border-radius: 8px; cursor: pointer; transition: all 0.2s; ${activeStyle}" onclick="switchSample(${idx}, ${readOnly})">
+                                📍 ${s.sample_id}
+                            </button>
+                        `;
+                    }).join('')}
+                </div>
+            </div>
+        `;
+    }
+
     const cardsHtml = samplesDataArray.map((s, idx) => {
+        if (idx !== currentSampleIdx) return '';
         // --- LOGIKA AWAL (Identitas & Meteo) ---
         if (activeTab === 'identitas') {
             return `
@@ -922,7 +940,7 @@ function renderSamplingForm(readOnly = false) {
                 </div>`;
             }
     }).join('');
-    container.innerHTML = warningBannerHtml + cardsHtml;
+    container.innerHTML = warningBannerHtml + sampleSelectorHtml + cardsHtml;
 }
 
 function updateParamFieldWithCalc(sampleIdx, paramIdx, key, val, paramName) {
@@ -1303,7 +1321,10 @@ async function unverifikasiSampling(id, nomorCoc) {
     }
 }
 
-// Bind to window for HTML onclick attributes
 window.verifikasiSampling = verifikasiSampling;
 window.unverifikasiSampling = unverifikasiSampling;
-window.openSamplingModal = openSamplingModal;;
+window.openSamplingModal = openSamplingModal;
+window.switchSample = function(idx, readOnly = false) {
+    currentSampleIdx = idx;
+    renderSamplingForm(readOnly);
+};

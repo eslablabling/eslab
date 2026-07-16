@@ -28,11 +28,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     updateDateDisplay();
     await fetchActiveLogs(); 
 
-    // Setup event listeners untuk Pencarian, Paginasi & Ekspor
+    // Setup event listeners untuk Pencarian, Paginasi, Filter & Ekspor
     const searchLog = document.getElementById('searchLog');
     if (searchLog) {
         searchLog.addEventListener('input', (e) => {
             handleSearch(e.target.value);
+        });
+    }
+
+    const filterStatsMonth = document.getElementById('filterStatsMonth');
+    if (filterStatsMonth) {
+        filterStatsMonth.addEventListener('change', () => {
+            applyDashboardFilters();
+        });
+    }
+
+    const filterStatsYear = document.getElementById('filterStatsYear');
+    if (filterStatsYear) {
+        filterStatsYear.addEventListener('change', () => {
+            applyDashboardFilters();
         });
     }
 
@@ -137,7 +151,10 @@ async function fetchActiveLogs() {
                     let statusLabel = "SAMPLING";
                     let statusClass = "tag-orange";
 
-                    if (s.status_lab === 'verified' || s.is_verified === true) {
+                    if (!coc.status_sampling || coc.status_sampling.trim().toLowerCase() !== 'verified') {
+                        statusLabel = "SAMPLING";
+                        statusClass = "tag-orange";
+                    } else if (s.status_lab === 'verified' || s.is_verified === true) {
                         statusLabel = "FINISH";
                         statusClass = "tag-green";
                     } else if (s.status === 'Done' || s.tgl_terima_lab) {
@@ -149,6 +166,7 @@ async function fetchActiveLogs() {
                         nomor_coc: coc.nomor_coc,
                         sample_id: s.sample_id || '-',
                         company_name: coc.company_name || '-',
+                        sampling_date: coc.sampling_date,
                         tglSampling,
                         tglTerima,
                         tglSelesai,
@@ -162,13 +180,8 @@ async function fetchActiveLogs() {
         });
 
         allSamplesList = activeSamples;
-        filteredSamplesList = [...allSamplesList];
-
-        // Jalankan update widget & table
-        updateStats();
-        renderStatusChart();
-        renderTableRows();
-        renderPaginationControls();
+        populateYearFilter();
+        applyDashboardFilters();
 
     } catch (err) {
         console.error("CRITICAL ERROR:", err);
@@ -237,14 +250,14 @@ function renderMenu(role) {
 }
 
 // 6. Update Kartu Statistik Dinamis
-function updateStats() {
+function updateStats(samplesList = allSamplesList) {
     const statsContainer = document.getElementById('statsContainer');
     if (!statsContainer) return;
 
-    const totalSamples = allSamplesList.length;
-    const samplingCount = allSamplesList.filter(s => s.statusLabel === 'SAMPLING').length;
-    const analisaCount = allSamplesList.filter(s => s.statusLabel === 'ANALISA').length;
-    const finishCount = allSamplesList.filter(s => s.statusLabel === 'FINISH').length;
+    const totalSamples = samplesList.length;
+    const samplingCount = samplesList.filter(s => s.statusLabel === 'SAMPLING').length;
+    const analisaCount = samplesList.filter(s => s.statusLabel === 'ANALISA').length;
+    const finishCount = samplesList.filter(s => s.statusLabel === 'FINISH').length;
 
     statsContainer.innerHTML = `
         <div class="stat-card" style="border-left: 4px solid #64748b;">
@@ -271,13 +284,13 @@ function updateStats() {
 }
 
 // 7. Visualisasi Diagram Donat Chart.js
-function renderStatusChart() {
+function renderStatusChart(samplesList = allSamplesList) {
     const ctx = document.getElementById('statusChart');
     if (!ctx) return;
 
-    const samplingCount = allSamplesList.filter(s => s.statusLabel === 'SAMPLING').length;
-    const analisaCount = allSamplesList.filter(s => s.statusLabel === 'ANALISA').length;
-    const finishCount = allSamplesList.filter(s => s.statusLabel === 'FINISH').length;
+    const samplingCount = samplesList.filter(s => s.statusLabel === 'SAMPLING').length;
+    const analisaCount = samplesList.filter(s => s.statusLabel === 'ANALISA').length;
+    const finishCount = samplesList.filter(s => s.statusLabel === 'FINISH').length;
 
     if (statusChartInstance) {
         statusChartInstance.destroy();
@@ -334,22 +347,75 @@ function renderStatusChart() {
     });
 }
 
-// 8. Pencarian Dinamis
-function handleSearch(keyword) {
-    currentPage = 1;
+// 8. Pencarian & Filter Terintegrasi
+function applyDashboardFilters() {
+    const monthSelect = document.getElementById('filterStatsMonth');
+    const yearSelect = document.getElementById('filterStatsYear');
+    const searchLog = document.getElementById('searchLog');
+
+    const monthVal = monthSelect ? monthSelect.value : 'all';
+    const yearVal = yearSelect ? yearSelect.value : 'all';
+    const keyword = searchLog ? searchLog.value.toLowerCase().trim() : '';
+
+    // Step 1: Filter berdasarkan Bulan & Tahun dari tanggal sampling
+    const dateFiltered = allSamplesList.filter(s => {
+        if (monthVal === 'all' && yearVal === 'all') return true;
+        if (!s.sampling_date) return false;
+
+        const date = new Date(s.sampling_date);
+        const m = date.getMonth();
+        const y = date.getFullYear();
+
+        if (monthVal !== 'all' && m !== parseInt(monthVal)) return false;
+        if (yearVal !== 'all' && y !== parseInt(yearVal)) return false;
+
+        return true;
+    });
+
+    // Step 2: Perbarui statistik dan diagram berdasarkan filter tanggal saja
+    updateStats(dateFiltered);
+    renderStatusChart(dateFiltered);
+
+    // Step 3: Filter tabel berdasarkan pencarian keyword
     if (!keyword) {
-        filteredSamplesList = [...allSamplesList];
+        filteredSamplesList = [...dateFiltered];
     } else {
-        const kw = keyword.toLowerCase();
-        filteredSamplesList = allSamplesList.filter(s => {
-            return (s.nomor_coc && s.nomor_coc.toLowerCase().includes(kw)) ||
-                   (s.sample_id && s.sample_id.toLowerCase().includes(kw)) ||
-                   (s.company_name && s.company_name.toLowerCase().includes(kw)) ||
-                   (s.statusLabel && s.statusLabel.toLowerCase().includes(kw));
+        filteredSamplesList = dateFiltered.filter(s => {
+            return (s.nomor_coc && s.nomor_coc.toLowerCase().includes(keyword)) ||
+                   (s.sample_id && s.sample_id.toLowerCase().includes(keyword)) ||
+                   (s.company_name && s.company_name.toLowerCase().includes(keyword)) ||
+                   (s.statusLabel && s.statusLabel.toLowerCase().includes(keyword));
         });
     }
+
+    currentPage = 1;
     renderTableRows();
     renderPaginationControls();
+}
+
+function populateYearFilter() {
+    const yearSelect = document.getElementById('filterStatsYear');
+    if (!yearSelect) return;
+
+    const years = new Set();
+    allSamplesList.forEach(s => {
+        if (s.sampling_date) {
+            const y = new Date(s.sampling_date).getFullYear();
+            if (!isNaN(y)) years.add(y);
+        }
+    });
+
+    yearSelect.innerHTML = '<option value="all">Semua Tahun</option>';
+    Array.from(years).sort((a, b) => b - a).forEach(y => {
+        const opt = document.createElement('option');
+        opt.value = y;
+        opt.textContent = y;
+        yearSelect.appendChild(opt);
+    });
+}
+
+function handleSearch(keyword) {
+    applyDashboardFilters();
 }
 
 // 9. Render Baris Tabel Berdasarkan Halaman (Paginasi)
