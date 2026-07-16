@@ -90,9 +90,9 @@
         }
         .modal-content { 
             background: white; 
-            width: 600px; /* Diperlebar untuk kenyamanan input */
-            max-height: 85vh;
-            margin: 3% auto; 
+            width: 800px; /* Diperlebar agar 4 kolom input nyaman dibaca */
+            max-height: 90vh;
+            margin: 2% auto; 
             padding: 30px; 
             border-radius: 24px; 
             box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
@@ -117,6 +117,22 @@
             font-weight: 600;
         }
         .form-group input:focus { outline: none; border-color: var(--primary); background: #fff; }
+        
+        .qc-input, .grav-input {
+            width: 100%;
+            box-sizing: border-box;
+            min-width: 0;
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            font-family: inherit;
+            font-weight: 600;
+        }
+        .qc-input:focus, .grav-input:focus {
+            outline: none;
+            border-color: var(--primary);
+            background: #fff;
+        }
         .method-text { font-size: 0.65rem; color: var(--text-muted); margin-top: 4px; display: block; font-style: italic; }
 
         /* --- BUTTONS --- */
@@ -254,13 +270,14 @@
                     <h3 id="modalTitle" style="font-weight: 800; font-size: 1.3rem;">Input Hasil Analisa</h3>
                     <p id="modalSubtitle" style="color: var(--text-muted); font-size: 0.8rem;"></p>
                 </div>
+                <button onclick="tutupModalAnalisa()" style="background: #f1f5f9; border: none; width: 32px; height: 32px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 1rem; color: var(--text-muted);">✕</button>
             </div>
 
             <div class="grid-form" id="parameterInputs">
                 </div>
 
             <button class="btn-save" id="btnSimpanAnalisa">💾 Simpan Hasil Analisa</button>
-            <button id="btnBatal" style="background:none; border:none; color:var(--text-muted); cursor:pointer; width:100%; margin-top:20px; font-weight: 700; font-size: 0.9rem;">Tutup & Batal</button>
+            <button id="btnBatal" onclick="tutupModalAnalisa()" style="background:none; border:none; color:var(--text-muted); cursor:pointer; width:100%; margin-top:20px; font-weight: 700; font-size: 0.9rem;">Tutup & Batal</button>
         </div>
     </div>
 

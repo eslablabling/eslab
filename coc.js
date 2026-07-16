@@ -3,6 +3,7 @@ let currentPage = 1;
 const pageSize = 10;
 let filteredCocList = [];
 let rawCocListData = [];
+let currentUserRole = '';
 
 document.addEventListener('DOMContentLoaded', async () => {
     // 1. Cek Sesi Autentikasi
@@ -24,6 +25,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.error("Gagal memuat profil:", profileError);
         return;
     }
+
+    window.currentUserRole = profile.role;
+    currentUserRole = profile.role;
 
     // 3. Update UI & Sidebar
     updateTopBar(profile.full_name, profile.role);
@@ -372,11 +376,41 @@ async function saveCoc() {
 
         // 4. Simpan ke Database (UPSERT)
         const payload = { ...cocData, samples_data: items };
+        
+        let oldData = null;
+        if (existing) {
+            const { data: oldRow } = await _supabase
+                .from('coc_emisi')
+                .select('*')
+                .eq('nomor_coc', cocData.nomor_coc)
+                .single();
+            oldData = oldRow;
+        }
+
         const { error } = await _supabase
             .from('coc_emisi')
             .upsert([payload], { onConflict: 'nomor_coc' });
 
         if (error) throw error;
+
+        // Log audit
+        const { data: { session } } = await _supabase.auth.getSession();
+        if (session) {
+            const actionType = existing ? 'UPDATE_COC' : 'CREATE_COC';
+            const desc = existing 
+                ? `Memperbarui data COC ${cocData.nomor_coc} (${cocData.company_name})` 
+                : `Membuat COC Baru ${cocData.nomor_coc} (${cocData.company_name})`;
+                
+            await _supabase.from('audit_logs').insert([{
+                user_id: session.user.id,
+                username: session.user.email,
+                action_type: actionType,
+                table_name: 'coc_emisi',
+                description: desc,
+                old_data: oldData,
+                new_data: payload
+            }]);
+        }
 
         // 5. UPDATE TEMPLATE CETAK & PRINT
         // Kita panggil fungsi fillPrintTemplate (yang sudah diletakkan di luar)
@@ -496,13 +530,16 @@ async function updateParametersByTags(tagContainer) {
     row.dataset.paramMethods = JSON.stringify(paramMap);
     const uniqueParams = Object.keys(paramMap);
 
+    const formContainer = document.getElementById('cocFormContainer');
+    const isReadonly = formContainer && formContainer.dataset.readonly === 'true';
+
     // Tampilkan tombol Select All karena parameter sudah siap
-    selectAllArea.style.display = 'block'; 
+    selectAllArea.style.display = isReadonly ? 'none' : 'block'; 
 
     paramContainer.innerHTML = uniqueParams.map(p => `
         <div class="param-row" style="display: flex; align-items: center; justify-content: space-between; gap: 15px; min-height: 32px;">
-            <label style="font-size: 0.8rem; display: flex; align-items: center; gap: 10px; cursor:pointer; margin:0; flex: 1; color: #334155;">
-                <input type="checkbox" class="param-checkbox" value="${p}" onchange="renderMethodDropdown(this)"> 
+            <label style="font-size: 0.8rem; display: flex; align-items: center; gap: 10px; cursor:${isReadonly ? 'not-allowed' : 'pointer'}; margin:0; flex: 1; color: #334155;">
+                <input type="checkbox" class="param-checkbox" value="${p}" ${isReadonly ? 'disabled' : ''} onchange="renderMethodDropdown(this)"> 
                 <span style="font-weight: 600;">${p}</span>
             </label>
             <div id="slot-metode-${p.replace(/[^a-z0-9]/gi, '-')}" style="width: 220px; display: flex; align-items: center;"></div>
@@ -520,10 +557,13 @@ function renderMethodDropdown(checkbox) {
     const paramMap = JSON.parse(row.dataset.paramMethods || "{}");
     const availableMethods = paramMap[paramName] || [];
 
+    const formContainer = document.getElementById('cocFormContainer');
+    const isReadonly = formContainer && formContainer.dataset.readonly === 'true';
+
     if (checkbox.checked) {
         slot.innerHTML = `
-            <select class="form-control select-metode" data-param="${paramName}" 
-                    style="font-size: 0.7rem; height: 28px; padding: 0 10px; border-radius: 20px; border: 1px solid #2563eb; width: 100%; background: #fff; cursor: pointer;">
+            <select class="form-control select-metode" data-param="${paramName}" ${isReadonly ? 'disabled' : ''}
+                    style="font-size: 0.7rem; height: 28px; padding: 0 10px; border-radius: 20px; border: 1px solid ${isReadonly ? '#cbd5e1' : '#2563eb'}; width: 100%; background: ${isReadonly ? '#f1f5f9' : '#fff'}; cursor: ${isReadonly ? 'not-allowed' : 'pointer'};">
                 ${availableMethods.map(m => `<option value="${m}">${m}</option>`).join('')}
             </select>
         `;
@@ -652,9 +692,11 @@ function renderCocTableRows() {
                 <td style="padding:10px;">${new Date(item.sampling_date).toLocaleDateString('id-ID')}</td>
                 <td style="padding:10px; font-weight:800; color:#2563eb;">${item.nomor_coc}</td>
                 <td style="padding:10px;">${item.company_name}</td>
-                <td style="padding:10px; text-align:center; display: flex; gap: 5px; justify-content: center;">
-                    <button class="btn-primary" onclick="loadCocToForm('${item.id}')" style="padding:5px 10px; font-size:0.7rem; background: #2563eb;">EDIT</button>
+                <td style="padding:10px; text-align:center; display: flex; gap: 5px; justify-content: center; flex-wrap: wrap;">
+                    <button class="btn-primary" onclick="loadCocToForm('${item.id}', true)" style="padding:5px 10px; font-size:0.7rem; background: #64748b;">BUKA</button>
+                    <button class="btn-primary" onclick="loadCocToForm('${item.id}', false)" style="padding:5px 10px; font-size:0.7rem; background: #2563eb;">EDIT</button>
                     <button class="btn-primary" onclick="directPrint('${item.id}')" style="padding:5px 10px; font-size:0.7rem; background: #059669;">CETAK</button>
+                    <button class="btn-primary" onclick="deleteCoc('${item.id}')" style="padding:5px 10px; font-size:0.7rem; background: #ef4444;">HAPUS</button>
                 </td>
             </tr>
         `;
@@ -724,9 +766,14 @@ async function directPrint(id) {
 }
 
 // --- MEMASUKKAN DATA KE FORM (LOAD DATA) ---
-async function loadCocToForm(id) {
+async function loadCocToForm(id, isReadonly = false) {
     const { data, error } = await _supabase.from('coc_emisi').select('*').eq('id', id).single();
     if (error) return alert("Gagal memuat data");
+
+    const formContainer = document.getElementById('cocFormContainer');
+    if (formContainer) {
+        formContainer.dataset.readonly = isReadonly ? 'true' : 'false';
+    }
 
     // 1. Load Header
     document.getElementById('nomorCoc').value = data.nomor_coc;
@@ -787,6 +834,9 @@ async function loadCocToForm(id) {
             }
         });
     }
+
+    setFormReadonly(isReadonly);
+
     let existingPrintBtn = document.getElementById('extraPrintBtn');
     if (!existingPrintBtn) {
         const printBtn = document.createElement('button');
@@ -831,3 +881,159 @@ function preparePrintData(cocData, items) {
         });
     });
 }
+
+function setFormReadonly(readonly) {
+    const formContainer = document.getElementById('cocFormContainer');
+    if (formContainer) {
+        formContainer.dataset.readonly = readonly ? 'true' : 'false';
+    }
+
+    // 1. Enable/Disable header inputs
+    const headerInputIds = [
+        'nomorCoc', 'companyName', 'companyAddress', 'contactPerson', 
+        'phoneNumber', 'emailCoa', 'qtNo', 'tatRequest', 'samplingDate', 
+        'officer1', 'officer2', 'officer3'
+    ];
+    headerInputIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.disabled = readonly;
+    });
+
+    // 2. Enable/Disable inputs and selects in the table
+    const tableInputs = document.querySelectorAll('#cocBody input, #cocBody select, #cocBody textarea');
+    tableInputs.forEach(el => {
+        el.disabled = readonly;
+    });
+
+    // 3. Hide/Show action buttons
+    const btnAdd = document.querySelector('.btn-add');
+    if (btnAdd) {
+        btnAdd.style.display = readonly ? 'none' : 'block';
+    }
+    const btnSave = document.querySelector('.btn-save:not(#extraPrintBtn)');
+    if (btnSave) {
+        btnSave.style.display = readonly ? 'none' : 'block';
+    }
+
+    // 4. Hide/Show remove row buttons (❌)
+    const removeBtns = document.querySelectorAll('#cocBody tr td button');
+    removeBtns.forEach(btn => {
+        btn.style.display = readonly ? 'none' : 'inline-block';
+    });
+
+    // 5. Hide/Show delete tag buttons (×)
+    const tagCloses = document.querySelectorAll('#cocBody .reg-tag span');
+    tagCloses.forEach(span => {
+        span.style.display = readonly ? 'none' : 'inline';
+    });
+
+    // 6. Disable parameter checkboxes and select all checkboxes
+    const paramCbs = document.querySelectorAll('#cocBody .param-checkbox');
+    paramCbs.forEach(cb => {
+        cb.disabled = readonly;
+    });
+
+    const selectAllCbs = document.querySelectorAll('#cocBody .select-all-area input[type="checkbox"]');
+    selectAllCbs.forEach(cb => {
+        cb.disabled = readonly;
+    });
+}
+
+window.createNewCoc = async function() {
+    // Reset all header inputs
+    const headerFields = [
+        'companyName', 'companyAddress', 'contactPerson', 'phoneNumber', 
+        'emailCoa', 'samplingDate', 'officer1', 'officer2', 'officer3'
+    ];
+    headerFields.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+
+    // Clear extra print button if exists
+    const extraPrintBtn = document.getElementById('extraPrintBtn');
+    if (extraPrintBtn) {
+        extraPrintBtn.remove();
+    }
+
+    // Reset table rows to 1 empty row
+    const tbody = document.getElementById('cocBody');
+    tbody.innerHTML = `
+        <tr>
+            <td>1</td>
+            <td><input type="text" class="form-control sample-id" readonly style="background: #f8fafc; font-weight: 800; color: #2563eb;" placeholder="Auto"></td>
+            <td><input type="text" class="form-control titik-uji" placeholder="Nama Titik & Deskripsi"></td>
+            <td>
+                <input type="text" class="form-control regulasi-search" list="listRegulasi" onkeypress="if(event.key === 'Enter') addRegulasiTag(this)" placeholder="Ketik & Enter...">
+                <div class="selected-regulasi-tags" style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px;"></div>
+            </td>
+            <td style="vertical-align: top;">
+                <div class="param-main-wrapper">
+                    <div class="select-all-area" style="display: none; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 5px;">
+                        <label style="font-size: 0.75rem; font-weight: 800; color: #2563eb; cursor:pointer;">
+                            <input type="checkbox" onchange="toggleSelectAll(this)"> SELECT ALL
+                        </label>
+                    </div>
+                    <div class="param-container" style="display: flex; flex-direction: column; gap: 6px;">
+                        <small style="color: #94a3b8;">Pilih regulasi...</small>
+                    </div>
+                </div>
+            </td>
+            <td class="no-print" style="text-align: center; vertical-align: middle;">
+                <button type="button" onclick="removeRow(this)" style="background:none; border:none; cursor:pointer; font-size: 1.1rem;">❌</button>
+            </td>
+        </tr>
+    `;
+
+    // Make editable
+    setFormReadonly(false);
+
+    // Generate new COC number
+    await generateCocNumber();
+    await initQuotationNumber();
+
+    // Switch tab
+    switchCocMainTab('form');
+};
+
+window.deleteCoc = async function(id) {
+    const warningText = "Warning!! COC yang dihapus tidak dapat dikembalikan, hanya admin_master yang bisa hapus\n\nApakah Anda yakin ingin menghapus COC ini?";
+    if (!confirm(warningText)) return;
+    
+    if (window.currentUserRole !== 'admin_master') {
+        alert("Maaf, hanya admin_master yang bisa hapus COC.");
+        return;
+    }
+    
+    try {
+        // Fetch old data for audit log first
+        const { data: oldData } = await _supabase
+            .from('coc_emisi')
+            .select('*')
+            .eq('id', id)
+            .single();
+
+        const { error } = await _supabase.from('coc_emisi').delete().eq('id', id);
+        if (error) throw error;
+
+        // Log audit
+        const { data: { session } } = await _supabase.auth.getSession();
+        if (session && oldData) {
+            await _supabase.from('audit_logs').insert([{
+                user_id: session.user.id,
+                username: session.user.email,
+                action_type: 'DELETE_COC',
+                table_name: 'coc_emisi',
+                description: `Menghapus COC ${oldData.nomor_coc} (${oldData.company_name})`,
+                old_data: oldData,
+                new_data: null
+            }]);
+        }
+
+        alert("COC berhasil dihapus.");
+        fetchSavedCoc(document.getElementById('searchKeyword')?.value.toLowerCase());
+    } catch (err) {
+        console.error("Gagal menghapus COC:", err);
+        alert("Gagal menghapus: " + err.message);
+    }
+};

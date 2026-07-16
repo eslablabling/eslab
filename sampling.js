@@ -251,6 +251,52 @@ async function openSamplingModal(id, readOnly = false) {
 
     currentCocId = id;
     samplesDataArray = data.samples_data || [];
+    
+    // Auto-inject missing Nitrogen Monoxide (NO) and Nitrogen Dioxide (NO2) if Nitrogen Oxide (NOx) is present
+    samplesDataArray.forEach(s => {
+        if (s.parameters) {
+            const hasNOx = s.parameters.some(p => {
+                const name = p.parameter.toUpperCase();
+                return name.includes('NOX') || name.includes('NITROGEN OXIDE');
+            });
+            if (hasNOx) {
+                const hasNO = s.parameters.some(p => {
+                    const name = p.parameter.toUpperCase();
+                    return name.includes('NITROGEN MONOXIDE') || name.replace(/\s+/g, '').includes('(NO)');
+                });
+                const hasNO2 = s.parameters.some(p => {
+                    const name = p.parameter.toUpperCase();
+                    return name.includes('NITROGEN DIOXIDE') || name.replace(/\s+/g, '').includes('(NO2)');
+                });
+
+                const noxParam = s.parameters.find(p => {
+                    const name = p.parameter.toUpperCase();
+                    return name.includes('NOX') || name.includes('NITROGEN OXIDE');
+                });
+                const copiedMethod = noxParam ? noxParam.method || noxParam.metode || 'Gas Analyzer' : 'Gas Analyzer';
+
+                if (!hasNO) {
+                    s.parameters.push({
+                        parameter: "Nitrogen Monoxide (NO)",
+                        method: copiedMethod,
+                        konsentrasi_1: "",
+                        konsentrasi_2: "",
+                        konsentrasi_3: ""
+                    });
+                }
+                if (!hasNO2) {
+                    s.parameters.push({
+                        parameter: "Nitrogen Dioxide (NO2)",
+                        method: copiedMethod,
+                        konsentrasi_1: "",
+                        konsentrasi_2: "",
+                        konsentrasi_3: ""
+                    });
+                }
+            }
+        }
+    });
+
     currentSampleIdx = 0;
     activeTab = 'identitas'; 
     
@@ -339,6 +385,34 @@ function renderTabNavigation(readOnly = false) {
         });
     });
 
+    const hasAnyOpacity = samplesDataArray.some(s => s.parameters.some(p => p.parameter.toUpperCase().includes('OPACITY') || p.parameter.toUpperCase().includes('OPASITAS')));
+    const hasAnyParticulate = samplesDataArray.some(s => s.parameters.some(p => p.parameter.toUpperCase().includes('PARTICULATE') || p.parameter.toUpperCase().includes('PARTIKULAT')));
+
+    if (!hasAnyOpacity && activeTab === 'opacity') {
+        activeTab = 'identitas';
+    }
+    if (!hasAnyParticulate && activeTab === 'isokinetic') {
+        activeTab = 'identitas';
+    }
+
+    let opacityTabHtml = "";
+    if (hasAnyOpacity) {
+        opacityTabHtml = `
+            <button class="tab-btn ${activeTab === 'opacity' ? 'active' : ''}" onclick="switchTab('opacity', ${readOnly})">
+                ☁️ OPASITAS ${isOpacityIncomplete ? '<span style="color:#ef4444; font-weight:bold; margin-left:4px;">⚠️</span>' : ''}
+            </button>
+        `;
+    }
+
+    let isokineticTabHtml = "";
+    if (hasAnyParticulate) {
+        isokineticTabHtml = `
+            <button class="tab-btn ${activeTab === 'isokinetic' ? 'active' : ''}" onclick="switchTab('isokinetic', ${readOnly})">
+                🏗️ ISOKINETIK ${isIsokineticIncomplete ? '<span style="color:#ef4444; font-weight:bold; margin-left:4px;">⚠️</span>' : ''}
+            </button>
+        `;
+    }
+
     const navHtml = `
         <div class="modal-tabs" style="display: flex; gap: 5px; margin-bottom: 20px; border-bottom: 2px solid #f1f5f9; padding-bottom: 10px; overflow-x: auto;">
             <button class="tab-btn ${activeTab === 'identitas' ? 'active' : ''}" onclick="switchTab('identitas', ${readOnly})">
@@ -347,12 +421,8 @@ function renderTabNavigation(readOnly = false) {
             <button class="tab-btn ${activeTab === 'gas' ? 'active' : ''}" onclick="switchTab('gas', ${readOnly})">
                 📟 GAS DIRECT ${isGasIncomplete ? '<span style="color:#ef4444; font-weight:bold; margin-left:4px;">⚠️</span>' : ''}
             </button>
-            <button class="tab-btn ${activeTab === 'opacity' ? 'active' : ''}" onclick="switchTab('opacity', ${readOnly})">
-                ☁️ OPASITAS ${isOpacityIncomplete ? '<span style="color:#ef4444; font-weight:bold; margin-left:4px;">⚠️</span>' : ''}
-            </button>
-            <button class="tab-btn ${activeTab === 'isokinetic' ? 'active' : ''}" onclick="switchTab('isokinetic', ${readOnly})">
-                🏗️ ISOKINETIK ${isIsokineticIncomplete ? '<span style="color:#ef4444; font-weight:bold; margin-left:4px;">⚠️</span>' : ''}
-            </button>
+            ${opacityTabHtml}
+            ${isokineticTabHtml}
         </div>
     `;
     const container = document.getElementById('samplingDetailContainer');
@@ -590,13 +660,13 @@ function renderSamplingForm(readOnly = false) {
        if (activeTab === 'gas') {
             // 1. Urutan tampilan
             const insituOrder = [
-                { key: /Nitrogen Monoxide|NO\)/i, label: 'NO' },
-                { key: /Nitrogen Dioxide|NO2\)/i, label: 'NO2' },
-                { key: /Nitrogen Oxide|NOx\)/i, label: 'NOX' },
-                { key: /Sulfur Dioxide|SO2\)/i, label: 'SO2' },
-                { key: /Carbon Monoxide|CO\)/i, label: 'CO' },
-                { key: /Oxygen|O2\)/i, label: 'O2' },
-                { key: /Carbon Dioxide|CO2\)/i, label: 'CO2' },
+                { key: /Nitrogen Monoxide|\bNO\b/i, label: 'NO' },
+                { key: /Nitrogen Dioxide|\bNO2\b/i, label: 'NO2' },
+                { key: /Nitrogen Oxide|\bNOx\b/i, label: 'NOX' },
+                { key: /Sulfur Dioxide|\bSO2\b/i, label: 'SO2' },
+                { key: /Carbon Monoxide|\bCO\b/i, label: 'CO' },
+                { key: /Oxygen|Oksigen|\bO2\b/i, label: 'O2' },
+                { key: /Carbon Dioxide|\bCO2\b/i, label: 'CO2' },
                 { key: /Velocity/i, label: 'VELOCITY' }
             ];
 
@@ -1218,8 +1288,8 @@ function updateSingleDisplay(sampleIdx, paramIdx) {
 
         if (pName.includes("NOx") || pName.includes("Nitrogen Oxide")) {
             // Gunakan Regex agar lebih aman mencari NO dan NO2
-            const no = s.parameters.find(i => /Nitrogen Monoxide|NO\)/i.test(i.parameter));
-            const no2 = s.parameters.find(i => /Nitrogen Dioxide|NO2\)/i.test(i.parameter));
+            const no = s.parameters.find(i => /Nitrogen Monoxide|\bNO\b/i.test(i.parameter));
+            const no2 = s.parameters.find(i => /Nitrogen Dioxide|\bNO2\b/i.test(i.parameter));
             
             const avgNO = getAvg(no);
             const avgNO2 = getAvg(no2);
@@ -1276,6 +1346,7 @@ async function verifikasiSampling(id, nomorCoc) {
                 action_type: 'VERIFY_SAMPLING',
                 table_name: 'coc_emisi',
                 description: `Memverifikasi data sampling untuk COC ${nomorCoc}`,
+                old_data: { status_sampling: 'Selesai' },
                 new_data: { status_sampling: 'Verified' }
             }]);
         }
@@ -1310,6 +1381,7 @@ async function unverifikasiSampling(id, nomorCoc) {
                 action_type: 'UNVERIFY_SAMPLING',
                 table_name: 'coc_emisi',
                 description: `Membatalkan verifikasi data sampling untuk COC ${nomorCoc}`,
+                old_data: { status_sampling: 'Verified' },
                 new_data: { status_sampling: 'Selesai' }
             }]);
         }

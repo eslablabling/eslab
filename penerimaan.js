@@ -354,34 +354,76 @@ async function prosesTerimaSampel(dbId, sampleId) {
         const targetSample = samples.find(s => s.sample_id === sampleId);
         const tglLama = targetSample.tgl_terima_lab || new Date().toISOString().split('T')[0];
         
-        // 2. Tampilkan prompt (Jika sudah ada tanggal, user bisa edit)
-        const pesanPrompt = targetSample.status_lab === 'received' 
-            ? `Edit Tanggal Penerimaan untuk ${sampleId}:` 
-            : `Masukkan Tanggal Penerimaan Fisik (${sampleId}):`;
-            
-        const tglInput = prompt(pesanPrompt, tglLama);
-        
-        if (!tglInput) return; // Batal jika cancel
-
-        // 3. Update array JSON
-        const updated = samples.map(s => {
-            if (s.sample_id === sampleId) {
-                return { 
-                    ...s, 
-                    status_lab: 'received', 
-                    tgl_terima_lab: tglInput 
-                };
+        // 2. Format tanggal lama DD/MM/YYYY
+        let tglTextVal = "";
+        if (tglLama) {
+            const parts = tglLama.split('-');
+            if (parts.length === 3) {
+                tglTextVal = `${parts[2]}/${parts[1]}/${parts[0]}`;
+            } else {
+                tglTextVal = tglLama;
             }
-            return s;
+        }
+
+        // Tampilkan modal
+        const modalTitle = targetSample.status_lab === 'received' 
+            ? `Edit Tanggal Penerimaan untuk ${sampleId}` 
+            : `Masukkan Tanggal Penerimaan Fisik (${sampleId})`;
+            
+        document.getElementById('penerimaanModalTitle').innerText = modalTitle;
+        document.getElementById('penerimaanTglText').value = tglTextVal;
+        document.getElementById('penerimaanTglPicker').value = tglLama;
+        document.getElementById('modalPenerimaan').style.display = 'flex';
+
+        // Bind simpan action
+        const btnSimpan = document.getElementById('btnSimpanPenerimaan');
+        const newBtn = btnSimpan.cloneNode(true);
+        btnSimpan.parentNode.replaceChild(newBtn, btnSimpan);
+
+        newBtn.addEventListener('click', async () => {
+            const typedVal = document.getElementById('penerimaanTglText').value.trim();
+            let finalDate = "";
+            if (typedVal) {
+                const parts = typedVal.split('/');
+                if (parts.length === 3) {
+                    finalDate = `${parts[2]}-${parts[1]}-${parts[0]}`; // YYYY-MM-DD
+                } else {
+                    const d = new Date(typedVal);
+                    if (!isNaN(d.getTime())) {
+                        finalDate = d.toISOString().split('T')[0];
+                    } else {
+                        finalDate = typedVal;
+                    }
+                }
+            }
+            
+            if (!finalDate) {
+                alert("Tanggal penerimaan tidak valid!");
+                return;
+            }
+            
+            const updated = samples.map(s => {
+                if (s.sample_id === sampleId) {
+                    return { 
+                        ...s, 
+                        status_lab: 'received', 
+                        tgl_terima_lab: finalDate 
+                    };
+                }
+                return s;
+            });
+
+            const { error } = await _supabase.from('coc_emisi').update({ samples_data: updated }).eq('id', dbId);
+            if (error) {
+                alert("Gagal memperbarui data: " + error.message);
+            } else {
+                tutupModalPenerimaan();
+                fetchDataPenerimaan();
+            }
         });
 
-        // 4. Simpan ke Supabase
-        const { error } = await _supabase.from('coc_emisi').update({ samples_data: updated }).eq('id', dbId);
-        if (error) throw error;
-
-        fetchDataPenerimaan(); 
     } catch (err) {
-        alert("Gagal memperbarui data: " + err.message);
+        alert("Gagal memproses penerimaan: " + err.message);
     }
 }
 
@@ -439,4 +481,19 @@ async function batalTerimaSampel(dbId, sampleId) {
 // Bind to window for HTML onclick attributes
 window.batalTerimaSampel = batalTerimaSampel;
 window.prosesTerimaSampel = prosesTerimaSampel;
+
+function tutupModalPenerimaan() {
+    document.getElementById('modalPenerimaan').style.display = 'none';
+}
+window.tutupModalPenerimaan = tutupModalPenerimaan;
+
+function syncPenerimaanDatePicker(val) {
+    if (val) {
+        const parts = val.split('-');
+        if (parts.length === 3) {
+            document.getElementById('penerimaanTglText').value = `${parts[2]}/${parts[1]}/${parts[0]}`;
+        }
+    }
+}
+window.syncPenerimaanDatePicker = syncPenerimaanDatePicker;
 

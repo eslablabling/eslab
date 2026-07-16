@@ -95,11 +95,48 @@
         .coa-table th { background: #f8fafc; font-weight: 800; text-transform: uppercase; font-size: 0.75rem; }
 
         /* --- PRINT LOGIC --- */
+        .print-footer {
+            display: none !important;
+        }
+
+        @page {
+            size: A4;
+            margin-top: 3.5cm;
+            margin-bottom: 4.2cm;
+            margin-left: 1.3cm;
+            margin-right: 1.3cm;
+        }
+
         @media print {
             .sidebar, .action-bar, .nav-item, .no-print { display: none !important; }
-            body { background: white; }
+            body { background: white; margin: 0; padding: 0; }
             .content { padding: 0; margin: 0; max-width: 100%; }
-            .coa-paper { border: none; box-shadow: none; padding: 0; }
+            .coa-paper { border: none; box-shadow: none; padding: 0; margin: 0; }
+            .coa-page {
+                box-shadow: none;
+                margin: 0 !important;
+                padding: 0 !important;
+                width: 100% !important;
+                min-height: 0 !important;
+                page-break-after: always;
+                page-break-inside: avoid;
+            }
+            .print-footer {
+                display: flex !important;
+                position: fixed;
+                bottom: -3.2cm;
+                left: 0;
+                right: 0;
+                justify-content: space-between;
+                font-size: 0.75rem;
+                font-family: inherit;
+                color: #000;
+                border-top: 1px solid #000;
+                padding-top: 5px;
+            }
+            .page-number-display::after {
+                content: counter(page);
+            }
         }
 
         .btn-print {
@@ -114,28 +151,23 @@
             align-items: center;
             gap: 8px;
         }
-        @media print {
-    .coa-page { page-break-after: always; min-height: 100vh; }
-}
 
 .coa-table-v2 {
     width: 100%;
     border-collapse: collapse;
-    border: 1.5px solid #0000ff; /* Border biru */
+    border: 1.5px solid #000;
     font-size: 0.8rem;
 }
 
 .coa-table-v2 th, .coa-table-v2 td {
-    border: 1px solid #0000ff;
+    border: 1px solid #000;
     padding: 6px 8px;
 }
 
 .coa-info-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    border-left: 1.5px solid #0000ff;
-    border-right: 1.5px solid #0000ff;
-    padding: 10px;
+    padding: 10px 0;
     font-size: 0.85rem;
 }
 /* Pastikan setiap halaman adalah area terisolasi */
@@ -206,6 +238,11 @@
     </style>
 </head>
 <body>
+
+    <div class="print-footer">
+        <span>Form-ES-7.8.1; Rev.00; 3 Februari 2016</span>
+        <span class="page-number-display">Page </span>
+    </div>
 
     <aside class="sidebar no-print">
         <div style="margin-bottom: 30px; padding: 0 10px;">

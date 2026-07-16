@@ -326,13 +326,13 @@ async function fetchAntreanAnalisa(keyword = '') {
 
                     // Saring lokal berdasarkan tab aktif
                     if (currentFilterTab === 'belum_selesai') {
-                        // Belum selesai: Butuh analisa lab (needLab === true) dan belum di-input hasil analisanya (isReceived === true)
-                        if (hasLabWork && isReceived) {
+                        // Belum selesai: Butuh analisa lab (needLab === true) dan belum di-verifikasi (status_lab adalah 'received' atau 'analyzed')
+                        if (hasLabWork && (s.status_lab === 'received' || s.status_lab === 'analyzed')) {
                             antreanSamples.push(sampleObj);
                         }
                     } else {
-                        // Sudah selesai: Analisa lab selesai/terverifikasi (isDone === true) ATAU Direct Reading (hasLabWork === false)
-                        if (isDone || !hasLabWork) {
+                        // Sudah selesai: Analisa lab terverifikasi (status_lab === 'verified') ATAU Direct Reading (hasLabWork === false)
+                        if (s.status_lab === 'verified' || !hasLabWork) {
                             antreanSamples.push(sampleObj);
                         }
                     }
@@ -427,15 +427,31 @@ async function bukaModalAnalisa(dbId, sampleId) {
         }
         document.getElementById('modalSubtitle').innerHTML = s.description + lastUpdateInfo;
 
-        // --- BAGIAN INPUT TANGGAL ---
         // Jika sudah ada analyzed_at, ambil YYYY-MM-DD-nya. Jika belum, pakai hari ini.
         const tglDefault = s.analyzed_at ? s.analyzed_at.split('T')[0] : new Date().toISOString().split('T')[0];
-        
+
+        // Konversi tglDefault (YYYY-MM-DD) ke DD/MM/YYYY
+        let tglTextVal = "";
+        if (tglDefault) {
+            const parts = tglDefault.split('-');
+            if (parts.length === 3) {
+                tglTextVal = `${parts[2]}/${parts[1]}/${parts[0]}`;
+            }
+        }
+
         const tglInputHtml = `
             <div style="margin-bottom: 20px; padding: 12px; background: #f8fafc; border-radius: 8px; border: 1px dashed #cbd5e1;">
                 <label style="font-size: 0.7rem; font-weight: 800; color: #475569; display: block; margin-bottom: 5px;">📅 TANGGAL ANALISA</label>
-                <input type="date" id="editTglAnalisa" value="${tglDefault}" ${disabledAttr} 
-                    style="width: 100%; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px; font-size: 0.9rem; font-family: inherit; font-weight: 600; color: #1e293b;">
+                <div style="position: relative; display: flex; align-items: center; width: 100%;">
+                    <input type="text" id="editTglAnalisaText" placeholder="DD/MM/YYYY" value="${tglTextVal}" ${disabledAttr} 
+                        style="width: 100%; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px; padding-right: 40px; font-size: 0.9rem; font-family: inherit; font-weight: 600; color: #1e293b; background: ${isVerified ? '#f1f5f9' : '#fff'};">
+                    ${!isVerified ? `
+                    <input type="date" id="editTglAnalisaPicker" value="${tglDefault}" 
+                        style="position: absolute; right: 8px; width: 28px; height: 28px; opacity: 0; cursor: pointer; z-index: 10;"
+                        onchange="syncDatePickerToText(this.value)">
+                    <span style="position: absolute; right: 10px; font-size: 1.1rem; pointer-events: none; z-index: 5;">📅</span>
+                    ` : ''}
+                </div>
             </div>
         `;
         // ----------------------------
@@ -540,9 +556,24 @@ document.getElementById('btnSimpanAnalisa').addEventListener('click', async () =
     const { dbId, sampleId } = currentEditSample;
 
     // --- 1. AMBIL TANGGAL DARI INPUT MODAL ---
-    const tglInput = document.getElementById('editTglAnalisa').value;
-    // Gunakan jam saat ini agar urutan data tetap rapi di database
-    const finalDate = tglInput ? new Date(tglInput).toISOString() : new Date().toISOString();
+    const tglText = document.getElementById('editTglAnalisaText').value.trim();
+    let finalDate = new Date().toISOString();
+    if (tglText) {
+        const parts = tglText.split('/');
+        if (parts.length === 3) {
+            // DD/MM/YYYY -> YYYY-MM-DD
+            const formatted = `${parts[2]}-${parts[1]}-${parts[0]}`;
+            const d = new Date(formatted);
+            if (!isNaN(d.getTime())) {
+                finalDate = d.toISOString();
+            }
+        } else {
+            const d = new Date(tglText);
+            if (!isNaN(d.getTime())) {
+                finalDate = d.toISOString();
+            }
+        }
+    }
 
     try {
         const { data: coc } = await _supabase.from('coc_emisi').select('samples_data').eq('id', dbId).single();
@@ -588,6 +619,9 @@ document.getElementById('btnSimpanAnalisa').addEventListener('click', async () =
                     }
                 });
 
+                const targetSample = samples.find(s => s.sample_id === sampleId);
+                const originalStatus = targetSample ? targetSample.status_lab : null;
+
                 return { 
                     ...s, 
                     parameters: newParams, 
@@ -598,8 +632,30 @@ document.getElementById('btnSimpanAnalisa').addEventListener('click', async () =
             return s;
         });
 
+        // Tentukan action type & description sebelum update
+        const targetS = samples.find(s => s.sample_id === sampleId);
+        const originalStatus = targetS ? targetS.status_lab : null;
+        const actionType = originalStatus === 'analyzed' || originalStatus === 'verified' ? 'EDIT_ANALYSIS' : 'INPUT_ANALYSIS';
+        const desc = originalStatus === 'analyzed' || originalStatus === 'verified'
+            ? `Mengubah hasil analisa gravimetri untuk sampel ${sampleId}`
+            : `Menginput hasil analisa gravimetri untuk sampel ${sampleId}`;
+
         const { error } = await _supabase.from('coc_emisi').update({ samples_data: updatedSamples }).eq('id', dbId);
         if (error) throw error;
+
+        // Log audit
+        const { data: { session } } = await _supabase.auth.getSession();
+        if (session) {
+            await _supabase.from('audit_logs').insert([{
+                user_id: session.user.id,
+                username: session.user.email,
+                action_type: actionType,
+                table_name: 'coc_emisi',
+                description: desc,
+                old_data: { samples_data: coc.samples_data },
+                new_data: { samples_data: updatedSamples }
+            }]);
+        }
 
         alert("Data Penimbangan & Tanggal Berhasil Disimpan!");
         document.getElementById('modalAnalisa').style.display = 'none';
@@ -652,6 +708,20 @@ async function verifikasiHasil(dbId, sampleId) {
 
         if (error) throw error;
 
+        // Log audit
+        const { data: { session } } = await _supabase.auth.getSession();
+        if (session) {
+            await _supabase.from('audit_logs').insert([{
+                user_id: session.user.id,
+                username: session.user.email,
+                action_type: 'VERIFY_ANALYSIS',
+                table_name: 'coc_emisi',
+                description: `Memverifikasi hasil analisa untuk sampel ${sampleId}`,
+                old_data: { samples_data: coc.samples_data },
+                new_data: { samples_data: updated }
+            }]);
+        }
+
         alert("Sampel berhasil diverifikasi!");
         
         // Memanggil fungsi refresh yang benar
@@ -661,3 +731,18 @@ async function verifikasiHasil(dbId, sampleId) {
         alert("Gagal verifikasi: " + err.message);
     }
 }
+
+function tutupModalAnalisa() {
+    document.getElementById('modalAnalisa').style.display = 'none';
+}
+window.tutupModalAnalisa = tutupModalAnalisa;
+
+function syncDatePickerToText(val) {
+    if (val) {
+        const parts = val.split('-');
+        if (parts.length === 3) {
+            document.getElementById('editTglAnalisaText').value = `${parts[2]}/${parts[1]}/${parts[0]}`;
+        }
+    }
+}
+window.syncDatePickerToText = syncDatePickerToText;

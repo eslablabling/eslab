@@ -196,8 +196,16 @@ async function fetchCoAList(keyword = '') {
             const isVerified = status === 'verified';
             const isSelesai = status === 'selesai';
 
+            // Cek apakah semua sampel sudah diverifikasi oleh lab
+            let samples = [];
+            try {
+                samples = typeof item.samples_data === 'string' ? JSON.parse(item.samples_data) : (item.samples_data || []);
+            } catch (e) {}
+            
+            const allLabVerified = samples.length > 0 && samples.every(s => s.status_lab && s.status_lab.toLowerCase() === 'verified');
+
             if (currentFilterTab === 'belum_verif') {
-                return isSelesai;
+                return isSelesai && allLabVerified;
             } else {
                 return isVerified;
             }
@@ -442,6 +450,17 @@ async function unverifikasiCoASampling(id, nomorCoc) {
 window.verifikasiCoASampling = verifikasiCoASampling;
 window.unverifikasiCoASampling = unverifikasiCoASampling;
 
+function formatDateEnglish(dateInput) {
+    if (!dateInput) return '-';
+    const d = new Date(dateInput);
+    if (isNaN(d.getTime())) return '-';
+    const months = [
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December"
+    ];
+    return `${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+}
+
 function renderCoA(data) {
     const area = document.getElementById('coaRenderArea');
     
@@ -468,23 +487,149 @@ function renderCoA(data) {
         `;
     }
 
+    // Format dates for Customer Job Refference
+    let samplingDates = [];
+    let acceptanceDates = [];
+    let analysisDates = [];
+
+    verifiedSamples.forEach(s => {
+        if (s.tgl_sampling) samplingDates.push(new Date(s.tgl_sampling));
+        if (s.tgl_terima_lab) acceptanceDates.push(new Date(s.tgl_terima_lab));
+        if (s.analyzed_at) analysisDates.push(new Date(s.analyzed_at));
+    });
+
+    if (samplingDates.length === 0 && data.sampling_date) {
+        samplingDates.push(new Date(data.sampling_date));
+    }
+
+    function formatRange(dates) {
+        if (dates.length === 0) return '-';
+        const validDates = dates.filter(d => !isNaN(d.getTime())).sort((a, b) => a - b);
+        if (validDates.length === 0) return '-';
+        
+        const minDate = validDates[0];
+        const maxDate = validDates[validDates.length - 1];
+
+        const minStr = formatDateEnglish(minDate);
+        const maxStr = formatDateEnglish(maxDate);
+
+        if (minStr === maxStr) return minStr;
+        return `${minStr} - ${maxStr}`;
+    }
+
+    const displayDateOfSampling = formatRange(samplingDates);
+    const displayDateOfAcceptance = formatRange(acceptanceDates);
+
+    // Date of Analysis: dari min tanggal analisis (atau tgl_terima_lab) sampai max tanggal analisis (atau tanggal cetak/hari ini)
+    let displayDateOfAnalysis = '-';
+    const validAcceptance = acceptanceDates.filter(d => !isNaN(d.getTime())).sort((a, b) => a - b);
+    const validAnalysis = analysisDates.filter(d => !isNaN(d.getTime())).sort((a, b) => a - b);
+    const reportDateStr = formatDateEnglish(new Date());
+
+    if (validAnalysis.length > 0) {
+        const startAnalysis = validAnalysis[0];
+        const endAnalysis = validAnalysis[validAnalysis.length - 1];
+        
+        const startStr = formatDateEnglish(startAnalysis);
+        const endStr = formatDateEnglish(endAnalysis);
+
+        if (startStr === endStr) {
+            displayDateOfAnalysis = startStr;
+        } else {
+            displayDateOfAnalysis = `${startStr} until ${endStr}`;
+        }
+    } else if (validAcceptance.length > 0) {
+        const startAnalysis = new Date(validAcceptance[0]);
+        startAnalysis.setDate(startAnalysis.getDate() + 1); // default ke keesokan harinya
+        displayDateOfAnalysis = `${formatDateEnglish(startAnalysis)} until ${reportDateStr}`;
+    } else {
+        displayDateOfAnalysis = reportDateStr;
+    }
+
     // 1. Render Cover Page (Halaman 1)
     let htmlContent = warningBanner + `
-        <div class="coa-page coa-cover">
-            <div style="text-align:center; border-bottom: 2px solid #000; padding-bottom: 10px;">
-                <h1 style="margin:0; font-size: 22px;">CERTIFICATE OF ANALYSIS</h1>
-                <p style="margin:5px 0 0 0;">Certificate Number: ES.${data.qt_no?.split('/')[0] || '0000'}.${new Date().getFullYear()}${data.id.substring(0,4)}</p>
+        <div class="coa-page coa-cover" style="position: relative; display: flex; flex-direction: column; box-sizing: border-box;">
+            <div style="text-align:center; border-bottom: 2px solid #000; padding-bottom: 6px; margin-bottom: 10px;">
+                <h1 style="margin:0; font-size: 20px; font-weight: 800; letter-spacing: 0.05em;">CERTIFICATE OF ANALYSIS</h1>
+                <p style="margin:3px 0 0 0; font-size: 0.85rem;">Certificate Number: ES.${data.qt_no?.split('/')[0] || '0000'}.${new Date().getFullYear()}${data.id.substring(0,4)}</p>
             </div>
-            <div style="margin-top:40px;">
-                <h3 style="text-decoration: underline;">Owners Identity</h3>
-                <p>Name of Company : ${data.company_name}</p>
-                <p>Address : ${data.company_address || '-'}</p>
-                <p>Customer Contact : ${data.contact_person || '-'}</p>
+            
+            <div style="margin-top: 10px; border-bottom: 1.5px solid #000; padding-bottom: 8px; margin-bottom: 12px;">
+                <h3 style="text-decoration: underline; margin-bottom: 4px; font-size: 1rem; font-weight: 700; color: #000;">Owners Identity</h3>
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+                    <tr style="vertical-align: top;">
+                        <td style="width: 160px; padding: 2px 0; font-weight: 600;">Name of Company</td>
+                        <td style="width: 15px; padding: 2px 0;">:</td>
+                        <td style="padding: 2px 0;">${data.company_name}</td>
+                    </tr>
+                    <tr style="vertical-align: top;">
+                        <td style="padding: 2px 0; font-weight: 600;">Address</td>
+                        <td style="padding: 2px 0;">:</td>
+                        <td style="padding: 2px 0;">${data.company_address || '-'}</td>
+                    </tr>
+                    <tr style="vertical-align: top;">
+                        <td style="padding: 2px 0; font-weight: 600;">Customer Contact</td>
+                        <td style="padding: 2px 0;">:</td>
+                        <td style="padding: 2px 0;">${data.contact_person || '-'}</td>
+                    </tr>
+                </table>
             </div>
-            <div style="position: absolute; bottom: 100px; right: 40px; text-align: right;">
-                <p>Cikarang, ${new Date().toLocaleDateString('en-US', {month: 'long', day: 'numeric', year: 'numeric'})}</p>
-                <p>Approved by,</p><br><br><br>
-                <p><strong>Fadhel Verdino</strong></p>
+
+            <div style="margin-top: 12px; border-bottom: 1.5px solid #000; padding-bottom: 8px; margin-bottom: 12px;">
+                <h3 style="text-decoration: underline; margin-bottom: 4px; font-size: 1rem; font-weight: 700; color: #000;">Customer Job Refference</h3>
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+                    <tr style="vertical-align: top;">
+                        <td style="width: 160px; padding: 2px 0; font-weight: 600;">Subject test</td>
+                        <td style="width: 15px; padding: 2px 0;">:</td>
+                        <td style="padding: 3px 0;">${verifiedSamples.length} Air Emissions Stationary Source</td>
+                    </tr>
+                    <tr style="vertical-align: top;">
+                        <td style="padding: 2px 0; font-weight: 600;">Sampled By</td>
+                        <td style="padding: 2px 0;">:</td>
+                        <td style="padding: 2px 0;">PT Envirotama Solusindo, Cikarang</td>
+                    </tr>
+                    <tr style="vertical-align: top;">
+                        <td style="padding: 2px 0; font-weight: 600;">Date of Sampling</td>
+                        <td style="padding: 2px 0;">:</td>
+                        <td style="padding: 3px 0;">${displayDateOfSampling}</td>
+                    </tr>
+                    <tr style="vertical-align: top;">
+                        <td style="padding: 2px 0; font-weight: 600;">Lab Facilities</td>
+                        <td style="padding: 2px 0;">:</td>
+                        <td style="padding: 3px 0;">PT Envirotama Solusindo, Cikarang</td>
+                    </tr>
+                    <tr style="vertical-align: top;">
+                        <td style="padding: 2px 0; font-weight: 600;">Date of Acceptance</td>
+                        <td style="padding: 2px 0;">:</td>
+                        <td style="padding: 3px 0;">${displayDateOfAcceptance}</td>
+                    </tr>
+                    <tr style="vertical-align: top;">
+                        <td style="padding: 2px 0; font-weight: 600;">Date of Analysis</td>
+                        <td style="padding: 2px 0;">:</td>
+                        <td style="padding: 3px 0;">${displayDateOfAnalysis}</td>
+                    </tr>
+                </table>
+            </div>
+
+            <div style="margin-top: 12px; border-bottom: 1.5px solid #000; padding-bottom: 8px; margin-bottom: 15px;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+                    <tr style="vertical-align: top;">
+                        <td style="width: 160px; padding: 2px 0; font-weight: 600;">Number of Pages</td>
+                        <td style="width: 15px; padding: 2px 0;">:</td>
+                        <td style="padding: 2px 0;">${verifiedSamples.length + 1} pages (Including this cover)</td>
+                    </tr>
+                    <tr style="vertical-align: top;">
+                        <td style="padding: 2px 0; font-weight: 600;">Additional Notes</td>
+                        <td style="padding: 2px 0;">:</td>
+                        <td style="padding: 2px 0;">-</td>
+                    </tr>
+                </table>
+            </div>
+
+            <div style="margin-top: 30px; margin-left: auto; text-align: right; padding-right: 20px; width: fit-content;">
+                <p style="font-size: 0.85rem;">Cikarang, ${reportDateStr}</p>
+                <p style="font-size: 0.85rem;">Approved by,</p><br><br>
+                <p style="font-size: 0.85rem;"><strong>Fadhel Verdino</strong></p>
             </div>
         </div>
     `;
@@ -492,8 +637,8 @@ function renderCoA(data) {
     // 2. Render Data Pages (Halaman 2 dst)
     verifiedSamples.forEach((sample, index) => {
         htmlContent += `
-        <div class="coa-page" style="padding: 20px; border: 2px solid #0000ff; margin-top: 20px;">
-            <div style="text-align:center; border-bottom: 1.5px solid #0000ff; padding-bottom: 10px; margin-bottom: 10px;">
+        <div class="coa-page" style="padding: 20px; margin-top: 20px;">
+            <div style="text-align:center; border-bottom: 1.5px solid #000; padding-bottom: 10px; margin-bottom: 10px;">
                 <h2 style="margin:0; font-size: 1.4rem;">CERTIFICATE OF ANALYSIS</h2>
             </div>
 
@@ -705,6 +850,25 @@ function exportSingleCoA(docInfo, verifiedSamples) {
     });
 
     const worksheet = XLSX.utils.json_to_sheet(excelRows);
+
+    // Set page margins (SheetJS uses inches: cm / 2.54)
+    worksheet['!margins'] = {
+        left: 1.3 / 2.54,
+        right: 1.3 / 2.54,
+        top: 3.5 / 2.54,
+        bottom: 4.2 / 2.54,
+        header: 0 / 2.54,
+        footer: 3.8 / 2.54
+    };
+
+    // Set page footer: Left = Form-ES..., Right = Page &P of &N
+    worksheet['!headerFooter'] = {
+        differentFirst: false,
+        differentOddEven: false,
+        oddHeader: "",
+        oddFooter: "&LForm-ES-7.8.1; Rev.00; 3 Februari 2016&RPage &P of &N"
+    };
+
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Hasil Analisa");
 
@@ -758,9 +922,9 @@ async function fetchMasterEmisi() {
 }const LOQ_SETTINGS = {
     "so2": 2.61,
     "no2": 1.88,
-    "nox": 2.0,
-    "no": 2.0,
-    "co": 1.0,
+    "nox": 1.88,
+    "no": 1.88,
+    "co": 1.143,
     "particulate": 0.05,
     "opacity": 20
 };
@@ -794,16 +958,20 @@ function formatResultWithLOQ(paramName, value) {
 
     let loq; // S6645: Tidak perlu inisialisasi ke undefined
 
-    if (pName.includes('no2')) {
-        loq = 1.88;
-    } else if (pName.includes('so2')) {
-        loq = 2.61;
-    } else if (pName.includes('co') && !pName.includes('co2')) {
-        loq = 2; // S7748: Gunakan 2 bukan 2.0
+    if (pName.includes('no2') || /\bno2\b/i.test(pName)) {
+        loq = LOQ_SETTINGS.no2;
+    } else if (/\bnox\b/i.test(pName) || (pName.includes('nitrogen oxide') && !pName.includes('monoxide') && !pName.includes('dioxide'))) {
+        loq = LOQ_SETTINGS.nox;
+    } else if (/\bno\b/i.test(pName) || pName.includes('nitrogen monoxide')) {
+        loq = LOQ_SETTINGS.no;
+    } else if (pName.includes('so2') || /\bso2\b/i.test(pName)) {
+        loq = LOQ_SETTINGS.so2;
+    } else if (/\bco\b/i.test(pName) || pName.includes('carbon monoxide')) {
+        loq = LOQ_SETTINGS.co;
     } else if (pName.includes('partic')) {
-        loq = 1.2;
+        loq = LOQ_SETTINGS.particulate;
     } else if (pName.includes('opacit') || pName.includes('opasitas')) {
-        loq = 20; // Tambahkan LOQ Opasitas di sini
+        loq = LOQ_SETTINGS.opacity;
     }
     if (loq !== undefined) {
         if (Number.isNaN(numValue) || numValue < loq) {
