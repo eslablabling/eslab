@@ -189,66 +189,6 @@ async function fetchActiveLogs() {
     }
 }
 
-// 5. Render Menu Akses Pintas Berdasarkan Role
-function renderMenu(role) {
-    const menuContainer = document.getElementById('menuContainer');
-    if (!menuContainer) return;
-
-    const menuMapping = {
-        admin_master: [
-                    { title: "Master Data", icon: "🗂️", link: "master-data.html", cat: "Main" },
-                    { title: "COC Digital", icon: "📑", link: "coc.html", cat: "Menu Kerja" },
-                    { title: "Monitoring Sampling", icon: "📍", link: "sampling.html", cat: "Menu Kerja" },
-                    { title: "Penerimaan Sampel", icon: "📥", link: "penerimaan.html", cat: "Menu Kerja" },
-                    { title: "Log Analisa", icon: "🧪", link: "analisa.html", cat: "Menu Kerja" },
-                    { title: "Verifikasi & COA", icon: "📜", link: "coa.html", cat: "Menu Kerja" },
-                    { title: "Activity Logger", icon: "🛡️", link: "logger.html", cat: "Developer" }
-                ],
-                manager: [
-                    { title: "Master Data", icon: "🗂️", link: "master-data.html", cat: "Main" },
-                    { title: "COC Digital", icon: "📑", link: "coc.html", cat: "Menu Kerja" },
-                    { title: "Monitoring Sampling", icon: "📍", link: "sampling.html", cat: "Menu Kerja" },
-                    { title: "Penerimaan Sampel", icon: "📥", link: "penerimaan.html", cat: "Menu Kerja" },
-                    { title: "Log Analisa", icon: "🧪", link: "analisa.html", cat: "Menu Kerja" },
-                    { title: "Verifikasi & COA", icon: "📜", link: "coa.html", cat: "Menu Kerja" },
-                ],
-                sampling: [
-                    { title: "Master Data", icon: "🗂️", link: "master-data.html", cat: "Main" },
-                    { title: "COC Digital", icon: "📑", link: "coc.html", cat: "Menu Kerja" },
-                    { title: "Monitoring Sampling", icon: "📍", link: "sampling.html", cat: "Menu Kerja" },
-                    { title: "Penerimaan Sampel", icon: "📥", link: "penerimaan.html", cat: "Menu Kerja" },
-                ],
-                admin_ts: [
-                    { title: "Master Data", icon: "🗂️", link: "master-data.html", cat: "Main" },
-                    { title: "COC Digital", icon: "📑", link: "coc.html", cat: "Menu Kerja" },
-                    { title: "Penerimaan Sampel", icon: "📥", link: "penerimaan.html", cat: "Menu Kerja" },
-                    { title: "Verifikasi & COA", icon: "📜", link: "coa.html", cat: "Menu Kerja" },
-                    { title: "Activity Logger", icon: "🛡️", link: "logger.html", cat: "Developer" }
-                ],
-                analis: [
-                    { title: "Penerimaan Sampel", icon: "📥", link: "penerimaan.html", cat: "Menu Kerja" },
-                    { title: "Log Analisa", icon: "🧪", link: "analisa.html", cat: "Menu Kerja" },
-                ],
-    };
-
-    const activeMenus = menuMapping[role] || menuMapping['sampling'];
-    let cardsHTML = "";
-    
-    activeMenus.forEach(item => {
-        cardsHTML += `
-            <div class="menu-card" onclick="window.location.href='${item.link}'">
-                <div class="icon">${item.icon}</div>
-                <div>
-                    <h4 style="font-weight: 800; color: #0f172a; font-size: 0.95rem; margin-bottom: 4px;">${item.title}</h4>
-                    <p style="color: #64748b; font-size: 0.75rem;">${item.desc}</p>
-                </div>
-            </div>
-        `;
-    });
-
-    menuContainer.innerHTML = cardsHTML;
-}
-
 // 6. Update Kartu Statistik Dinamis
 function updateStats(samplesList = allSamplesList) {
     const statsContainer = document.getElementById('statsContainer');
