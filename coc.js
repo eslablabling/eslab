@@ -420,6 +420,8 @@ async function saveCoc() {
                     <td rowspan="${totalParams}" style="${borderStyle}">${item.regulations.join('<br>')}</td>
                     <td style="${borderStyle}">${p.parameter}</td>
                     <td style="${borderStyle}">${p.method}</td>
+                    <td rowspan="${totalParams}" style="${borderStyle}"></td>
+                    <td rowspan="${totalParams}" style="${borderStyle}"></td>
                 `;
             } else {
                 tr.innerHTML = `
