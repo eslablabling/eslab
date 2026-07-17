@@ -1,3 +1,4 @@
+
 function renderSidebar(role) {
             const navContainer = document.getElementById('dynamicSidebar');
             if (!navContainer) return;
