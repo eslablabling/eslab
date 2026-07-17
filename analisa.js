@@ -862,10 +862,10 @@ async function verifikasiHasil(dbId, sampleId) {
                 user_id: session.user.id,
                 username: session.user.email,
                 action_type: 'VERIFY_ANALYSIS',
-                table_name: 'coc_emisi',
+                table_name: 'samples',
                 description: `Memverifikasi hasil analisa untuk sampel ${sampleId}`,
-                old_data: { samples_data: coc.samples_data },
-                new_data: { samples_data: updated }
+                old_data: { sample_id: sampleId, status_lab: 'analyzed' },
+                new_data: { sample_id: sampleId, status_lab: 'verified' }
             }]);
         }
 

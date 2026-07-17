@@ -96,9 +96,14 @@
             padding: 24px;
             border-radius: 20px;
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
-            transition: transform 0.2s;
+            transition: all 0.2s ease-in-out;
+            cursor: pointer;
         }
-        .stat-card:hover { transform: translateY(-3px); border-color: #cbd5e1; }
+        .stat-card:hover { 
+            transform: translateY(-4px); 
+            border-color: #cbd5e1; 
+            box-shadow: 0 12px 20px -3px rgba(0, 0, 0, 0.08);
+        }
         .stat-card h4 { font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; margin-bottom: 8px; }
         .stat-card .number { font-size: 2rem; font-weight: 800; color: #0f172a; }
 
@@ -116,6 +121,8 @@
         table { width: 100%; border-collapse: collapse; text-align: left; }
         th { padding: 16px; color: #64748b; font-size: 0.75rem; text-transform: uppercase; border-bottom: 2px solid #f1f5f9; }
         td { padding: 16px; font-size: 0.85rem; border-bottom: 1px solid #f1f5f9; color: #334155; }
+        tbody tr { transition: background-color 0.15s ease-in-out; }
+        tbody tr:hover { background-color: #f8fafc; }
 
         /* Status Tags */
         .tag {
@@ -371,6 +378,9 @@
             <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                 <input type="text" id="searchLog" placeholder="Cari No. COC, ID Sampel, Perusahaan, atau Status..." 
                        style="padding: 10px 16px; border: 1px solid #e2e8f0; border-radius: 12px; width: 320px; font-size: 0.85rem; outline: none; transition: border-color 0.2s;">
+                <button onclick="resetTableSort()" class="btn-outline" style="padding: 10px 16px; border-radius: 12px; font-weight: 700; cursor: pointer; font-size: 0.85rem; display: flex; align-items: center; gap: 5px; border: 1px solid #cbd5e1; background: white;" title="Reset Pengurutan ke Default">
+                    🔄 Reset Sort
+                </button>
                 <button id="btnExportDashboard" style="padding: 10px 16px; background: #16a34a; color: white; border: none; border-radius: 12px; font-weight: 700; cursor: pointer; font-size: 0.85rem; display: flex; align-items: center; gap: 5px; transition: background 0.2s;">
                     📥 Ekspor Excel
                 </button>
@@ -380,14 +390,14 @@
             <table>
                 <thead>
                     <tr>
-                        <th>No. COC</th>
-                        <th>ID Sampel</th>
-                        <th>Nama Perusahaan</th>
-                        <th>Tgl. Sampling</th>
-                        <th>Tgl. Terima</th>
-                        <th>Tgl. Analisa Selesai</th> 
-                        <th>TAT</th> 
-                        <th>Status</th>
+                        <th onclick="handleHeaderSort('nomor_coc')" style="cursor: pointer; user-select: none;" id="hdrCoc">No. COC ⇅</th>
+                        <th onclick="handleHeaderSort('sample_id')" style="cursor: pointer; user-select: none;" id="hdrSample">ID Sampel ⇅</th>
+                        <th onclick="handleHeaderSort('company_name')" style="cursor: pointer; user-select: none;" id="hdrCompany">Nama Perusahaan ⇅</th>
+                        <th onclick="handleHeaderSort('sampling_date')" style="cursor: pointer; user-select: none;" id="hdrTglSampling">Tgl. Sampling ⇅</th>
+                        <th onclick="handleHeaderSort('tgl_terima_lab')" style="cursor: pointer; user-select: none;" id="hdrTglTerima">Tgl. Terima ⇅</th>
+                        <th onclick="handleHeaderSort('tgl_selesai')" style="cursor: pointer; user-select: none;" id="hdrTglSelesai">Tgl. Analisa Selesai ⇅</th> 
+                        <th onclick="handleHeaderSort('tat')" style="cursor: pointer; user-select: none;" id="hdrTat">TAT ⇅</th> 
+                        <th onclick="handleHeaderSort('status')" style="cursor: pointer; user-select: none;" id="statusHeader">Status ⇅</th>
                     </tr>
                 </thead>
                 <tbody id="logTableBody">
@@ -413,10 +423,58 @@
             </div>
         </div>
     </div>
+
+    <!-- Analisis TAT & Kepatuhan Lateness Widget -->
+    <div class="data-container" style="margin-top: 24px; min-height: 400px; display: flex; flex-direction: column;">
+        <div class="table-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px;">
+            <div>
+                <h3 style="font-size: 1.1rem; font-weight: 800; color: #0f172a;">📊 Analisis Turnaround Time (TAT) & Keterlambatan</h3>
+                <p style="font-size: 0.8rem; color: #64748b; margin-top: 2px;">Pantau tingkat kepatuhan durasi pengerjaan sampel lab berdasarkan tenggat waktu.</p>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <button onclick="changeTatPeriod('daily')" id="btnTatDaily" class="btn-outline active" style="padding: 8px 14px; border-radius: 10px; font-weight: 700; cursor: pointer; font-size: 0.8rem; border: 1px solid #cbd5e1; background: white;">Perhari</button>
+                <button onclick="changeTatPeriod('monthly')" id="btnTatMonthly" class="btn-outline" style="padding: 8px 14px; border-radius: 10px; font-weight: 700; cursor: pointer; font-size: 0.8rem; border: 1px solid #cbd5e1; background: white;">Perbulan</button>
+                <button onclick="changeTatPeriod('yearly')" id="btnTatYearly" class="btn-outline" style="padding: 8px 14px; border-radius: 10px; font-weight: 700; cursor: pointer; font-size: 0.8rem; border: 1px solid #cbd5e1; background: white;">Pertahun</button>
+            </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px; flex-grow: 1; flex-wrap: wrap;">
+            <!-- Area Grafik -->
+            <div style="position: relative; height: 320px; background: #f8fafc; border-radius: 16px; padding: 15px; border: 1px solid #e2e8f0; width: 100%;">
+                <canvas id="tatTrendChart" style="width: 100%; height: 100%;"></canvas>
+            </div>
+            
+            <!-- Area Summary Info -->
+            <div style="display: flex; flex-direction: column; gap: 8px; justify-content: center;">
+                <div style="background: #ecfdf5; border: 1px solid #a7f3d0; padding: 10px 14px; border-radius: 12px; display: flex; flex-direction: column; gap: 2px;">
+                    <span style="font-size: 0.7rem; color: #065f46; font-weight: 800; text-transform: uppercase;">Persentase Tepat Waktu</span>
+                    <strong id="tatOnTimeRate" style="font-size: 1.25rem; color: #047857; font-weight: 800;">0%</strong>
+                    <span style="font-size: 0.6rem; color: #047857; font-weight: 600;">Menyelesaikan pengujian di bawah batas target</span>
+                </div>
+                <div style="background: #fff5f5; border: 1px solid #fee2e2; padding: 10px 14px; border-radius: 12px; display: flex; flex-direction: column; gap: 2px;">
+                    <span style="font-size: 0.7rem; color: #991b1b; font-weight: 800; text-transform: uppercase;">Total Keterlambatan</span>
+                    <strong id="tatDelayCount" style="font-size: 1.25rem; color: #b91c1c; font-weight: 800;">0 Sampel</strong>
+                    <span style="font-size: 0.6rem; color: #b91c1c; font-weight: 600;">Jumlah sampel yang melewati batas toleransi pengerjaan</span>
+                </div>
+                <div style="background: #fff7ed; border: 1px solid #ffedd5; padding: 10px 14px; border-radius: 12px; display: flex; flex-direction: column; gap: 2px;">
+                    <span style="font-size: 0.7rem; color: #9a3412; font-weight: 800; text-transform: uppercase;">Rata-Rata Durasi Pengerjaan</span>
+                    <strong id="tatAverageDuration" style="font-size: 1.25rem; color: #c2410c; font-weight: 800;">0 Hari</strong>
+                    <span style="font-size: 0.6rem; color: #c2410c; font-weight: 600;">Rata-rata waktu penyelesaian keseluruhan sampel</span>
+                </div>
+            </div>
+        </div>
+    </div>
 </main>
 <script src="config.js"></script>
 <script src="auth.js"></script>
 <script src="dashboard.js"></script>
 
+<style>
+.btn-outline.active {
+    background: #2563eb !important;
+    color: white !important;
+    border-color: #2563eb !important;
+}
+</style>
 </body>
 </html>

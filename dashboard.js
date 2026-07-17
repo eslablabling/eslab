@@ -5,6 +5,7 @@ let allSamplesList = [];
 let filteredSamplesList = [];
 let currentPage = 1;
 const pageSize = 10;
+let sortState = { col: 'default', dir: 'none' };
 let statusChartInstance = null;
 
 // 2. Elemen UI
@@ -107,6 +108,9 @@ async function fetchActiveLogs() {
             const rawTerima = s.tgl_terima_lab; 
             const rawSelesai = s.analyzed_at || s.verified_at; 
 
+            const tatPriority = (coc.tat_requested || "NORMAL").toUpperCase();
+            const isUrgent = tatPriority === 'URGENT';
+
             // Hitung Turnaround Time (TAT)
             let tatHari = "-";
             if (rawTerima && rawSelesai) {
@@ -117,13 +121,24 @@ async function fetchActiveLogs() {
                 tatHari = diffInDays <= 0 ? "1 Hari" : `${diffInDays} Hari`;
             }
 
+            // Hitung status kepatuhan & keterlambatan TAT (menggunakan hari kerja)
+            let actualDuration = null;
+            let isDelayed = false;
+            let delayDays = 0;
+            const targetDays = isUrgent ? 5 : 14;
+
+            if (rawTerima) {
+                const start = new Date(rawTerima);
+                const end = rawSelesai ? new Date(rawSelesai) : new Date();
+                actualDuration = getWorkingDays(start, end);
+                isDelayed = actualDuration > targetDays;
+                delayDays = isDelayed ? (actualDuration - targetDays) : 0;
+            }
+
             // Format Tanggal
             const tglSampling = coc.sampling_date ? new Date(coc.sampling_date).toLocaleDateString('id-ID') : '-';
             const tglTerima = rawTerima ? new Date(rawTerima).toLocaleDateString('id-ID') : '-';
             const tglSelesai = rawSelesai ? new Date(rawSelesai).toLocaleDateString('id-ID') : '-';
-            
-            const tatPriority = (coc.tat_requested || "NORMAL").toUpperCase();
-            const isUrgent = tatPriority === 'URGENT';
 
             // Logika Status
             let statusLabel = "SAMPLING";
@@ -141,17 +156,24 @@ async function fetchActiveLogs() {
             }
 
             activeSamples.push({
+                db_id: coc.id || null,
                 nomor_coc: coc.nomor_coc || '-',
                 sample_id: s.sample_id || '-',
                 company_name: coc.company_name || '-',
                 sampling_date: coc.sampling_date,
+                tgl_terima_lab: s.tgl_terima_lab,
+                tgl_selesai: s.analyzed_at || s.verified_at,
                 tglSampling,
                 tglTerima,
                 tglSelesai,
                 tatHari,
                 isUrgent,
                 statusLabel,
-                statusClass
+                statusClass,
+                actualDuration,
+                isDelayed,
+                delayDays,
+                targetDays
             });
         });
 
@@ -180,32 +202,32 @@ function updateStats(samplesList = allSamplesList) {
     const uniqueCocs = new Set(samplesList.map(s => s.nomor_coc).filter(coc => coc && coc !== '-')).size;
 
     statsContainer.innerHTML = `
-        <div class="stat-card" style="border-left: 4px solid #64748b;">
+        <div class="stat-card" style="border-left: 4px solid #64748b;" onclick="navigateFromStat('total')">
             <h4>Total Sampel</h4>
             <div class="number" style="color: #1e293b;">${totalSamples}</div>
             <p style="font-size: 0.75rem; color: #64748b; margin-top: 4px; font-weight: 600;">Terdaftar di sistem LIMS</p>
         </div>
-        <div class="stat-card" style="border-left: 4px solid #f97316;">
+        <div class="stat-card" style="border-left: 4px solid #f97316;" onclick="navigateFromStat('sampling')">
             <h4>Proses Sampling</h4>
             <div class="number" style="color: #ea580c;">${samplingCount}</div>
             <p style="font-size: 0.75rem; color: #64748b; margin-top: 4px; font-weight: 600;">Persiapan & Data Lapangan</p>
         </div>
-        <div class="stat-card" style="border-left: 4px solid #2563eb;">
+        <div class="stat-card" style="border-left: 4px solid #2563eb;" onclick="navigateFromStat('analisa')">
             <h4>Proses Analisa</h4>
             <div class="number" style="color: #1d4ed8;">${analisaCount}</div>
             <p style="font-size: 0.75rem; color: #64748b; margin-top: 4px; font-weight: 600;">Tahap pengujian lab</p>
         </div>
-        <div class="stat-card" style="border-left: 4px solid #16a34a;">
+        <div class="stat-card" style="border-left: 4px solid #16a34a;" onclick="navigateFromStat('finish')">
             <h4>Verifikasi & COA</h4>
             <div class="number" style="color: #15803d;">${finishCount}</div>
             <p style="font-size: 0.75rem; color: #64748b; margin-top: 4px; font-weight: 600;">Tervalidasi & COA terbit</p>
         </div>
-        <div class="stat-card" style="border-left: 4px solid #8b5cf6;">
+        <div class="stat-card" style="border-left: 4px solid #8b5cf6;" onclick="navigateFromStat('companies')">
             <h4>Jumlah Perusahaan</h4>
             <div class="number" style="color: #6d28d9;">${uniqueCompanies}</div>
             <p style="font-size: 0.75rem; color: #64748b; margin-top: 4px; font-weight: 600;">Perusahaan terlayani</p>
         </div>
-        <div class="stat-card" style="border-left: 4px solid #06b6d4;">
+        <div class="stat-card" style="border-left: 4px solid #06b6d4;" onclick="navigateFromStat('cocs')">
             <h4>Jumlah COC</h4>
             <div class="number" style="color: #0e7490;">${uniqueCocs}</div>
             <p style="font-size: 0.75rem; color: #64748b; margin-top: 4px; font-weight: 600;">Chain of Custody terbit</p>
@@ -318,9 +340,69 @@ function applyDashboardFilters() {
         });
     }
 
+    // Urutkan berdasarkan state sort saat ini
+    const headers = {
+        'nomor_coc': document.getElementById('hdrCoc'),
+        'sample_id': document.getElementById('hdrSample'),
+        'company_name': document.getElementById('hdrCompany'),
+        'sampling_date': document.getElementById('hdrTglSampling'),
+        'tgl_terima_lab': document.getElementById('hdrTglTerima'),
+        'tgl_selesai': document.getElementById('hdrTglSelesai'),
+        'tat': document.getElementById('hdrTat'),
+        'status': document.getElementById('statusHeader')
+    };
+
+    Object.keys(headers).forEach(k => {
+        const el = headers[k];
+        if (el) {
+            let label = el.innerText.replace(/[▲▼⇅]/g, '').trim();
+            el.innerText = label + ' ⇅';
+        }
+    });
+
+    if (sortState.col === 'default') {
+        // Default sort: nomor_coc desc, sample_id asc
+        filteredSamplesList.sort((a, b) => {
+            const cocCompare = (b.nomor_coc || '').localeCompare(a.nomor_coc || '');
+            if (cocCompare !== 0) return cocCompare;
+            return (a.sample_id || '').localeCompare(b.sample_id || '');
+        });
+    } else {
+        const activeHeader = headers[sortState.col];
+        if (activeHeader) {
+            let label = activeHeader.innerText.replace(/[▲▼⇅]/g, '').trim();
+            activeHeader.innerText = label + (sortState.dir === 'asc' ? ' ▲' : ' ▼');
+        }
+
+        filteredSamplesList.sort((a, b) => {
+            let valA = a[sortState.col];
+            let valB = b[sortState.col];
+
+            // Penanganan khusus untuk kolom tanggal dan numerik
+            if (sortState.col === 'sampling_date' || sortState.col === 'tgl_terima_lab' || sortState.col === 'tgl_selesai') {
+                valA = valA ? new Date(valA).getTime() : 0;
+                valB = valB ? new Date(valB).getTime() : 0;
+            } else if (sortState.col === 'tat') {
+                valA = parseInt(a.tatHari) || 0;
+                valB = parseInt(b.tatHari) || 0;
+            } else if (sortState.col === 'status') {
+                valA = a.statusLabel || '';
+                valB = b.statusLabel || '';
+            } else {
+                valA = String(valA || '').toLowerCase();
+                valB = String(valB || '').toLowerCase();
+            }
+
+            if (valA < valB) return sortState.dir === 'asc' ? -1 : 1;
+            if (valA > valB) return sortState.dir === 'asc' ? 1 : -1;
+            return 0;
+        });
+    }
+
     currentPage = 1;
     renderTableRows();
     renderPaginationControls();
+    updateTatAnalysis(filteredSamplesList);
 }
 
 function populateYearFilter() {
@@ -365,7 +447,7 @@ function renderTableRows() {
     let tableRows = "";
     paginatedItems.forEach(s => {
         tableRows += `
-            <tr>
+            <tr onclick="navigateFromRow('${s.db_id}', '${s.statusLabel}')" style="cursor: pointer;">
                 <td style="font-weight:700; color:#2563eb;">${s.nomor_coc}</td>
                 <td style="font-weight:600; color:#1e293b;">${s.sample_id}</td>
                 <td style="max-width:220px; overflow:hidden; text-overflow:ellipsis;" title="${s.company_name}">
@@ -523,4 +605,331 @@ function setupRealtimeSubscription() {
         .subscribe((status) => {
             console.log("Status langganan Realtime Supabase:", status);
         });
+}
+
+// 15. Navigasi Cerdas Berdasarkan Kartu Statistik & Akses Role
+window.navigateFromStat = function(targetType) {
+    const role = sessionStorage.getItem('user_role') || 'sampling';
+    
+    // Pemetaan izin akses halaman LIMS
+    const hasAccess = {
+        'sampling.html': ['admin_master', 'manager', 'sampling'].includes(role),
+        'analisa.html': ['admin_master', 'manager', 'analis'].includes(role),
+        'coa.html': ['admin_master', 'manager', 'admin_ts'].includes(role),
+        'master-data.html': ['admin_master', 'manager', 'sampling', 'admin_ts'].includes(role),
+        'coc.html': ['admin_master', 'manager', 'sampling', 'admin_ts'].includes(role),
+        'penerimaan.html': ['admin_master', 'manager', 'sampling', 'admin_ts', 'analis'].includes(role)
+    };
+
+    let destination = 'coc.html'; // Default target utama
+
+    if (targetType === 'sampling') {
+        destination = hasAccess['sampling.html'] ? 'sampling.html' : 'coc.html';
+    } else if (targetType === 'analisa') {
+        destination = hasAccess['analisa.html'] ? 'analisa.html' : 'coc.html';
+    } else if (targetType === 'finish') {
+        destination = hasAccess['coa.html'] ? 'coa.html' : 'coc.html';
+    } else if (targetType === 'companies') {
+        destination = hasAccess['master-data.html'] ? 'master-data.html' : 'coc.html';
+    } else if (targetType === 'cocs' || targetType === 'total') {
+        destination = hasAccess['coc.html'] ? 'coc.html' : 'penerimaan.html';
+    }
+
+    // Jika user tidak berhak mengakses halaman target (misal analis mengklik total sampel),
+    // alihkan ke menu kerja terdekat mereka, atau kembalikan ke dashboard.
+    if (!hasAccess[destination]) {
+        destination = hasAccess['penerimaan.html'] ? 'penerimaan.html' : 'dashboard.html';
+    }
+
+    window.location.assign(destination);
+};
+
+// 16. Navigasi Baris Tabel Berdasarkan Status Proses Sampel
+window.navigateFromRow = function(dbId, statusLabel) {
+    const role = sessionStorage.getItem('user_role') || 'sampling';
+
+    // Pemetaan izin akses halaman LIMS
+    const hasAccess = {
+        'sampling.html': ['admin_master', 'manager', 'sampling'].includes(role),
+        'analisa.html': ['admin_master', 'manager', 'analis'].includes(role),
+        'coa.html': ['admin_master', 'manager', 'admin_ts'].includes(role),
+        'coc.html': ['admin_master', 'manager', 'sampling', 'admin_ts'].includes(role),
+        'penerimaan.html': ['admin_master', 'manager', 'sampling', 'admin_ts', 'analis'].includes(role)
+    };
+
+    let destination = '';
+
+    if (statusLabel === 'SAMPLING') {
+        destination = hasAccess['sampling.html'] ? 'sampling.html' : (hasAccess['coc.html'] ? 'coc.html' : '');
+    } else if (statusLabel === 'ANALISA') {
+        destination = hasAccess['analisa.html'] ? 'analisa.html' : (hasAccess['penerimaan.html'] ? 'penerimaan.html' : '');
+    } else if (statusLabel === 'FINISH') {
+        if (hasAccess['coa.html'] && dbId && dbId !== 'null') {
+            destination = `coa.html?id=${dbId}`;
+        } else {
+            destination = hasAccess['coc.html'] ? 'coc.html' : '';
+        }
+    }
+
+    if (destination) {
+        window.location.assign(destination);
+    } else {
+        alert("Akses dibatasi atau data modul ini tidak tersedia untuk role Anda.");
+    }
+};
+
+// 17. Pengurutan Dinamis Kolom (Multi-State)
+window.handleHeaderSort = function(colName) {
+    if (sortState.col === colName) {
+        if (sortState.dir === 'asc') {
+            sortState.dir = 'desc';
+        } else {
+            sortState.col = 'default';
+            sortState.dir = 'none';
+        }
+    } else {
+        sortState.col = colName;
+        sortState.dir = 'asc';
+    }
+    applyDashboardFilters();
+};
+
+window.resetTableSort = function() {
+    sortState.col = 'default';
+    sortState.dir = 'none';
+    applyDashboardFilters();
+};
+
+// 18. Analisis TAT & Kepatuhan Keterlambatan LIMS
+let tatChartInstance = null;
+let currentTatPeriod = 'daily';
+
+window.changeTatPeriod = function(period) {
+    currentTatPeriod = period;
+    
+    // Update kelas active pada tombol UI
+    const btnDaily = document.getElementById('btnTatDaily');
+    const btnMonthly = document.getElementById('btnTatMonthly');
+    const btnYearly = document.getElementById('btnTatYearly');
+    
+    if (btnDaily) btnDaily.classList.toggle('active', period === 'daily');
+    if (btnMonthly) btnMonthly.classList.toggle('active', period === 'monthly');
+    if (btnYearly) btnYearly.classList.toggle('active', period === 'yearly');
+    
+    updateTatAnalysis();
+};
+
+function updateTatAnalysis(samplesList = filteredSamplesList) {
+    // Hanya hitung sampel yang telah diverifikasi terima fisiknya di lab
+    const activeSamples = samplesList.filter(s => s.tgl_terima_lab);
+    
+    // 1. Hitung Ringkasan Statistik
+    const total = activeSamples.length;
+    const delayedCount = activeSamples.filter(s => s.isDelayed).length;
+    const onTimeCount = total - delayedCount;
+    const onTimeRate = total > 0 ? Math.round((onTimeCount / total) * 100) : 0;
+    
+    let sumDuration = 0;
+    let countWithDuration = 0;
+    activeSamples.forEach(s => {
+        if (s.actualDuration !== null) {
+            sumDuration += s.actualDuration;
+            countWithDuration++;
+        }
+    });
+    const avgDuration = countWithDuration > 0 ? (sumDuration / countWithDuration).toFixed(1) : 0;
+    
+    // Perbarui nilai pada elemen HTML
+    const onTimeEl = document.getElementById('tatOnTimeRate');
+    const delayEl = document.getElementById('tatDelayCount');
+    const avgEl = document.getElementById('tatAverageDuration');
+    
+    if (onTimeEl) onTimeEl.innerText = `${onTimeRate}%`;
+    if (delayEl) delayEl.innerText = `${delayedCount} Sampel`;
+    if (avgEl) avgEl.innerText = `${avgDuration} Hari`;
+    
+    // 2. Kelompokkan Data Berdasarkan Periode Terpilih
+    const groupedData = groupTatData(samplesList, currentTatPeriod);
+    const labels = groupedData.map(g => g.label);
+    const averageDaysData = groupedData.map(g => g.averageDays);
+    const limitLineData = Array(labels.length).fill(14); // Batas toleransi 14 hari
+    
+    // 3. Render Trend Chart dengan Chart.js
+    const ctx = document.getElementById('tatTrendChart');
+    if (!ctx) return;
+    
+    if (tatChartInstance) {
+        tatChartInstance.destroy();
+    }
+    
+    tatChartInstance = new Chart(ctx, {
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    type: 'bar',
+                    label: 'Rata-Rata Durasi Aktual (Hari)',
+                    data: averageDaysData,
+                    backgroundColor: '#3b82f6', // Biru
+                    borderRadius: 6,
+                    barThickness: 32
+                },
+                {
+                    type: 'line',
+                    label: 'Batas Toleransi (14 Hari)',
+                    data: limitLineData,
+                    borderColor: '#ef4444', // Merah
+                    borderWidth: 2,
+                    borderDash: [6, 6],
+                    fill: false,
+                    pointRadius: 0,
+                    tension: 0
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: {
+                    grid: { display: false },
+                    ticks: {
+                        font: { family: 'Plus Jakarta Sans', size: 9, weight: '600' },
+                        color: '#64748b'
+                    }
+                },
+                y: {
+                    min: 0,
+                    suggestedMax: 16,
+                    grid: { color: '#f1f5f9' },
+                    ticks: { 
+                        stepSize: 2, 
+                        font: { family: 'Plus Jakarta Sans', size: 9, weight: '600' },
+                        color: '#64748b'
+                    },
+                    title: {
+                        display: true,
+                        text: 'Durasi Pengerjaan (Hari Kerja)',
+                        font: { family: 'Plus Jakarta Sans', size: 10, weight: '700' },
+                        color: '#475569'
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    position: 'top',
+                    labels: {
+                        font: { family: 'Plus Jakarta Sans', weight: '700', size: 10 },
+                        color: '#475569'
+                    }
+                }
+            }
+        }
+    });
+}
+
+function groupTatData(samplesList, period) {
+    const activeSamples = samplesList.filter(s => s.tgl_terima_lab);
+    let groups = {};
+    
+    const monthSelect = document.getElementById('filterStatsMonth');
+    const yearSelect = document.getElementById('filterStatsYear');
+    const monthVal = monthSelect ? monthSelect.value : 'all';
+    const yearVal = yearSelect ? yearSelect.value : 'all';
+    const now = new Date();
+    const year = yearVal === 'all' ? now.getFullYear() : parseInt(yearVal);
+    const month = monthVal === 'all' ? now.getMonth() : parseInt(monthVal);
+
+    if (period === 'daily') {
+        // Jika perhari: X axis adalah tanggal (1 s.d. 31)
+        const numDays = monthVal === 'all' ? 31 : new Date(year, month + 1, 0).getDate();
+        for (let day = 1; day <= numDays; day++) {
+            const label = String(day);
+            groups[label] = { label, totalDays: 0, count: 0 };
+        }
+
+        activeSamples.forEach(s => {
+            const date = new Date(s.tgl_terima_lab);
+            if (date.getFullYear() === year) {
+                if (monthVal === 'all' || date.getMonth() === month) {
+                    const day = date.getDate();
+                    const label = String(day);
+                    if (groups[label] && s.actualDuration !== null) {
+                        groups[label].totalDays += s.actualDuration;
+                        groups[label].count++;
+                    }
+                }
+            }
+        });
+    } else if (period === 'monthly') {
+        // Jika perbulan: X axis adalah Nama Bulan (Jan - Des)
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+        months.forEach((m) => {
+            const label = `${m} ${year}`;
+            groups[label] = { label, totalDays: 0, count: 0 };
+        });
+        
+        activeSamples.forEach(s => {
+            const date = new Date(s.tgl_terima_lab);
+            if (date.getFullYear() === year) {
+                const mName = months[date.getMonth()];
+                const label = `${mName} ${year}`;
+                if (groups[label] && s.actualDuration !== null) {
+                    groups[label].totalDays += s.actualDuration;
+                    groups[label].count++;
+                }
+            }
+        });
+    } else if (period === 'yearly') {
+        // Jika pertahun: X axis adalah Tahun (3 tahun terakhir)
+        for (let i = 2; i >= 0; i--) {
+            const label = String(year - i);
+            groups[label] = { label, totalDays: 0, count: 0 };
+        }
+        
+        activeSamples.forEach(s => {
+            const date = new Date(s.tgl_terima_lab);
+            const label = String(date.getFullYear());
+            if (groups[label] && s.actualDuration !== null) {
+                groups[label].totalDays += s.actualDuration;
+                groups[label].count++;
+            }
+        });
+    }
+    
+    return Object.values(groups).map(g => {
+        return {
+            label: g.label,
+            averageDays: g.count > 0 ? parseFloat((g.totalDays / g.count).toFixed(1)) : 0
+        };
+    });
+}
+
+function getWeekNumber(d) {
+    d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay()||7));
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(),0,1));
+    const weekNo = Math.ceil(( ( (d - yearStart) / 86400000) + 1)/7);
+    return weekNo;
+}
+
+function getWorkingDays(startDate, endDate) {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    start.setHours(0,0,0,0);
+    end.setHours(0,0,0,0);
+    
+    if (start > end) return 0;
+    
+    let count = 0;
+    let curDate = new Date(start);
+    
+    while (curDate < end) {
+        curDate.setDate(curDate.getDate() + 1);
+        const dayOfWeek = curDate.getDay();
+        if (dayOfWeek !== 0 && dayOfWeek !== 6) { // Exclude Sat & Sun
+            count++;
+        }
+    }
+    return count;
 }

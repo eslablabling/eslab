@@ -172,7 +172,7 @@ async function generateCocNumber() {
     
     try {
         const { count } = await _supabase
-            .from('coc_headers')
+            .from('coc_emisi')
             .select('*', { count: 'exact', head: true });
 
         // Ini adalah 0001
