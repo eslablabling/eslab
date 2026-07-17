@@ -858,6 +858,16 @@ window.closePreviewModalOuter = function(event) {
     }
 };
 
+// Helper untuk mengekstrak File ID Google Drive dari url
+function extractFileId(url) {
+    if (!url) return null;
+    const match = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+    if (match && match[1]) return match[1];
+    const idMatch = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+    if (idMatch && idMatch[1]) return idMatch[1];
+    return null;
+}
+
 // --- SYNC ALL LIMS DOCUMENTS WITH ACTUAL GOOGLE DRIVE FILES ---
 async function performDriveSync(silent = false) {
     if (!silent) showToast("Menghubungkan ke Google Drive via Supabase Helper...", true);
@@ -892,12 +902,26 @@ async function performDriveSync(silent = false) {
         let deletedCount = 0;
         let changed = false;
 
-        // 1. Sinkronisasi berkas LIMS lokal yang cocok dengan file di Drive
+        // 1. Sinkronisasi berkas LIMS lokal yang cocok dengan file di Drive (berdasarkan file ID atau nama file)
         for (let doc of docs) {
-            const match = driveFiles.find(df => df.name.toLowerCase().trim() === (doc.fileName || '').toLowerCase().trim());
+            const localId = extractFileId(doc.driveLink);
+            const match = driveFiles.find(df => {
+                const driveId = df.id;
+                const nameMatch = (doc.fileName || '').toLowerCase().trim() === df.name.toLowerCase().trim();
+                return (localId && driveId && localId === driveId) || nameMatch;
+            });
+
             if (match) {
+                let docChanged = false;
                 if (doc.driveLink !== match.webViewLink) {
                     doc.driveLink = match.webViewLink;
+                    docChanged = true;
+                }
+                if (doc.fileName !== match.name) {
+                    doc.fileName = match.name;
+                    docChanged = true;
+                }
+                if (docChanged) {
                     doc.updatedAt = new Date().toISOString();
                     await updateDocInDB(doc);
                     updatedCount++;
@@ -908,7 +932,13 @@ async function performDriveSync(silent = false) {
 
         // 2. Cari file di Drive yang BELUM terdaftar di LIMS lokal, lalu impor otomatis
         for (let df of driveFiles) {
-            const isRegistered = docs.some(doc => (doc.fileName || '').toLowerCase().trim() === df.name.toLowerCase().trim());
+            const isRegistered = docs.some(doc => {
+                const localId = extractFileId(doc.driveLink);
+                const driveId = df.id;
+                const nameMatch = (doc.fileName || '').toLowerCase().trim() === df.name.toLowerCase().trim();
+                return (localId && driveId && localId === driveId) || nameMatch;
+            });
+
             if (!isRegistered) {
                 const extMatch = df.name.match(/\.([a-zA-Z0-9]+)$/);
                 const ext = extMatch ? extMatch[1].toLowerCase() : '';
@@ -946,10 +976,16 @@ async function performDriveSync(silent = false) {
             }
         }
 
-        // 3. Hapus berkas LIMS lokal yang sudah tidak ada di Google Drive (kecuali jika link-nya kosongan/default)
+        // 3. Hapus berkas LIMS lokal yang sudah tidak ada di Google Drive
         for (let doc of docs) {
             if (doc.driveLink && doc.driveLink !== GOOGLE_DRIVE_FOLDER && doc.fileName) {
-                const stillExists = driveFiles.some(df => df.name.toLowerCase().trim() === doc.fileName.toLowerCase().trim());
+                const localId = extractFileId(doc.driveLink);
+                const stillExists = driveFiles.some(df => {
+                    const driveId = df.id;
+                    const nameMatch = doc.fileName.toLowerCase().trim() === df.name.toLowerCase().trim();
+                    return (localId && driveId && localId === driveId) || nameMatch;
+                });
+
                 if (!stillExists) {
                     await deleteDocFromDB(doc.id);
                     deletedCount++;
