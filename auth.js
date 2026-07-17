@@ -3,7 +3,7 @@ function renderSidebar(role) {
             const navContainer = document.getElementById('dynamicSidebar');
             if (!navContainer) return;
 
-            const menuMapping = {
+             const menuMapping = {
                 admin_master: [
                     { title: "Master Data", icon: "🗂️", link: "master-data.html", cat: "Main" },
                     { title: "COC Digital", icon: "📑", link: "coc.html", cat: "Menu Kerja" },
@@ -23,8 +23,7 @@ function renderSidebar(role) {
                     { title: "Log Analisa", icon: "🧪", link: "analisa.html", cat: "Menu Kerja" },
                     { title: "Verifikasi & COA", icon: "📜", link: "coa.html", cat: "Menu Kerja" },
                     { title: "Tren Analisa", icon: "📈", link: "tren.html", cat: "Menu Kerja" },
-                    { title: "Dokumen", icon: "📁", link: "dokumen.html", cat: "Menu Kerja" },
-                    { title: "Activity Logger", icon: "🛡️", link: "logger.html", cat: "Developer" }
+                    { title: "Dokumen", icon: "📁", link: "dokumen.html", cat: "Menu Kerja" }
                 ],
                 sampling: [
                     { title: "Master Data", icon: "🗂️", link: "master-data.html", cat: "Main" },
@@ -32,8 +31,7 @@ function renderSidebar(role) {
                     { title: "Monitoring Sampling", icon: "📍", link: "sampling.html", cat: "Menu Kerja" },
                     { title: "Penerimaan Sampel", icon: "📥", link: "penerimaan.html", cat: "Menu Kerja" },
                     { title: "Tren Analisa", icon: "📈", link: "tren.html", cat: "Menu Kerja" },
-                    { title: "Dokumen", icon: "📁", link: "dokumen.html", cat: "Menu Kerja" },
-                    { title: "Activity Logger", icon: "🛡️", link: "logger.html", cat: "Developer" }
+                    { title: "Dokumen", icon: "📁", link: "dokumen.html", cat: "Menu Kerja" }
                 ],
                 admin_ts: [
                     { title: "Master Data", icon: "🗂️", link: "master-data.html", cat: "Main" },
@@ -41,15 +39,13 @@ function renderSidebar(role) {
                     { title: "Penerimaan Sampel", icon: "📥", link: "penerimaan.html", cat: "Menu Kerja" },
                     { title: "Verifikasi & COA", icon: "📜", link: "coa.html", cat: "Menu Kerja" },
                     { title: "Tren Analisa", icon: "📈", link: "tren.html", cat: "Menu Kerja" },
-                    { title: "Dokumen", icon: "📁", link: "dokumen.html", cat: "Menu Kerja" },
-                    { title: "Activity Logger", icon: "🛡️", link: "logger.html", cat: "Developer" }
+                    { title: "Dokumen", icon: "📁", link: "dokumen.html", cat: "Menu Kerja" }
                 ],
                 analis: [
                     { title: "Penerimaan Sampel", icon: "📥", link: "penerimaan.html", cat: "Menu Kerja" },
                     { title: "Log Analisa", icon: "🧪", link: "analisa.html", cat: "Menu Kerja" },
                     { title: "Tren Analisa", icon: "📈", link: "tren.html", cat: "Menu Kerja" },
-                    { title: "Dokumen", icon: "📁", link: "dokumen.html", cat: "Menu Kerja" },
-                    { title: "Activity Logger", icon: "🛡️", link: "logger.html", cat: "Developer" }
+                    { title: "Dokumen", icon: "📁", link: "dokumen.html", cat: "Menu Kerja" }
                 ],
             };
 
