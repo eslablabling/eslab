@@ -80,6 +80,130 @@ Deno.serve(async (req) => {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
       }
+
+      // Skenario A3: Mendapatkan metadata LIMS (file _lims_metadata.json)
+      if (body.action === 'get_metadata') {
+        const query = encodeURIComponent(`name = '_lims_metadata.json' and '${folderId}' in parents and trashed = false`);
+        const searchResponse = await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id)`, {
+          method: 'GET',
+          headers: { 'Authorization': 'Bearer ' + accessToken }
+        });
+
+        if (!searchResponse.ok) {
+          const errText = await searchResponse.text();
+          throw new Error("Gagal mencari file metadata: " + errText);
+        }
+
+        const searchResult = await searchResponse.json();
+        const files = searchResult.files || [];
+
+        if (files.length === 0) {
+          // File tidak ditemukan, kembalikan data kosong
+          return new Response(JSON.stringify({ categories: [], documents: [] }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          });
+        }
+
+        const fileId = files[0].id;
+        const downloadResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+          method: 'GET',
+          headers: { 'Authorization': 'Bearer ' + accessToken }
+        });
+
+        if (!downloadResponse.ok) {
+          const errText = await downloadResponse.text();
+          throw new Error("Gagal mengunduh file metadata: " + errText);
+        }
+
+        const metadata = await downloadResponse.json();
+        return new Response(JSON.stringify(metadata), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
+      // Skenario A4: Menyimpan/Memperbarui metadata LIMS (file _lims_metadata.json)
+      if (body.action === 'save_metadata') {
+        const metadataVal = body.metadata;
+        if (!metadataVal) {
+          return new Response(
+            JSON.stringify({ error: 'No metadata provided' }), 
+            { status: 400, headers: corsHeaders }
+          );
+        }
+
+        const query = encodeURIComponent(`name = '_lims_metadata.json' and '${folderId}' in parents and trashed = false`);
+        const searchResponse = await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id)`, {
+          method: 'GET',
+          headers: { 'Authorization': 'Bearer ' + accessToken }
+        });
+
+        if (!searchResponse.ok) {
+          const errText = await searchResponse.text();
+          throw new Error("Gagal mencari file metadata untuk disimpan: " + errText);
+        }
+
+        const searchResult = await searchResponse.json();
+        const files = searchResult.files || [];
+        let fileId = "";
+
+        if (files.length > 0) {
+          // Update file existing
+          fileId = files[0].id;
+          const updateResponse = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+            method: 'PATCH',
+            headers: { 
+              'Authorization': 'Bearer ' + accessToken,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(metadataVal)
+          });
+
+          if (!updateResponse.ok) {
+            const errText = await updateResponse.text();
+            throw new Error("Gagal memperbarui file metadata: " + errText);
+          }
+        } else {
+          // Buat file baru
+          const createResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
+            method: 'POST',
+            headers: {
+              'Authorization': 'Bearer ' + accessToken,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              name: '_lims_metadata.json',
+              parents: [folderId],
+              mimeType: 'application/json'
+            })
+          });
+
+          if (!createResponse.ok) {
+            const errText = await createResponse.text();
+            throw new Error("Gagal membuat metadata file: " + errText);
+          }
+
+          const createResult = await createResponse.json();
+          fileId = createResult.id;
+
+          const uploadResponse = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+            method: 'PATCH',
+            headers: { 
+              'Authorization': 'Bearer ' + accessToken,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(metadataVal)
+          });
+
+          if (!uploadResponse.ok) {
+            const errText = await uploadResponse.text();
+            throw new Error("Gagal mengunggah isi metadata: " + errText);
+          }
+        }
+
+        return new Response(JSON.stringify({ success: true, fileId }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
     }
 
     // Skenario B: Unggah File Baru ke Google Drive

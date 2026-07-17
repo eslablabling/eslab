@@ -669,6 +669,7 @@ window.saveDoc = async function(event) {
             showToast("Dokumen baru berhasil disimpan!");
         }
 
+        await pushMetadataToDrive(); // Sinkronkan ke Google Drive
         closeDocModal();
         await loadDocuments();
 
@@ -746,6 +747,7 @@ window.deleteDoc = async function(id) {
 
             // 2. Hapus dari database lokal (IndexedDB)
             await deleteDocFromDB(id);
+            await pushMetadataToDrive(); // Sinkronkan ke Google Drive
             showToast("Dokumen berhasil dihapus dari LIMS dan Google Drive!");
             await loadDocuments();
         } catch (err) {
@@ -868,10 +870,117 @@ function extractFileId(url) {
     return null;
 }
 
+// --- SYNC METADATA DENGAN GOOGLE DRIVE (KATEGORI & DETAIL DOKUMEN) ---
+
+async function pushMetadataToDrive() {
+    try {
+        const docs = await getAllDocsFromDB();
+        const cats = await getAllCategoriesFromDB();
+        
+        const metadata = {
+            categories: cats,
+            documents: docs
+        };
+        
+        await fetch(`${SB_URL}/functions/v1/upload-to-drive`, {
+            method: 'POST',
+            headers: {
+                'Authorization': 'Bearer ' + SB_KEY,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ action: 'save_metadata', metadata })
+        });
+        console.log("Metadata LIMS berhasil diunggah ke Google Drive!");
+    } catch (err) {
+        console.error("Gagal mengunggah metadata ke Google Drive:", err);
+    }
+}
+
+async function pullMetadataFromDrive() {
+    try {
+        console.log("Mengunduh metadata bersama dari Google Drive...");
+        const response = await fetch(`${SB_URL}/functions/v1/upload-to-drive`, {
+            method: 'POST',
+            headers: {
+                'Authorization': 'Bearer ' + SB_KEY,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ action: 'get_metadata' })
+        });
+        
+        if (!response.ok) return false;
+        
+        const data = await response.json();
+        const driveDocs = data.documents || [];
+        const driveCats = data.categories || [];
+        
+        if (driveDocs.length === 0 && driveCats.length === 0) {
+            return false; // Kosong / belum ada metadata
+        }
+        
+        let changed = false;
+        
+        // 1. Sinkronisasi Kategori
+        const localCats = await getAllCategoriesFromDB();
+        for (const dCat of driveCats) {
+            const localCat = localCats.find(c => c.id === dCat.id);
+            if (!localCat || localCat.name !== dCat.name) {
+                await updateCategoryInDB(dCat);
+                changed = true;
+            }
+        }
+        // Hapus kategori lokal yang sudah tidak ada di Drive
+        for (const lCat of localCats) {
+            const exists = driveCats.some(c => c.id === lCat.id);
+            if (!exists) {
+                await deleteCategoryFromDB(lCat.id);
+                changed = true;
+            }
+        }
+        
+        // 2. Sinkronisasi Dokumen
+        const localDocs = await getAllDocsFromDB();
+        for (const dDoc of driveDocs) {
+            const localDoc = localDocs.find(d => d.id === dDoc.id || (d.fileName && dDoc.fileName && d.fileName.toLowerCase() === dDoc.fileName.toLowerCase()));
+            if (!localDoc) {
+                await addDocToDB(dDoc);
+                changed = true;
+            } else {
+                if (localDoc.title !== dDoc.title || 
+                    localDoc.category !== dDoc.category || 
+                    localDoc.description !== dDoc.description ||
+                    localDoc.driveLink !== dDoc.driveLink ||
+                    localDoc.fileName !== dDoc.fileName) {
+                    
+                    const merged = { ...localDoc, ...dDoc };
+                    await updateDocInDB(merged);
+                    changed = true;
+                }
+            }
+        }
+        // Hapus dokumen lokal yang sudah dihapus dari Drive
+        for (const lDoc of localDocs) {
+            const exists = driveDocs.some(d => d.id === lDoc.id || (d.fileName && lDoc.fileName && d.fileName.toLowerCase() === lDoc.fileName.toLowerCase()));
+            if (!exists) {
+                await deleteDocFromDB(lDoc.id);
+                changed = true;
+            }
+        }
+        
+        return changed;
+    } catch (err) {
+        console.error("Gagal menyinkronkan metadata dari Google Drive:", err);
+        return false;
+    }
+}
+
 // --- SYNC ALL LIMS DOCUMENTS WITH ACTUAL GOOGLE DRIVE FILES ---
 async function performDriveSync(silent = false) {
     if (!silent) showToast("Menghubungkan ke Google Drive via Supabase Helper...", true);
     try {
+        // A. Tarik metadata bersama (Kategori & Dokumen) dari Google Drive terlebih dahulu
+        const metadataChanged = await pullMetadataFromDrive();
+
         const response = await fetch(`${SB_URL}/functions/v1/upload-to-drive`, {
             method: 'POST',
             headers: {
@@ -887,7 +996,8 @@ async function performDriveSync(silent = false) {
         }
 
         const data = await response.json();
-        const driveFiles = data.files || [];
+        // Saring file metadata agar tidak muncul di daftar dokumen
+        const driveFiles = (data.files || []).filter(df => df.name !== '_lims_metadata.json');
         
         if (driveFiles.length === 0) {
             if (!silent) alert(`Tidak ada berkas yang ditemukan di folder Google Drive. Pastikan berkas-berkas tersebut sudah diunggah ke folder Drive Anda.`);
@@ -900,7 +1010,7 @@ async function performDriveSync(silent = false) {
         let updatedCount = 0;
         let importedCount = 0;
         let deletedCount = 0;
-        let changed = false;
+        let changed = metadataChanged;
 
         // 1. Sinkronisasi berkas LIMS lokal yang cocok dengan file di Drive (berdasarkan file ID atau nama file)
         for (let doc of docs) {
@@ -996,18 +1106,27 @@ async function performDriveSync(silent = false) {
 
         if (changed) {
             allDocuments = await getAllDocsFromDB();
+            allCategories = await getAllCategoriesFromDB();
             allDocuments.sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt));
             updateStats();
             renderDocuments();
+            await renderCategoryTabs();
+            await populateCategoryDropdown();
         }
 
         if (!silent) {
-            if (updatedCount > 0 || importedCount > 0 || deletedCount > 0) {
+            if (updatedCount > 0 || importedCount > 0 || deletedCount > 0 || metadataChanged) {
                 showToast(`Sinkronisasi berhasil! ${updatedCount} berkas terhubung, ${importedCount} berkas baru diimpor, ${deletedCount} berkas usang dihapus.`, true);
             } else {
                 alert("Sinkronisasi selesai. Semua berkas di Google Drive sudah tersinkronisasi dengan sistem LIMS.");
             }
         }
+
+        // B. Jika ada perubahan lokal selama proses sinkronisasi ini, simpan kembali metadata ke Drive
+        if (importedCount > 0 || deletedCount > 0) {
+            await pushMetadataToDrive();
+        }
+
     } catch (err) {
         console.error("Gagal melakukan sinkronisasi dengan Google Drive:", err);
         if (!silent) {
@@ -1133,6 +1252,7 @@ window.saveCategory = async function(event) {
         const newCat = { id, name };
         
         await updateCategoryInDB(newCat);
+        await pushMetadataToDrive(); // Sinkronkan ke Google Drive
         showToast(isEdit ? "Kategori berhasil diperbarui!" : "Kategori baru berhasil ditambahkan!");
         
         resetCategoryForm();
@@ -1157,6 +1277,7 @@ window.deleteCategory = async function(catId) {
     if (confirm(`Apakah Anda yakin ingin menghapus kategori '${catId}'?`)) {
         try {
             await deleteCategoryFromDB(catId);
+            await pushMetadataToDrive(); // Sinkronkan ke Google Drive
             showToast("Kategori berhasil dihapus!");
             await loadDocuments();
             renderCategoriesTable();
