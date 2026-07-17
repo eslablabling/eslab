@@ -4,12 +4,13 @@
 let db = null;
 let currentCategory = 'all';
 let allDocuments = [];
+let allCategories = [];
 
 const GOOGLE_DRIVE_FOLDER = "https://drive.google.com/drive/folders/1ztYUlPERtgarjEuZPp1D_lAkzR54Ey62?usp=drive_link";
 
 // 2. Setup IndexedDB
 const DB_NAME = 'EslabDMS';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_NAME = 'documents';
 
 function openDatabase() {
@@ -32,6 +33,10 @@ function openDatabase() {
             if (!dbInstance.objectStoreNames.contains(STORE_NAME)) {
                 dbInstance.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
                 console.log("Object store 'documents' berhasil dibuat");
+            }
+            if (!dbInstance.objectStoreNames.contains('categories')) {
+                dbInstance.createObjectStore('categories', { keyPath: 'id' });
+                console.log("Object store 'categories' berhasil dibuat");
             }
         };
     });
@@ -189,12 +194,97 @@ function deleteDocFromDB(id) {
     });
 }
 
+// 4b. Operasi Database Kategori (IndexedDB)
+function getAllCategoriesFromDB() {
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(['categories'], 'readonly');
+        const store = transaction.objectStore('categories');
+        const request = store.getAll();
+
+        request.onsuccess = (event) => {
+            resolve(event.target.result);
+        };
+
+        request.onerror = (event) => {
+            reject(event.target.error);
+        };
+    });
+}
+
+function addCategoryToDB(cat) {
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(['categories'], 'readwrite');
+        const store = transaction.objectStore('categories');
+        const request = store.add(cat);
+
+        request.onsuccess = (event) => {
+            resolve(event.target.result);
+        };
+
+        request.onerror = (event) => {
+            reject(event.target.error);
+        };
+    });
+}
+
+function updateCategoryInDB(cat) {
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(['categories'], 'readwrite');
+        const store = transaction.objectStore('categories');
+        const request = store.put(cat);
+
+        request.onsuccess = (event) => {
+            resolve(event.target.result);
+        };
+
+        request.onerror = (event) => {
+            reject(event.target.error);
+        };
+    });
+}
+
+function deleteCategoryFromDB(id) {
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(['categories'], 'readwrite');
+        const store = transaction.objectStore('categories');
+        const request = store.delete(id);
+
+        request.onsuccess = (event) => {
+            resolve();
+        };
+
+        request.onerror = (event) => {
+            reject(event.target.error);
+        };
+    });
+}
+
+const DEFAULT_CATEGORIES = [
+    { id: 'regulasi', name: 'Regulasi & Hukum' },
+    { id: 'metode', name: 'Metode Uji' },
+    { id: 'verifikasi', name: 'Verifikasi & Laporan' },
+    { id: 'template', name: 'Template File' },
+    { id: 'lainnya', name: 'Lainnya' }
+];
+
+async function seedCategoriesIfEmpty() {
+    const cats = await getAllCategoriesFromDB();
+    if (cats.length === 0) {
+        console.log("Database kategori kosong, melakukan seeding default...");
+        for (const cat of DEFAULT_CATEGORIES) {
+            await addCategoryToDB(cat);
+        }
+        console.log("Seeding kategori selesai");
+    }
+}
+
 // 5. Setup UI & Event Listeners
 document.addEventListener('DOMContentLoaded', async () => {
     try {
         // Tunggu inisialisasi IndexedDB
         await openDatabase();
         await seedDatabaseIfEmpty();
+        await seedCategoriesIfEmpty();
         await loadDocuments();
 
         // Cari Input
@@ -227,6 +317,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         }
 
+        // Tunggu event auth-ready untuk me-render tombol berdasarkan hak akses yang tepat
+        window.addEventListener('auth-ready', () => {
+            renderDocuments();
+        });
+
         // Catatan: Inisialisasi API Google dihilangkan karena proses unggah & sinkronisasi
         // sekarang diproses di cloud secara aman melalui Supabase Edge Functions.
     } catch (e) {
@@ -235,11 +330,46 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 });
 
+// Render Tab Kategori secara Dinamis dari DB Kategori
+async function renderCategoryTabs() {
+    const tabGroup = document.getElementById('categoryTabs');
+    if (!tabGroup) return;
+
+    let html = `<button class="tab-btn ${currentCategory === 'all' ? 'active' : ''}" onclick="filterCategory('all')">Semua</button>`;
+    allCategories.forEach(cat => {
+        html += `<button class="tab-btn ${currentCategory === cat.id ? 'active' : ''}" onclick="filterCategory('${cat.id}')">${cat.name}</button>`;
+    });
+
+    // Tambahkan tombol Kelola Kategori di ujung kanan jika user adalah admin_master
+    const userRole = sessionStorage.getItem('user_role') || 'sampling';
+    const isAdmin = (userRole === 'admin_master');
+    if (isAdmin) {
+        html += `
+            <button class="btn-outline" onclick="openCategoryModal()" style="margin-left: auto; padding: 6px 14px; font-size: 0.8rem; border-radius: 8px; font-weight: 700; border-color: #cbd5e1; cursor: pointer;">
+                ⚙️ Kelola Kategori
+            </button>
+        `;
+    }
+
+    tabGroup.innerHTML = html;
+}
+
+// Mengisi Dropdown Pilihan Kategori di Form Dokumen secara Dinamis
+function populateCategoryDropdown() {
+    const select = document.getElementById('category');
+    if (!select) return;
+
+    select.innerHTML = allCategories.map(cat => `<option value="${cat.id}">${cat.name}</option>`).join('');
+}
+
 // Memuat data dari DB ke state dan me-render
 async function loadDocuments() {
     allDocuments = await getAllDocsFromDB();
+    allCategories = await getAllCategoriesFromDB();
     // Sort descending berdasarkan tanggal update terbaru
     allDocuments.sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt));
+    await renderCategoryTabs();
+    await populateCategoryDropdown();
     updateStats();
     renderDocuments();
 }
@@ -261,6 +391,15 @@ function updateStats() {
 function renderDocuments(keyword = '') {
     const tableBody = document.getElementById('docTableBody');
     if (!tableBody) return;
+
+    // Ambil role user dari sessionStorage untuk pengecekan hak akses (Semua bisa tambah & edit, hapus hanya admin_master & manager)
+    const userRole = sessionStorage.getItem('user_role') || 'sampling';
+    const canDelete = ['admin_master', 'manager'].includes(userRole);
+
+    const btnTambah = document.getElementById('btnTambahDokumen');
+    if (btnTambah) {
+        btnTambah.style.display = 'inline-block'; // Semua role bisa tambah dokumen
+    }
 
     // Filter kategori & pencarian kata kunci
     const filteredDocs = allDocuments.filter(doc => {
@@ -289,28 +428,25 @@ function renderDocuments(keyword = '') {
 
     let rowsHtml = '';
     filteredDocs.forEach(doc => {
-        // Tentukan ikon berdasarkan fileType
-        let iconClass = 'icon-other';
+        // Tentukan ikon berdasarkan category dokumen
+        let iconClass = 'icon-lainnya';
         let emoji = '📄';
-        switch (doc.fileType) {
-            case 'pdf':
-                iconClass = 'icon-pdf';
+        switch (doc.category) {
+            case 'regulasi':
+                iconClass = 'icon-regulasi';
                 emoji = '📕';
                 break;
-            case 'xlsx':
-            case 'xls':
-                iconClass = 'icon-xlsx';
-                emoji = '🟢';
+            case 'metode':
+                iconClass = 'icon-metode';
+                emoji = '🧪';
                 break;
-            case 'docx':
-            case 'doc':
-                iconClass = 'icon-docx';
-                emoji = '📘';
+            case 'verifikasi':
+                iconClass = 'icon-verifikasi';
+                emoji = '📋';
                 break;
-            case 'pptx':
-            case 'ppt':
-                iconClass = 'icon-pptx';
-                emoji = '📙';
+            case 'template':
+                iconClass = 'icon-template';
+                emoji = '📂';
                 break;
         }
 
@@ -359,9 +495,11 @@ function renderDocuments(keyword = '') {
                         <button onclick="editDoc(${doc.id})" class="table-action-btn btn-edit" title="Edit Dokumen">
                             📝
                         </button>
-                        <button onclick="deleteDoc(${doc.id})" class="table-action-btn btn-delete" title="Hapus">
-                            🗑️
-                        </button>
+                        ${canDelete ? `
+                            <button onclick="deleteDoc(${doc.id})" class="table-action-btn btn-delete" title="Hapus">
+                                🗑️
+                            </button>
+                        ` : ''}
                     </div>
                 </td>
             </tr>
@@ -371,14 +509,9 @@ function renderDocuments(keyword = '') {
     tableBody.innerHTML = rowsHtml;
 }
 
-function getCategoryLabel(category) {
-    switch (category) {
-        case 'regulasi': return 'Regulasi';
-        case 'metode': return 'Metode Uji';
-        case 'verifikasi': return 'Verifikasi';
-        case 'template': return 'Template';
-        default: return 'Lainnya';
-    }
+function getCategoryLabel(categoryId) {
+    const cat = allCategories.find(c => c.id === categoryId);
+    return cat ? cat.name : categoryId;
 }
 
 // 6. Filter Kategori Tab
@@ -477,6 +610,7 @@ window.saveDoc = async function(event) {
         else if (['xlsx', 'xls'].includes(ext)) fileType = 'xlsx';
         else if (['docx', 'doc'].includes(ext)) fileType = 'docx';
         else if (['pptx', 'ppt'].includes(ext)) fileType = 'pptx';
+
     } else {
         const lowerUrl = driveLink.toLowerCase();
         if (lowerUrl.includes('.pdf')) fileType = 'pdf';
@@ -505,8 +639,8 @@ window.saveDoc = async function(event) {
                 category,
                 storageType: 'drive',
                 driveLink: driveLink || GOOGLE_DRIVE_FOLDER,
-                fileType,
-                fileName,
+                fileType: localFile ? fileType : oldDoc.fileType,
+                fileName: localFile ? fileName : oldDoc.fileName,
                 description,
                 updatedAt: timestamp
             };
@@ -565,6 +699,8 @@ window.editDoc = async function(id) {
             localFileEl.required = false; // Opsional saat edit
         }
 
+
+
         document.getElementById('modalDoc').style.display = 'flex';
 
     } catch (err) {
@@ -575,10 +711,39 @@ window.editDoc = async function(id) {
 
 // Fungsi Hapus Dokumen
 window.deleteDoc = async function(id) {
-    if (confirm("Apakah Anda yakin ingin menghapus dokumen ini dari sistem?")) {
+    if (confirm("Apakah Anda yakin ingin menghapus dokumen ini dari sistem LIMS dan Google Drive?")) {
         try {
+            // 1. Ambil data dokumen dari DB untuk mendapatkan driveLink-nya
+            const docs = await getAllDocsFromDB();
+            const doc = docs.find(d => d.id === id);
+            
+            if (doc && doc.driveLink && doc.driveLink !== GOOGLE_DRIVE_FOLDER) {
+                // Ekstrak file ID dari Google Drive link
+                const match = doc.driveLink.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+                const fileId = match ? match[1] : null;
+                
+                if (fileId) {
+                    showToast("Menghapus berkas dari Google Drive...", true);
+                    // Panggil Supabase Edge Function untuk memindahkan file ke trash di Google Drive
+                    const response = await fetch(`${SB_URL}/functions/v1/upload-to-drive`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': 'Bearer ' + SB_KEY,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ action: 'delete', fileId })
+                    });
+                    
+                    if (!response.ok) {
+                        const errText = await response.text();
+                        console.warn("Berkas di Drive gagal dihapus (mungkin sudah terhapus manual):", errText);
+                    }
+                }
+            }
+
+            // 2. Hapus dari database lokal (IndexedDB)
             await deleteDocFromDB(id);
-            showToast("Dokumen berhasil dihapus!");
+            showToast("Dokumen berhasil dihapus dari LIMS dan Google Drive!");
             await loadDocuments();
         } catch (err) {
             console.error("Gagal menghapus dokumen:", err);
@@ -772,3 +937,123 @@ async function uploadFileToGoogleDrive(file) {
 }
 
 window.syncDocumentsWithDrive = syncDocumentsWithDrive;
+
+// --- DYNAMIC CATEGORY MANAGER MODAL UI & CRUD LOGIC ---
+
+window.openCategoryModal = function() {
+    resetCategoryForm();
+    renderCategoriesTable();
+    document.getElementById('modalCategory').style.display = 'flex';
+}
+
+window.closeCategoryModal = function() {
+    document.getElementById('modalCategory').style.display = 'none';
+}
+
+window.closeCategoryModalOuter = function(event) {
+    if (event.target.id === 'modalCategory') {
+        closeCategoryModal();
+    }
+}
+
+function renderCategoriesTable() {
+    const tbody = document.getElementById('categoryTableBody');
+    if (!tbody) return;
+    
+    let html = '';
+    allCategories.forEach(cat => {
+        html += `
+            <tr style="border-bottom: 1px solid #e2e8f0;">
+                <td style="padding: 10px; font-size: 0.8rem; font-weight: 600; color: #475569;">${cat.id}</td>
+                <td style="padding: 10px; font-size: 0.8rem; font-weight: 500; color: #0f172a;">${cat.name}</td>
+                <td style="padding: 10px; text-align: center;">
+                    <div style="display: flex; gap: 8px; justify-content: center;">
+                        <button type="button" class="table-action-btn" onclick="editCategory('${cat.id}', '${cat.name.replace(/'/g, "\\'")}')" style="color: #2563eb; background: none; border: none; cursor: pointer; font-size: 0.9rem;" title="Edit Kategori">📝</button>
+                        <button type="button" class="table-action-btn" onclick="deleteCategory('${cat.id}')" style="color: #ef4444; background: none; border: none; cursor: pointer; font-size: 0.9rem;" title="Hapus Kategori">🗑️</button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    });
+    
+    if (allCategories.length === 0) {
+        html = `<tr><td colspan="3" style="padding: 15px; text-align: center; color: #64748b; font-size: 0.8rem;">Belum ada kategori terdaftar.</td></tr>`;
+    }
+    
+    tbody.innerHTML = html;
+}
+
+window.editCategory = function(id, name) {
+    document.getElementById('categoryFormTitle').innerText = "📝 Edit Kategori";
+    const idInput = document.getElementById('catId');
+    idInput.value = id;
+    idInput.disabled = true; // ID tidak boleh diubah saat edit karena menjadi KeyPath utama
+    
+    document.getElementById('catName').value = name;
+    document.getElementById('btnCancelCategoryEdit').style.display = 'inline-block';
+}
+
+window.resetCategoryForm = function() {
+    document.getElementById('categoryFormTitle').innerText = "➕ Tambah Kategori Baru";
+    const idInput = document.getElementById('catId');
+    idInput.value = '';
+    idInput.disabled = false;
+    
+    document.getElementById('catName').value = '';
+    document.getElementById('btnCancelCategoryEdit').style.display = 'none';
+}
+
+window.saveCategory = async function(event) {
+    event.preventDefault();
+    const idInput = document.getElementById('catId');
+    const nameInput = document.getElementById('catName');
+    
+    const id = idInput.value.trim().toLowerCase();
+    const name = nameInput.value.trim();
+    
+    if (!id || !name) return;
+    
+    // Validasi format ID Kategori agar URL-friendly
+    if (!/^[a-z0-9_-]+$/.test(id)) {
+        alert("Kode ID Kategori hanya boleh berisi huruf kecil, angka, garis bawah (_), atau tanda hubung (-).");
+        return;
+    }
+    
+    try {
+        const isEdit = idInput.disabled;
+        const newCat = { id, name };
+        
+        await updateCategoryInDB(newCat);
+        showToast(isEdit ? "Kategori berhasil diperbarui!" : "Kategori baru berhasil ditambahkan!");
+        
+        resetCategoryForm();
+        await loadDocuments();
+        renderCategoriesTable();
+    } catch (err) {
+        console.error("Gagal menyimpan kategori:", err);
+        showToast("Error: " + err.message, false);
+    }
+}
+
+window.deleteCategory = async function(catId) {
+    // Validasi keselamatan utama: "kalau hapus hanya jika kosong" (jika tidak ada dokumen yang memakai kategori ini)
+    const hasDocs = allDocuments.some(doc => doc.category === catId);
+    
+    if (hasDocs) {
+        const docCount = allDocuments.filter(doc => doc.category === catId).length;
+        alert(`⚠️ Kategori '${catId}' tidak dapat dihapus karena masih digunakan oleh ${docCount} dokumen!\nSilakan pindahkan atau hapus dokumen tersebut terlebih dahulu.`);
+        return;
+    }
+    
+    if (confirm(`Apakah Anda yakin ingin menghapus kategori '${catId}'?`)) {
+        try {
+            await deleteCategoryFromDB(catId);
+            showToast("Kategori berhasil dihapus!");
+            await loadDocuments();
+            renderCategoriesTable();
+        } catch (err) {
+            console.error("Gagal menghapus kategori:", err);
+            showToast("Error: " + err.message, false);
+        }
+    }
+}

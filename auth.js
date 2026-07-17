@@ -155,6 +155,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // 3. Gunakan Role dari Tabel Profiles
         const userRole = profile.role || 'sampling'; 
+        sessionStorage.setItem('user_role', userRole);
         const fullName = profile.full_name || user.email.split('@')[0];
 
         // Tampilkan di UI
@@ -173,11 +174,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         // 4. Render Sidebar dengan Role yang Benar
         console.log("Login sebagai:", userRole); // Cek di console F12
         renderSidebar(userRole);
+        window.dispatchEvent(new Event('auth-ready'));
 
     } catch (err) {
         console.error("Gagal mengambil profil:", err.message);
         // Fallback jika profile tidak ditemukan
+        sessionStorage.setItem('user_role', 'sampling');
         renderSidebar('sampling');
+        window.dispatchEvent(new Event('auth-ready'));
     }
 }
 

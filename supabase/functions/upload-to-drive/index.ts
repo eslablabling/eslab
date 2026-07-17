@@ -28,9 +28,11 @@ Deno.serve(async (req) => {
 
     const contentType = req.headers.get("content-type") || "";
 
-    // Skenario A: Sinkronisasi (Membaca Daftar File di Folder Google Drive)
+    // Skenario A: Request JSON (Kueri List atau Delete)
     if (contentType.includes("application/json")) {
       const body = await req.json();
+      
+      // Skenario A1: Mendapatkan daftar file di folder Google Drive
       if (body.action === 'list') {
         const query = encodeURIComponent(`'${folderId}' in parents and trashed = false`);
         const listResponse = await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name,webViewLink)&pageSize=100`, {
@@ -45,6 +47,36 @@ Deno.serve(async (req) => {
 
         const listResult = await listResponse.json();
         return new Response(JSON.stringify(listResult), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+      
+      // Skenario A2: Menghapus file di Google Drive (pindahkan ke tempat sampah)
+      if (body.action === 'delete') {
+        const fileId = body.fileId;
+        if (!fileId) {
+          return new Response(
+            JSON.stringify({ error: 'No fileId provided' }), 
+            { status: 400, headers: corsHeaders }
+          );
+        }
+
+        // Kita gunakan PATCH drive/v3/files/fileId dengan body { trashed: true } agar aman (bisa dipulihkan dari Trash)
+        const deleteResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
+          method: 'PATCH',
+          headers: { 
+            'Authorization': 'Bearer ' + accessToken,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ trashed: true })
+        });
+
+        if (!deleteResponse.ok) {
+          const errText = await deleteResponse.text();
+          throw new Error("Gagal membuang berkas ke tempat sampah Google Drive: " + errText);
+        }
+
+        return new Response(JSON.stringify({ success: true }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
       }

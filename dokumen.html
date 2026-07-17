@@ -257,11 +257,11 @@
             margin-right: 12px;
             flex-shrink: 0;
         }
-        .icon-pdf { background-color: #fef2f2; color: #ef4444; }
-        .icon-xlsx { background-color: #ecfdf5; color: #10b981; }
-        .icon-docx { background-color: #eff6ff; color: #3b82f6; }
-        .icon-pptx { background-color: #fff7ed; color: #f97316; }
-        .icon-other { background-color: #f8fafc; color: #64748b; }
+        .icon-regulasi { background-color: #fef2f2; color: #dc2626; }
+        .icon-metode { background-color: #ecfeff; color: #0891b2; }
+        .icon-verifikasi { background-color: #fff7ed; color: #c2410c; }
+        .icon-template { background-color: #eff6ff; color: #2563eb; }
+        .icon-lainnya { background-color: #f8fafc; color: #64748b; }
 
         .badge-cat {
             padding: 6px 12px;
@@ -490,13 +490,10 @@
                     </h3>
                 </div>
                 <div class="btn-group">
-                    <a href="https://drive.google.com/drive/folders/1ztYUlPERtgarjEuZPp1D_lAkzR54Ey62?usp=drive_link" target="_blank" class="btn-success" style="text-decoration: none;">
-                        <span>📂</span> Google Drive Lab
-                    </a>
                     <button class="btn-outline" onclick="syncDocumentsWithDrive()">
                         <span>🔄</span> Sinkronisasi Drive
                     </button>
-                    <button class="btn-primary" onclick="openDocModal()">
+                    <button id="btnTambahDokumen" class="btn-primary" onclick="openDocModal()">
                         <span>➕</span> Tambah Dokumen
                     </button>
                 </div>
@@ -504,13 +501,9 @@
 
             <!-- FILTERS & SEARCH -->
             <div class="filter-container">
-                <div class="tab-group" id="categoryTabs">
+                <div class="tab-group" id="categoryTabs" style="display: flex; width: 100%; align-items: center; gap: 8px;">
                     <button class="tab-btn active" onclick="filterCategory('all')">Semua</button>
-                    <button class="tab-btn" onclick="filterCategory('regulasi')">Regulasi</button>
-                    <button class="tab-btn" onclick="filterCategory('metode')">Metode Uji</button>
-                    <button class="tab-btn" onclick="filterCategory('verifikasi')">Verifikasi</button>
-                    <button class="tab-btn" onclick="filterCategory('template')">Template File</button>
-                    <button class="tab-btn" onclick="filterCategory('lainnya')">Lainnya</button>
+                    <!-- Kategori dimuat secara dinamis -->
                 </div>
                 
                 <div class="search-box-wrapper">
@@ -587,6 +580,8 @@
                     </div>
                 </div>
 
+
+
                 <!-- Input Drive Link (Disembunyikan, terisi otomatis saat upload) -->
                 <div class="form-group" id="groupDriveLink" style="display: none;">
                     <label for="driveLink">Tautan Google Drive</label>
@@ -626,6 +621,54 @@
                     Memuat dokumen dari Google Drive...
                 </div>
                 <iframe id="previewIframe" src="" width="100%" height="100%" style="border: none;" onload="document.getElementById('previewLoader').style.display='none';"></iframe>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL KELOLA KATEGORI -->
+    <div id="modalCategory" class="modal" onclick="closeCategoryModalOuter(event)">
+        <div class="modal-content" style="max-width: 600px; width: 100%;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 style="font-weight: 800; font-size: 1.3rem;">⚙️ Kelola Kategori Dokumen</h2>
+                <button onclick="closeCategoryModal()" style="background:none; border:none; font-size: 1.5rem; cursor:pointer;">✕</button>
+            </div>
+
+            <!-- Form Tambah/Edit Kategori -->
+            <form id="formCategory" onsubmit="saveCategory(event)" style="margin-bottom: 25px; background: #f8fafc; padding: 15px; border-radius: 12px; border: 1px solid #e2e8f0;">
+                <h3 id="categoryFormTitle" style="font-size: 0.95rem; font-weight: 800; margin-bottom: 12px;">➕ Tambah Kategori Baru</h3>
+                <div style="display: flex; gap: 10px; align-items: flex-end;">
+                    <div class="form-group" style="flex: 1; margin: 0;">
+                        <label for="catId" style="font-size: 0.75rem; font-weight: 800;">Kode ID Kategori (Huruf Kecil)</label>
+                        <input type="text" id="catId" class="form-control" placeholder="Contoh: audit" required style="padding: 8px;">
+                    </div>
+                    <div class="form-group" style="flex: 2; margin: 0;">
+                        <label for="catName" style="font-size: 0.75rem; font-weight: 800;">Nama Kategori</label>
+                        <input type="text" id="catName" class="form-control" placeholder="Contoh: Internal Audit" required style="padding: 8px;">
+                    </div>
+                    <button type="submit" class="btn-primary" style="padding: 8px 16px; height: 38px; font-size: 0.85rem;">
+                        Simpan
+                    </button>
+                    <button type="button" id="btnCancelCategoryEdit" class="btn-outline" onclick="resetCategoryForm()" style="display: none; padding: 8px 12px; height: 38px; font-size: 0.85rem;">
+                        Batal
+                    </button>
+                </div>
+            </form>
+
+            <!-- Daftar Kategori Aktif -->
+            <h3 style="font-size: 0.95rem; font-weight: 800; margin-bottom: 10px;">Daftar Kategori Aktif</h3>
+            <div style="max-height: 250px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 10px;">
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead style="background: #f1f5f9; position: sticky; top: 0; z-index: 10;">
+                        <tr>
+                            <th style="padding: 10px; font-size: 0.78rem; text-align: left; border-bottom: 1px solid #e2e8f0;">Kode ID</th>
+                            <th style="padding: 10px; font-size: 0.78rem; text-align: left; border-bottom: 1px solid #e2e8f0;">Nama Kategori</th>
+                            <th style="padding: 10px; font-size: 0.78rem; text-align: center; width: 120px; border-bottom: 1px solid #e2e8f0;">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody id="categoryTableBody">
+                        <!-- Kategori dimuat secara dinamis -->
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
