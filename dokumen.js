@@ -886,9 +886,10 @@ async function syncDocumentsWithDrive() {
         // Ambil semua dokumen dari IndexedDB lokal
         const docs = await getAllDocsFromDB();
         let updatedCount = 0;
+        let importedCount = 0;
 
+        // 1. Sinkronisasi berkas LIMS lokal yang sudah ada
         for (let doc of docs) {
-            // Cari kecocokan file berdasarkan nama berkas di drive (case-insensitive)
             const match = driveFiles.find(df => df.name.toLowerCase().trim() === (doc.fileName || '').toLowerCase().trim());
             if (match) {
                 doc.driveLink = match.webViewLink;
@@ -898,11 +899,53 @@ async function syncDocumentsWithDrive() {
             }
         }
 
-        if (updatedCount > 0) {
-            showToast(`Sinkronisasi berhasil! ${updatedCount} berkas terhubung ke Google Drive.`, true);
+        // 2. Cari file di Drive yang BELUM terdaftar di LIMS lokal, lalu impor otomatis
+        for (let df of driveFiles) {
+            const isRegistered = docs.some(doc => (doc.fileName || '').toLowerCase().trim() === df.name.toLowerCase().trim());
+            if (!isRegistered) {
+                // Deteksi file extension untuk menentukan fileType
+                const extMatch = df.name.match(/\.([a-zA-Z0-9]+)$/);
+                const ext = extMatch ? extMatch[1].toLowerCase() : '';
+                let fileType = 'other';
+                if (ext === 'pdf') fileType = 'pdf';
+                else if (['xlsx', 'xls'].includes(ext)) fileType = 'xlsx';
+                else if (['docx', 'doc'].includes(ext)) fileType = 'docx';
+                else if (['pptx', 'ppt'].includes(ext)) fileType = 'pptx';
+
+                // Bersihkan nama file untuk judul (tanpa ekstensi)
+                let title = df.name.replace(/\.[a-zA-Z0-9]+$/, "");
+                
+                // Deteksi kategori kasar dari nama file
+                let category = 'lainnya';
+                const lowerName = df.name.toLowerCase();
+                if (lowerName.includes('regulasi') || lowerName.includes('hukum') || lowerName.includes('permen')) category = 'regulasi';
+                else if (lowerName.includes('metode') || lowerName.includes('sop') || lowerName.includes('uji')) category = 'metode';
+                else if (lowerName.includes('verifikasi') || lowerName.includes('laporan') || lowerName.includes('lha')) category = 'verifikasi';
+                else if (lowerName.includes('template') || lowerName.includes('form')) category = 'template';
+
+                const newDoc = {
+                    title: title,
+                    category: category,
+                    storageType: 'drive',
+                    driveLink: df.webViewLink,
+                    fileType: fileType,
+                    fileName: df.name,
+                    description: "Diimpor otomatis dari Google Drive saat sinkronisasi.",
+                    uploadedBy: "Google Drive Sync",
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString()
+                };
+
+                await addDocToDB(newDoc);
+                importedCount++;
+            }
+        }
+
+        if (updatedCount > 0 || importedCount > 0) {
+            showToast(`Sinkronisasi berhasil! ${updatedCount} berkas terhubung, ${importedCount} berkas baru berhasil diimpor dari Google Drive.`, true);
             await loadDocuments();
         } else {
-            alert("Sinkronisasi selesai. Tidak ada nama file dokumen LIMS saat ini yang cocok dengan nama file di folder Google Drive.");
+            alert("Sinkronisasi selesai. Semua berkas di Google Drive sudah tersinkronisasi dengan sistem LIMS.");
         }
 
     } catch (err) {
