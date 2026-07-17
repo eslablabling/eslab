@@ -669,6 +669,26 @@ window.saveDoc = async function(event) {
         return;
     }
 
+    // Cek Duplikasi Nama File
+    let checkFileName = '';
+    if (localFile) {
+        checkFileName = localFile.name;
+    } else if (driveLink) {
+        checkFileName = driveLink.substring(driveLink.lastIndexOf('/') + 1).split('?')[0];
+        if (!checkFileName || checkFileName.length > 50) checkFileName = "Berkas Google Drive";
+    }
+
+    if (checkFileName && checkFileName !== "Berkas Google Drive") {
+        const duplicate = allDocuments.find(d => 
+            (d.fileName || '').toLowerCase().trim() === checkFileName.toLowerCase().trim() &&
+            (!idVal || d.id !== parseInt(idVal))
+        );
+        if (duplicate) {
+            alert(`Berkas dengan nama "${checkFileName}" sudah ada di sistem!\nSilakan gunakan berkas dengan nama lain.`);
+            return;
+        }
+    }
+
     // Dapatkan nama user saat ini untuk 'uploadedBy'
     const userFullNameEl = document.getElementById('userFullName');
     const uploader = userFullNameEl ? userFullNameEl.innerText : 'Staf Lab';
