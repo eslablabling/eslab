@@ -5,31 +5,11 @@ const pageSize = 10;
 let filteredSamplesList = [];
 let rawCoAListData = [];
 
-document.addEventListener('DOMContentLoaded', async () => {
-    // 1. Ambil user secara mandiri
-    let user;
-    try {
-        const { data: { session } } = await _supabase.auth.getSession();
-        if (!session) {
-            window.location.href = "index.html";
-            return;
-        }
-        user = session.user;
-
-        userRole = session.user.user_metadata?.role;
-        if (!userRole) {
-            const { data: profile } = await _supabase
-                .from('profiles')
-                .select('role')
-                .eq('id', session.user.id)
-                .single();
-            userRole = profile?.role;
-        }
-        console.log("Role terkonfirmasi di COA:", userRole);
-    } catch (e) {
-        console.error("Auth Error:", e);
-        return;
-    }
+window.addEventListener('auth-ready', async (e) => {
+    const { session, role } = e.detail;
+    const user = session.user;
+    userRole = role;
+    console.log("Role terkonfirmasi di COA:", userRole);
 
     // 2. Isi Profil User
     const userDisplay = document.getElementById('userFullName');
@@ -52,7 +32,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
         const { data: coc, error } = await _supabase
             .from('coc_emisi')
-            .select('*')
+            .select('*, samples(*)')
             .eq('id', docId)
             .single();
 
@@ -183,7 +163,7 @@ async function fetchCoAList(keyword = '') {
     try {
         const { data, error } = await _supabase
             .from('coc_emisi')
-            .select('id, company_name, qt_no, updated_at, status_sampling, samples_data')
+            .select('id, company_name, qt_no, updated_at, status_sampling, samples(*)')
             .order('updated_at', { ascending: false });
 
         if (error) throw error;
@@ -197,10 +177,7 @@ async function fetchCoAList(keyword = '') {
             const isSelesai = status === 'selesai';
 
             // Cek apakah semua sampel sudah diverifikasi oleh lab
-            let samples = [];
-            try {
-                samples = typeof item.samples_data === 'string' ? JSON.parse(item.samples_data) : (item.samples_data || []);
-            } catch (e) {}
+            const samples = item.samples || [];
             
             const allLabVerified = samples.length > 0 && samples.every(s => s.status_lab && s.status_lab.toLowerCase() === 'verified');
 
@@ -252,10 +229,7 @@ function renderCoATableRows() {
         const isVerified = (item.status_sampling || '').trim().toLowerCase() === 'verified';
 
         // Hitung titik belum diverifikasi
-        let samples = [];
-        try {
-            samples = typeof item.samples_data === 'string' ? JSON.parse(item.samples_data) : (item.samples_data || []);
-        } catch (e) {}
+        const samples = item.samples || [];
         const totalCount = samples.length;
         const verifiedCount = samples.filter(s => s.status_lab && s.status_lab.toLowerCase() === 'verified').length;
         const unverifiedCount = totalCount - verifiedCount;
@@ -368,10 +342,7 @@ window.exportCoAList = function() {
 
 async function verifikasiCoASampling(id, nomorCoc) {
     const item = rawCoAListData.find(d => d.id === id);
-    let samples = [];
-    if (item && item.samples_data) {
-        samples = typeof item.samples_data === 'string' ? JSON.parse(item.samples_data) : item.samples_data;
-    }
+    const samples = item ? item.samples || [] : [];
     const totalCount = samples.length;
     const verifiedCount = samples.filter(s => s.status_lab && s.status_lab.toLowerCase() === 'verified').length;
     const unverifiedCount = totalCount - verifiedCount;
@@ -576,10 +547,7 @@ function renderCoA(data) {
     const area = document.getElementById('coaRenderArea');
     
     // Parsing data sampel
-    let samples = [];
-    try {
-        samples = typeof data.samples_data === 'string' ? JSON.parse(data.samples_data) : (data.samples_data || []);
-    } catch (e) { console.error("Error parsing:", e); }
+    const samples = data.samples || [];
 
     const verifiedSamples = samples.filter(s => 
         s.status_lab && typeof s.status_lab === 'string' && s.status_lab.toLowerCase() === 'verified'
@@ -747,6 +715,9 @@ function renderCoA(data) {
 
     // 2. Render Data Pages (Halaman 2 dst)
     verifiedSamples.forEach((sample, index) => {
+        const isAllowedToToggle = ['admin_master', 'manager', 'admin_ts'].includes(userRole);
+        const showHeader = isAllowedToToggle ? `<th class="no-print" style="width: 40px; text-align: center;">Tampilkan</th>` : '';
+
         const o2Param = sample.parameters.find(sp => {
             const spName = (sp.parameter || '').toLowerCase().trim();
             return spName === 'o2' || spName === 'oksigen' || spName === 'oksigen (o2)' || spName === 'oxygen';
@@ -785,7 +756,7 @@ function renderCoA(data) {
             <table class="coa-table-v2">
                 <thead style="background: #f0f0f0;">
                     <tr>
-                        <th class="no-print" style="width: 40px; text-align: center;">Tampilkan</th>
+                        ${showHeader}
                         <th>No.</th>
                         <th>Testing Parameter</th>
                         <th>Sample Result</th>
@@ -850,18 +821,25 @@ function renderCoA(data) {
                     const autoLimit = getRegulatoryLimit(p.parameter, currentReg);
 
                     const isChecked = p.show_in_coa !== false;
+                    if (!isAllowedToToggle && !isChecked) {
+                        return ''; // Sembunyikan baris jika tidak dicentang dan bukan role berwenang
+                    }
+
                     const uncheckedClass = isChecked ? '' : 'unchecked-param-row';
+                    const showCheckboxCell = isAllowedToToggle ? `
+                        <td class="no-print" style="text-align:center; border: 1px solid #000;">
+                            <input type="checkbox" 
+                                   class="param-visibility-chk" 
+                                   data-sample-id="${sample.sample_id}" 
+                                   data-param-name="${p.parameter}" 
+                                   ${isChecked ? 'checked' : ''} 
+                                   style="width: 16px; height: 16px; cursor: pointer;">
+                        </td>
+                    ` : '';
 
                     return `
                         <tr class="${uncheckedClass}">
-                            <td class="no-print" style="text-align:center; border: 1px solid #000;">
-                                <input type="checkbox" 
-                                       class="param-visibility-chk" 
-                                       data-sample-id="${sample.sample_id}" 
-                                       data-param-name="${p.parameter}" 
-                                       ${isChecked ? 'checked' : ''} 
-                                       style="width: 16px; height: 16px; cursor: pointer;">
-                            </td>
+                            ${showCheckboxCell}
                             <td class="serial-col" style="text-align:center; border: 1px solid #000;"></td>
                             <td style="padding: 6px 8px; border: 1px solid #000; white-space: nowrap;">${p.parameter}${p.is_accredited ? '' : '*'}</td>
                             <td style="text-align:center; font-weight:bold; border: 1px solid #000;">${finalDisplayResult}</td>
@@ -1138,38 +1116,34 @@ function formatResultWithLOQ(paramName, value) {
 
 // Fungsi global untuk mengubah visibilitas parameter di COA dan menyimpannya ke database Supabase
 async function toggleParamVisibility(sampleId, paramName, isChecked) {
+    const isAllowed = ['admin_master', 'manager', 'admin_ts'].includes(userRole);
+    if (!isAllowed) {
+        alert("Akses ditolak: Anda tidak memiliki wewenang untuk mengubah visibilitas parameter COA.");
+        return;
+    }
+
     const urlParams = new URLSearchParams(window.location.search);
     const docId = urlParams.get('id');
     if (!docId) return;
 
     try {
-        const { data: coc, error: fetchError } = await _supabase
-            .from('coc_emisi')
-            .select('samples_data')
-            .eq('id', docId)
+        const { data: s, error: fetchError } = await _supabase
+            .from('samples')
+            .select('*')
+            .eq('coc_id', docId)
+            .eq('sample_id', sampleId)
             .single();
 
         if (fetchError) throw fetchError;
 
-        let samples = [];
-        if (typeof coc.samples_data === 'string') {
-            samples = JSON.parse(coc.samples_data);
-        } else {
-            samples = coc.samples_data || [];
-        }
-
+        let parameters = s.parameters || [];
         let updated = false;
-        for (let s of samples) {
-            if (s.sample_id === sampleId) {
-                if (Array.isArray(s.parameters)) {
-                    for (let p of s.parameters) {
-                        if (p.parameter === paramName) {
-                            p.show_in_coa = isChecked;
-                            updated = true;
-                            break;
-                        }
-                    }
-                }
+
+        for (let p of parameters) {
+            if (p.parameter === paramName) {
+                p.show_in_coa = isChecked;
+                updated = true;
+                break;
             }
         }
 
@@ -1179,12 +1153,13 @@ async function toggleParamVisibility(sampleId, paramName, isChecked) {
         }
 
         const { error: updateError } = await _supabase
-            .from('coc_emisi')
+            .from('samples')
             .update({ 
-                samples_data: samples,
+                parameters: parameters,
                 updated_at: new Date().toISOString()
             })
-            .eq('id', docId);
+            .eq('coc_id', docId)
+            .eq('sample_id', sampleId);
 
         if (updateError) throw updateError;
         console.log(`Visibilitas parameter diperbarui: ${paramName} di sampel ${sampleId} menjadi ${isChecked}`);

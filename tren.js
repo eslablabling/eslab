@@ -19,72 +19,18 @@ const LOQ_SETTINGS = {
 };
 
 // 2. Inisialisasi
-document.addEventListener('DOMContentLoaded', async () => {
-    // A. Cek Sesi Auth
-    let user;
-    try {
-        const { data: { session } } = await _supabase.auth.getSession();
-        if (!session) {
-            window.location.href = "index.html";
-            return;
-        }
-        user = session.user;
+window.addEventListener('auth-ready', async (e) => {
+    const { session, role } = e.detail;
+    userRole = role;
+    const user = session.user;
 
-        userRole = session.user.user_metadata?.role;
-        if (!userRole) {
-            const { data: profile } = await _supabase
-                .from('profiles')
-                .select('role, full_name')
-                .eq('id', session.user.id)
-                .single();
-            userRole = profile?.role;
-            if (profile?.full_name) {
-                user.full_name = profile.full_name;
-            }
-        }
-    } catch (e) {
-        console.error("Auth Error:", e);
-        window.location.href = "index.html";
-        return;
-    }
-
-    // B. Tampilkan User Profile
     const userNameElement = document.getElementById('userName');
-    const userFullNameEl = document.getElementById('userFullName');
-    const userRoleEl = document.getElementById('userRoleDisplay');
-    const currentDateEl = document.getElementById('currentDate');
-    const btnLogout = document.getElementById('btnLogout');
-
-    if (userFullNameEl) userFullNameEl.innerText = user.full_name || user.email.split('@')[0];
-    if (userRoleEl) userRoleEl.innerText = userRole ? userRole.toUpperCase().replace('_', ' ') : 'USER';
-    
-    if (currentDateEl) {
-        currentDateEl.innerText = new Date().toLocaleDateString('id-ID', {
-            weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
-        });
-    }
-
     const hours = new Date().getHours();
     let greeting = "Selamat Malam";
     if (hours >= 5 && hours < 11) greeting = "Selamat Pagi";
     else if (hours >= 11 && hours < 15) greeting = "Selamat Siang";
     else if (hours >= 15 && hours < 18) greeting = "Selamat Sore";
     if (userNameElement) userNameElement.innerHTML = `Tren Analisa <span style="font-size:0.85rem; font-weight:400; color:#64748b;">| ${greeting}</span>`;
-
-    // Logout listener
-    if (btnLogout) {
-        btnLogout.addEventListener('click', async () => {
-            if (confirm("Apakah Anda yakin ingin keluar?")) {
-                await _supabase.auth.signOut();
-                window.location.href = 'index.html';
-            }
-        });
-    }
-
-    // C. Render Sidebar
-    if (typeof renderSidebar === 'function') {
-        renderSidebar(userRole || 'sampling');
-    }
 
     // D. Ambil Data Master & COC
     await fetchMasterEmisi();
@@ -131,51 +77,35 @@ async function fetchMasterEmisi() {
 // 4. Ambil Data COC Emisi & Parse Sampel
 async function fetchCocLogs() {
     try {
-        const { data, error } = await _supabase
-            .from('coc_emisi')
-            .select('*')
+        const { data: samples, error } = await _supabase
+            .from('samples')
+            .select('*, coc_emisi(*)')
             .order('updated_at', { ascending: false });
 
         if (error) throw error;
-        allLogsData = data || [];
-
-        // Parse semua sampel
-        allSamplesList = [];
-        allLogsData.forEach(coc => {
-            let samples = [];
-            try {
-                if (typeof coc.samples_data === 'string') {
-                    samples = JSON.parse(coc.samples_data);
-                } else {
-                    samples = coc.samples_data || [];
-                }
-            } catch (e) {
-                console.error("Gagal parsing samples_data COC:", coc.nomor_coc, e);
-            }
-
-            if (Array.isArray(samples)) {
-                samples.forEach(s => {
-                    allSamplesList.push({
-                        id: coc.id,
-                        nomor_coc: coc.nomor_coc,
-                        company_name: coc.company_name || '-',
-                        sampling_date: coc.sampling_date || s.tgl_sampling || '',
-                        sample_id: s.sample_id || '-',
-                        description: s.description || '-',
-                        parameters: s.parameters || [],
-                        opasitas_avg: s.opasitas_avg || null,
-                        status_lab: s.status_lab || '',
-                        is_verified: s.is_verified || false
-                    });
-                });
-            }
+        
+        allSamplesList = (samples || []).map(s => {
+            const coc = s.coc_emisi || {};
+            return {
+                id: coc.id,
+                nomor_coc: coc.nomor_coc || '-',
+                company_name: coc.company_name || '-',
+                sampling_date: coc.sampling_date || s.tgl_sampling || '',
+                sample_id: s.sample_id || '-',
+                description: s.description || '-',
+                parameters: s.parameters || [],
+                opasitas_avg: s.opasitas_avg || null,
+                status_lab: s.status_lab || '',
+                is_verified: s.is_verified || false,
+                regulations: s.regulations || (coc.regulation ? [coc.regulation] : [])
+            };
         });
 
         // Isi dropdown Perusahaan
         populateCompanies();
 
     } catch (err) {
-        console.error("Gagal memuat log COC:", err);
+        console.error("Gagal memuat log samples:", err);
         alert("Gagal memuat data dari database: " + err.message);
     }
 }
@@ -379,6 +309,23 @@ function handleParameterChange(parameterName) {
         };
     });
 
+    // Add Baku Mutu Line to datasets if it exists
+    const parsedLimit = parseFloat(displayLimit);
+    if (!isNaN(parsedLimit) && parsedLimit > 0) {
+        datasets.push({
+            label: `Baku Mutu (${displayLimit})`,
+            data: uniqueDates.map(() => parsedLimit),
+            borderColor: '#ef4444',
+            backgroundColor: 'transparent',
+            borderWidth: 2,
+            borderDash: [6, 6],
+            pointRadius: 0,
+            pointHoverRadius: 0,
+            fill: false,
+            tension: 0
+        });
+    }
+
     // Populate data baris tabel secara kronologis untuk semua titik sampel
     activeSamples.forEach(s => {
         const p = s.parameters.find(param => param.parameter === parameterName);
@@ -474,6 +421,29 @@ function renderTrendChart(labels, datasets, activeSamples, paramName, unitName) 
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
+                zoom: {
+                    zoom: {
+                        wheel: {
+                            enabled: true,
+                            speed: 0.08
+                        },
+                        drag: {
+                            enabled: true,
+                            borderColor: 'rgba(30, 64, 175, 0.4)',
+                            borderWidth: 1,
+                            backgroundColor: 'rgba(30, 64, 175, 0.15)',
+                            threshold: 10
+                        },
+                        pinch: {
+                            enabled: true
+                        },
+                        mode: 'y', // Zoom Y-axis
+                    },
+                    pan: {
+                        enabled: true,
+                        mode: 'y', // Pan Y-axis
+                    }
+                },
                 legend: {
                     display: true,
                     position: 'top',
@@ -698,3 +668,16 @@ function exportTrendToExcel() {
         alert("Gagal mengekspor data ke Excel.");
     }
 }
+
+// Global functions for Zoom Y Controls
+window.zoomY = function(factor) {
+    if (trendChartInstance) {
+        trendChartInstance.zoom({y: factor});
+    }
+};
+
+window.resetZoomY = function() {
+    if (trendChartInstance) {
+        trendChartInstance.resetZoom();
+    }
+};

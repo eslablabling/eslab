@@ -13,22 +13,11 @@ function atou(str) {
     }).join(''));
 }
 
-async function initLogger() {
-    if (typeof _supabase === 'undefined') {
-        console.error("Koneksi Supabase belum siap!");
-        return;
-    }
-
-    const { data: { user }, error } = await _supabase.auth.getUser();
-    
-    if (error || !user) {
-        window.location.href = 'index.html';
-        return;
-    }
-    
-    console.log("Logger diinisialisasi untuk:", user.email);
+window.addEventListener('auth-ready', async (e) => {
+    const { session } = e.detail;
+    console.log("Logger diinisialisasi untuk:", session.user.email);
     fetchLogs(); 
-}
+});
 
 async function fetchLogs() {
     const tableBody = document.getElementById('log-table-body');
@@ -303,4 +292,4 @@ function formatValue(val) {
     return val;
 }
 
-initLogger();
+// Auto-initialized via auth-ready listener above

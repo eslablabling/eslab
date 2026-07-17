@@ -16,17 +16,13 @@ const menuContainer = document.getElementById('menuContainer');
 const btnLogout = document.getElementById('btnLogout');
 
 // 3. Cek Sesi & Load Data
-document.addEventListener('DOMContentLoaded', async () => {
-    const { data: { session }, error } = await _supabase.auth.getSession();
+window.addEventListener('auth-ready', async (e) => {
+    const { profile } = e.detail;
 
-    if (error || !session) {
-        window.location.href = 'index.html'; 
-        return;
-    }
-
-    await loadUserProfile(session.user.id);
+    setDashboardGreeting(profile);
     updateDateDisplay();
     await fetchActiveLogs(); 
+    setupRealtimeSubscription(); 
 
     // Setup event listeners untuk Pencarian, Paginasi, Filter & Ekspor
     const searchLog = document.getElementById('searchLog');
@@ -91,92 +87,72 @@ async function fetchActiveLogs() {
 
     try {
         console.log("Mencoba mengambil data dari Supabase...");
-        const { data: logs, error } = await _supabase
-            .from('coc_emisi') 
-            .select('*')
+        const { data: samples, error } = await _supabase
+            .from('samples') 
+            .select('*, coc_emisi(*)')
             .order('updated_at', { ascending: false });
 
         if (error) throw error;
-        console.log("Data berhasil ditarik:", logs);
+        console.log("Data berhasil ditarik:", samples);
 
-        if (!logs || logs.length === 0) {
+        if (!samples || samples.length === 0) {
             logTableBody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:30px;">Database kosong atau RLS memblokir data.</td></tr>`;
             return;
         }
 
         const activeSamples = [];
 
-        logs.forEach(coc => {
-            let samples = [];
+        samples.forEach(s => {
+            const coc = s.coc_emisi || {};
+            const rawTerima = s.tgl_terima_lab; 
+            const rawSelesai = s.analyzed_at || s.verified_at; 
+
+            // Hitung Turnaround Time (TAT)
+            let tatHari = "-";
+            if (rawTerima && rawSelesai) {
+                const d1 = new Date(rawTerima);
+                const d2 = new Date(rawSelesai);
+                const diffInMs = d2 - d1;
+                const diffInDays = Math.ceil(diffInMs / (1000 * 60 * 60 * 24));
+                tatHari = diffInDays <= 0 ? "1 Hari" : `${diffInDays} Hari`;
+            }
+
+            // Format Tanggal
+            const tglSampling = coc.sampling_date ? new Date(coc.sampling_date).toLocaleDateString('id-ID') : '-';
+            const tglTerima = rawTerima ? new Date(rawTerima).toLocaleDateString('id-ID') : '-';
+            const tglSelesai = rawSelesai ? new Date(rawSelesai).toLocaleDateString('id-ID') : '-';
             
-            // Logika parsing sampel
-            try {
-                if (typeof coc.samples_data === 'string') {
-                    samples = JSON.parse(coc.samples_data);
-                } else {
-                    samples = coc.samples_data || [];
-                }
-            } catch (e) {
-                console.error("Gagal parse samples_data untuk:", coc.nomor_coc, e);
+            const tatPriority = (coc.tat_requested || "NORMAL").toUpperCase();
+            const isUrgent = tatPriority === 'URGENT';
+
+            // Logika Status
+            let statusLabel = "SAMPLING";
+            let statusClass = "tag-orange";
+
+            if (!coc.status_sampling || coc.status_sampling.trim().toLowerCase() !== 'verified') {
+                statusLabel = "SAMPLING";
+                statusClass = "tag-orange";
+            } else if (s.status_lab === 'verified' || s.is_verified === true) {
+                statusLabel = "FINISH";
+                statusClass = "tag-green";
+            } else if (s.status === 'Done' || s.tgl_terima_lab) {
+                statusLabel = "ANALISA";
+                statusClass = "tag-blue";
             }
 
-            if (typeof samples === 'string') {
-                try { samples = JSON.parse(samples); } catch(e) {}
-            }
-
-            if (Array.isArray(samples)) {
-                samples.forEach(s => {
-                    const rawTerima = s.tgl_terima_lab; 
-                    const rawSelesai = s.analyzed_at || s.verified_at; 
-
-                    // Hitung Turnaround Time (TAT)
-                    let tatHari = "-";
-                    if (rawTerima && rawSelesai) {
-                        const d1 = new Date(rawTerima);
-                        const d2 = new Date(rawSelesai);
-                        const diffInMs = d2 - d1;
-                        const diffInDays = Math.ceil(diffInMs / (1000 * 60 * 60 * 24));
-                        tatHari = diffInDays <= 0 ? "1 Hari" : `${diffInDays} Hari`;
-                    }
-
-                    // Format Tanggal
-                    const tglSampling = coc.sampling_date ? new Date(coc.sampling_date).toLocaleDateString('id-ID') : '-';
-                    const tglTerima = rawTerima ? new Date(rawTerima).toLocaleDateString('id-ID') : '-';
-                    const tglSelesai = rawSelesai ? new Date(rawSelesai).toLocaleDateString('id-ID') : '-';
-                    
-                    const tatPriority = (coc.tat_requested || "NORMAL").toUpperCase();
-                    const isUrgent = tatPriority === 'URGENT';
-
-                    // Logika Status
-                    let statusLabel = "SAMPLING";
-                    let statusClass = "tag-orange";
-
-                    if (!coc.status_sampling || coc.status_sampling.trim().toLowerCase() !== 'verified') {
-                        statusLabel = "SAMPLING";
-                        statusClass = "tag-orange";
-                    } else if (s.status_lab === 'verified' || s.is_verified === true) {
-                        statusLabel = "FINISH";
-                        statusClass = "tag-green";
-                    } else if (s.status === 'Done' || s.tgl_terima_lab) {
-                        statusLabel = "ANALISA";
-                        statusClass = "tag-blue";
-                    }
-
-                    activeSamples.push({
-                        nomor_coc: coc.nomor_coc,
-                        sample_id: s.sample_id || '-',
-                        company_name: coc.company_name || '-',
-                        sampling_date: coc.sampling_date,
-                        tglSampling,
-                        tglTerima,
-                        tglSelesai,
-                        tatHari,
-                        isUrgent,
-                        statusLabel,
-                        statusClass
-                    });
-                });
-            }
+            activeSamples.push({
+                nomor_coc: coc.nomor_coc || '-',
+                sample_id: s.sample_id || '-',
+                company_name: coc.company_name || '-',
+                sampling_date: coc.sampling_date,
+                tglSampling,
+                tglTerima,
+                tglSelesai,
+                tatHari,
+                isUrgent,
+                statusLabel,
+                statusClass
+            });
         });
 
         allSamplesList = activeSamples;
@@ -501,37 +477,18 @@ function exportDashboardToExcel() {
 }
 
 // 12. Ambil Profil & Sapaan Pengguna
-async function loadUserProfile(userId) {
-    try {
-        const { data: profile, error } = await _supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', userId)
-            .single();
+function setDashboardGreeting(profile) {
+    const hours = new Date().getHours();
+    let greeting = "Selamat Malam";
+    if (hours >= 5 && hours < 11) greeting = "Selamat Pagi";
+    else if (hours >= 11 && hours < 15) greeting = "Selamat Siang";
+    else if (hours >= 15 && hours < 18) greeting = "Selamat Sore";
 
-        if (error || !profile) {
-            throw new Error(error?.message || "Profil tidak ditemukan");
-        }
-
-        const hours = new Date().getHours();
-        let greeting = "Selamat Malam";
-        if (hours >= 5 && hours < 11) greeting = "Selamat Pagi";
-        else if (hours >= 11 && hours < 15) greeting = "Selamat Siang";
-        else if (hours >= 15 && hours < 18) greeting = "Selamat Sore";
-
-        const name = profile.full_name || "Staf Lab";
-        
-        if (userNameElement) userNameElement.innerText = `${greeting}, ${name}`;
-        if (userFullName) userFullName.innerText = name;
-        if (userRoleDisplay) userRoleDisplay.innerText = profile.role ? profile.role.replace('_', ' ') : 'User';
-
-        renderSidebar(profile.role);
-
-    } catch (err) {
-        console.error("Gagal memuat profil:", err.message);
-        if (userNameElement) userNameElement.innerText = "Selamat Datang";
-        if (userRoleDisplay) userRoleDisplay.innerText = "Sesi Aktif";
-    }
+    const name = profile?.full_name || "Staf Lab";
+    
+    if (userNameElement) userNameElement.innerText = `${greeting}, ${name}`;
+    if (userFullName) userFullName.innerText = name;
+    if (userRoleDisplay) userRoleDisplay.innerText = profile?.role ? profile.role.replace('_', ' ') : 'User';
 }
 
 // 13. Update Tampilan Tanggal
@@ -542,16 +499,28 @@ function updateDateDisplay() {
     }
 }
 
-// 14. Logout Listener
-document.querySelectorAll('#btnLogout').forEach(button => {
-    button.addEventListener('click', async () => {
-        if (confirm("Apakah Anda yakin ingin keluar?")) {
-            const { error } = await _supabase.auth.signOut();
-            if (error) {
-                alert("Gagal logout: " + error.message);
-            } else {
-                window.location.href = 'index.html';
+// 14. Setup Supabase Realtime Subscription
+function setupRealtimeSubscription() {
+    console.log("Memulai langganan Realtime Supabase...");
+    _supabase
+        .channel('lims-realtime-channel')
+        .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'samples' },
+            (payload) => {
+                console.log('Perubahan real-time terdeteksi pada tabel samples:', payload);
+                fetchActiveLogs();
             }
-        }
-    });
-});
+        )
+        .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'coc_emisi' },
+            (payload) => {
+                console.log('Perubahan real-time terdeteksi pada tabel coc_emisi:', payload);
+                fetchActiveLogs();
+            }
+        )
+        .subscribe((status) => {
+            console.log("Status langganan Realtime Supabase:", status);
+        });
+}

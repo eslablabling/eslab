@@ -122,19 +122,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function checkAuth() {
     // 1. Ambil Sesi Auth Utama
     let { data: { session }, error: authError } = await _supabase.auth.getSession();
-    const isRealSession = !!session;
 
     if (authError || !session) {
-        // Fallback mock session untuk testing lokal jika belum login
-        session = {
-            user: {
-                id: "9a9e2785-a9be-485e-aec7-ae6b39941893",
-                email: "admin_master@lab.id"
-            }
-        };
+        // Redirection to login screen if not authenticated
+        window.location.href = "index.html";
+        return;
     }
+
     const hasLoggedThisSession = sessionStorage.getItem('logged_in_event');
-    if (!hasLoggedThisSession && isRealSession) {
+    if (!hasLoggedThisSession) {
         try {
             await saveSecurityLog('LOGIN');
             sessionStorage.setItem('logged_in_event', 'true');
@@ -142,9 +138,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     const user = session.user;
+    window.userSession = session;
 
     try {
-        // 2. AMBIL DATA ROLE DARI TABEL PROFILES (Sesuai INSERT SQL Anda)
+        // 2. AMBIL DATA ROLE DARI TABEL PROFILES
         const { data: profile, error: profileError } = await _supabase
             .from('profiles')
             .select('role, full_name')
@@ -153,17 +150,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         if (profileError) throw profileError;
 
-        // 3. Gunakan Role dari Tabel Profiles
+        // Expose globally
+        window.userProfile = profile;
         const userRole = profile.role || 'sampling'; 
+        window.userRole = userRole;
         sessionStorage.setItem('user_role', userRole);
         const fullName = profile.full_name || user.email.split('@')[0];
 
         // Tampilkan di UI
         if (userNameEl) {
-            userNameEl.innerHTML = `Data Sampling <span style="font-size:0.85rem; font-weight:400; color:#64748b;">| ${fullName}</span>`;
+            userNameEl.innerHTML = `Data LIMS <span style="font-size:0.85rem; font-weight:400; color:#64748b;">| ${fullName}</span>`;
         }
         if (userFullNameEl) userFullNameEl.innerText = fullName;
-        if (userRoleEl) userRoleEl.innerText = userRole.toUpperCase();
+        if (userRoleEl) userRoleEl.innerText = userRole.toUpperCase().replace('_', ' ');
         
         if (currentDateEl) {
             currentDateEl.innerText = new Date().toLocaleDateString('id-ID', { 
@@ -172,16 +171,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         // 4. Render Sidebar dengan Role yang Benar
-        console.log("Login sebagai:", userRole); // Cek di console F12
+        console.log("Login sebagai:", userRole);
         renderSidebar(userRole);
-        window.dispatchEvent(new Event('auth-ready'));
+        
+        // Dispatch Custom Event for page-specific initialization
+        window.dispatchEvent(new CustomEvent('auth-ready', { detail: { session, profile, role: userRole } }));
 
     } catch (err) {
         console.error("Gagal mengambil profil:", err.message);
-        // Fallback jika profile tidak ditemukan
-        sessionStorage.setItem('user_role', 'sampling');
-        renderSidebar('sampling');
-        window.dispatchEvent(new Event('auth-ready'));
+        // Redirect to login if user profile can't be fetched
+        window.location.href = "index.html";
     }
 }
 

@@ -68,29 +68,12 @@ let currentPage = 1;
 const pageSize = 10;
 let filteredSamplesList = [];
 
-document.addEventListener('DOMContentLoaded', async () => {
-    // 1. Pastikan Session Ada
-    const { data: { session } } = await _supabase.auth.getSession();
-    if (!session) { 
-        window.location.href = 'index.html'; 
-        return; 
-    }
-
-    // 2. AMBIL ROLE (Tunggu sampai dapat)
-    userRole = session.user.user_metadata?.role;
-    if (!userRole) {
-        const { data: profile } = await _supabase
-            .from('profiles')
-            .select('role')
-            .eq('id', session.user.id)
-            .single();
-        userRole = profile?.role;
-    }
-
+window.addEventListener('auth-ready', async (e) => {
+    const { role } = e.detail;
+    userRole = role;
     if (userRole) {
         sessionStorage.setItem('userRole', userRole);
     }
-
     console.log("Role terkonfirmasi:", userRole);
 
     // 3. BARU PANGGIL TABEL
@@ -439,59 +422,56 @@ async function fetchAntreanAnalisa(keyword = '') {
     }
 
     try {
-        const { data: cocList, error } = await _supabase
-            .from('coc_emisi')
-            .select('*')
+        const { data: samples, error } = await _supabase
+            .from('samples')
+            .select('*, coc_emisi(*)')
             .order('updated_at', { ascending: false });
 
         if (error) throw error;
 
         let antreanSamples = [];
-        cocList.forEach(coc => {
-            const samples = typeof coc.samples_data === 'string' ? JSON.parse(coc.samples_data) : coc.samples_data;
+        samples.forEach(s => {
+            const coc = s.coc_emisi || {};
+            const canViewVerified = ['admin_master', 'manager', 'analis'].includes(userRole);
+            let isAllowed = false;
 
-            samples.forEach(s => {
-                const isAdmin = ['admin_master', 'manager'].includes(userRole);
-                let isAllowed = false;
+            if (canViewVerified) {
+                const allStatus = ['received', 'analyzed', 'verified'];
+                isAllowed = allStatus.includes(s.status_lab);
+            } else {
+                const otherStatus = ['received', 'analyzed'];
+                isAllowed = otherStatus.includes(s.status_lab);
+            }
 
-                if (isAdmin) {
-                    const allStatus = ['received', 'analyzed', 'verified'];
-                    isAllowed = allStatus.includes(s.status_lab);
+            if (isAllowed) {
+                const hasLabWork = s.parameters && s.parameters.some(p => 
+                    p.parameter && p.parameter.toLowerCase().includes('particulate')
+                );
+
+                const isReceived = s.status_lab === 'received';
+                const isDone = s.status_lab === 'analyzed' || s.status_lab === 'verified';
+
+                const sampleObj = {
+                    ...s,
+                    db_id: coc.id,
+                    company: coc.company_name,
+                    needLab: hasLabWork,
+                    regulation_name: s.regulation_name || coc.regulation || ''
+                };
+
+                // Saring lokal berdasarkan tab aktif
+                if (currentFilterTab === 'belum_selesai') {
+                    // Belum selesai: Butuh analisa lab (needLab === true) dan belum di-verifikasi (status_lab adalah 'received' atau 'analyzed')
+                    if (hasLabWork && (s.status_lab === 'received' || s.status_lab === 'analyzed')) {
+                        antreanSamples.push(sampleObj);
+                    }
                 } else {
-                    const analisStatus = ['received', 'analyzed'];
-                    isAllowed = analisStatus.includes(s.status_lab);
-                }
-
-                if (isAllowed) {
-                    const hasLabWork = s.parameters.some(p => 
-                        p.parameter && p.parameter.toLowerCase().includes('particulate')
-                    );
-
-                    const isReceived = s.status_lab === 'received';
-                    const isDone = s.status_lab === 'analyzed' || s.status_lab === 'verified';
-
-                    const sampleObj = {
-                        ...s,
-                        db_id: coc.id,
-                        company: coc.company_name,
-                        needLab: hasLabWork,
-                        regulation_name: s.regulation_name || coc.regulation || ''
-                    };
-
-                    // Saring lokal berdasarkan tab aktif
-                    if (currentFilterTab === 'belum_selesai') {
-                        // Belum selesai: Butuh analisa lab (needLab === true) dan belum di-verifikasi (status_lab adalah 'received' atau 'analyzed')
-                        if (hasLabWork && (s.status_lab === 'received' || s.status_lab === 'analyzed')) {
-                            antreanSamples.push(sampleObj);
-                        }
-                    } else {
-                        // Sudah selesai: Analisa lab terverifikasi (status_lab === 'verified') ATAU Direct Reading (hasLabWork === false)
-                        if (s.status_lab === 'verified' || !hasLabWork) {
-                            antreanSamples.push(sampleObj);
-                        }
+                    // Sudah selesai: Analisa lab terverifikasi (status_lab === 'verified') ATAU Direct Reading (hasLabWork === false)
+                    if (s.status_lab === 'verified' || !hasLabWork) {
+                        antreanSamples.push(sampleObj);
                     }
                 }
-            });
+            }
         });
 
         if (keyword) {
@@ -519,34 +499,16 @@ async function unverifikasiHasil(dbId, sampleId) {
     if (!confirm(`Buka kembali kunci data untuk ${sampleId}? Status akan kembali ke 'Belum Selesai'.`)) return;
 
     try {
-        const { data: coc } = await _supabase
-            .from('coc_emisi')
-            .select('samples_data')
-            .eq('id', dbId)
-            .single();
-
-        let samples = typeof coc.samples_data === 'string' 
-            ? JSON.parse(coc.samples_data) 
-            : coc.samples_data;
-
-        const updated = samples.map(s => {
-            if (s.sample_id === sampleId) {
-                // Menghapus flag verifikasi dan mengembalikan ke 'received' (Belum Selesai)
-                const { is_verified, verified_at, analyzed_at, ...rest } = s; 
-                return { 
-                    ...rest, 
-                    status_lab: 'received', 
-                    is_verified: false,
-                    updated_at: new Date().toISOString()
-                };
-            }
-            return s;
-        });
-
         const { error } = await _supabase
-            .from('coc_emisi')
-            .update({ samples_data: updated })
-            .eq('id', dbId);
+            .from('samples')
+            .update({ 
+                status_lab: 'received', 
+                is_verified: false,
+                verified_at: null,
+                updated_at: new Date().toISOString()
+            })
+            .eq('coc_id', dbId)
+            .eq('sample_id', sampleId);
 
         if (error) throw error;
 
@@ -564,9 +526,13 @@ async function bukaModalAnalisa(dbId, sampleId) {
     const inputContainer = document.getElementById('parameterInputs');
     
     try {
-        const { data: coc } = await _supabase.from('coc_emisi').select('samples_data').eq('id', dbId).single();
-        const samples = typeof coc.samples_data === 'string' ? JSON.parse(coc.samples_data) : coc.samples_data;
-        const s = samples.find(item => item.sample_id === sampleId);
+        const { data: s, error } = await _supabase
+            .from('samples')
+            .select('*')
+            .eq('coc_id', dbId)
+            .eq('sample_id', sampleId)
+            .single();
+        if (error) throw error;
 
         const isVerified = s.status_lab === 'verified';
         const disabledAttr = isVerified ? 'disabled' : '';
@@ -750,109 +716,95 @@ document.getElementById('btnSimpanAnalisa').addEventListener('click', async () =
     }
 
     try {
-        const { data: coc } = await _supabase.from('coc_emisi').select('samples_data').eq('id', dbId).single();
-        let samples = typeof coc.samples_data === 'string' ? JSON.parse(coc.samples_data) : coc.samples_data;
+        const { data: s, error: fetchErr } = await _supabase
+            .from('samples')
+            .select('*')
+            .eq('coc_id', dbId)
+            .eq('sample_id', sampleId)
+            .single();
+        if (fetchErr) throw fetchErr;
 
-        const updatedSamples = samples.map(s => {
-            if (s.sample_id === sampleId) {
-                const newParams = [...s.parameters];
-                
-                // Ambil semua section input (Tanggal sekarang ada di urutan pertama/atas)
-                const gravSections = document.querySelectorAll('#parameterInputs > div');
+        const newParams = [...s.parameters];
+        const gravSections = document.querySelectorAll('#parameterInputs > div');
 
-                gravSections.forEach(section => {
-                    const idxInput = section.querySelector('.original-idx');
-                    if (idxInput) {
-                        const idx = idxInput.value;
-                        
-                        // 1. AMBIL DATA SAMPEL
-                        const gravData = {};
-                        section.querySelectorAll('.grav-input').forEach(input => {
-                            gravData[input.dataset.key] = input.value;
-                        });
-
-                        // 2. AMBIL DATA QC BLANKO
-                        const qcData = {};
-                        section.querySelectorAll('.qc-input').forEach(input => {
-                            qcData[input.dataset.key] = input.value;
-                        });
-
-                        // 3. HITUNG BERAT BERSIH MURNI (mg) DENGAN KOREKSI BLANKO
-                        const method = s.parameters[idx]?.method || '';
-                        const isSNI2021 = method.includes('7117-21:2021');
-                        
-                        // A. Hitung Selisih Filter (Rata-rata Sampel - Rata-rata Blanko)
-                        const s_fAwal = hitungAvg(gravData.s_f_awal_1, gravData.s_f_awal_2);
-                        const s_fAkhir = hitungAvg(gravData.s_f_akhir_1, gravData.s_f_akhir_2);
-                        const s_fNet = s_fAkhir - s_fAwal;
-
-                        const b_fAwal = hitungAvg(qcData.b_f_awal_1, qcData.b_f_awal_2);
-                        const b_fAkhir = hitungAvg(qcData.b_f_akhir_1, qcData.b_f_akhir_2);
-                        const b_fNet = b_fAkhir - b_fAwal;
-
-                        const netFilter = s_fNet - b_fNet;
-
-                        let totalNetGram = netFilter;
-                        
-                        if (isSNI2021) {
-                            // B. Hitung Selisih Aceton (Rata-rata Sampel - Rata-rata Blanko)
-                            const s_aAwal = hitungAvg(gravData.s_a_awal_1, gravData.s_a_awal_2);
-                            const s_aAkhir = hitungAvg(gravData.s_a_akhir_1, gravData.s_a_akhir_2);
-                            const s_aNet = s_aAkhir - s_aAwal;
-
-                            const b_aAwal = hitungAvg(qcData.b_a_awal_1, qcData.b_a_awal_2);
-                            const b_aAkhir = hitungAvg(qcData.b_a_akhir_1, qcData.b_a_akhir_2);
-                            const b_aNet = b_aAkhir - b_aAwal;
-
-                            const netAceton = s_aNet - b_aNet;
-                            totalNetGram += netAceton;
-                        } else {
-                            // B. Hitung Selisih Cawan (Rata-rata Sampel - Rata-rata Blanko)
-                            const s_cAwal = hitungAvg(gravData.s_c_awal_1, gravData.s_c_awal_2);
-                            const s_cAkhir = hitungAvg(gravData.s_c_akhir_1, gravData.s_c_akhir_2);
-                            const s_cNet = s_cAkhir - s_cAwal;
-
-                            const b_cAwal = hitungAvg(qcData.b_c_awal_1, qcData.b_c_awal_2);
-                            const b_cAkhir = hitungAvg(qcData.b_c_akhir_1, qcData.b_c_akhir_2);
-                            const b_cNet = b_cAkhir - b_cAwal;
-
-                            const netCawan = s_cNet - b_cNet;
-                            totalNetGram += netCawan;
-                        }
-                        
-                        const totalNetMg = totalNetGram * 1000;
-                        const vDgm = parseFloat(s.parameters[idx]?.volume_meter || 0);
-                        const hasilKonsentrasi = vDgm > 0 ? (totalNetMg / vDgm).toFixed(2) : 0;
-
-                        // SIMPAN KE DALAM PARAMETER
-                        newParams[idx].grav_data = gravData;
-                        newParams[idx].qc_data = qcData;
-                        newParams[idx].result = hasilKonsentrasi; 
-                    }
+        gravSections.forEach(section => {
+            const idxInput = section.querySelector('.original-idx');
+            if (idxInput) {
+                const idx = idxInput.value;
+                const gravData = {};
+                section.querySelectorAll('.grav-input').forEach(input => {
+                    gravData[input.dataset.key] = input.value;
                 });
 
-                const targetSample = samples.find(s => s.sample_id === sampleId);
-                const originalStatus = targetSample ? targetSample.status_lab : null;
+                const qcData = {};
+                section.querySelectorAll('.qc-input').forEach(input => {
+                    qcData[input.dataset.key] = input.value;
+                });
 
-                return { 
-                    ...s, 
-                    parameters: newParams, 
-                    status_lab: 'analyzed',
-                    analyzed_at: finalDate // --- 2. SIMPAN TANGGAL YANG DIPILIH ---
-                };
+                const method = s.parameters[idx]?.method || '';
+                const isSNI2021 = method.includes('7117-21:2021');
+                
+                const s_fAwal = hitungAvg(gravData.s_f_awal_1, gravData.s_f_awal_2);
+                const s_fAkhir = hitungAvg(gravData.s_f_akhir_1, gravData.s_f_akhir_2);
+                const s_fNet = s_fAkhir - s_fAwal;
+
+                const b_fAwal = hitungAvg(qcData.b_f_awal_1, qcData.b_f_awal_2);
+                const b_fAkhir = hitungAvg(qcData.b_f_akhir_1, qcData.b_f_akhir_2);
+                const b_fNet = b_fAkhir - b_fAwal;
+
+                const netFilter = s_fNet - b_fNet;
+                let totalNetGram = netFilter;
+                
+                if (isSNI2021) {
+                    const s_aAwal = hitungAvg(gravData.s_a_awal_1, gravData.s_a_awal_2);
+                    const s_aAkhir = hitungAvg(gravData.s_a_akhir_1, gravData.s_a_akhir_2);
+                    const s_aNet = s_aAkhir - s_aAwal;
+
+                    const b_aAwal = hitungAvg(qcData.b_a_awal_1, qcData.b_a_awal_2);
+                    const b_aAkhir = hitungAvg(qcData.b_a_akhir_1, qcData.b_a_akhir_2);
+                    const b_aNet = b_aAkhir - b_aAwal;
+
+                    const netAceton = s_aNet - b_aNet;
+                    totalNetGram += netAceton;
+                } else {
+                    const s_cAwal = hitungAvg(gravData.s_c_awal_1, gravData.s_c_awal_2);
+                    const s_cAkhir = hitungAvg(gravData.s_c_akhir_1, gravData.s_c_akhir_2);
+                    const s_cNet = s_cAkhir - s_cAwal;
+
+                    const b_cAwal = hitungAvg(qcData.b_c_awal_1, qcData.b_c_awal_2);
+                    const b_cAkhir = hitungAvg(qcData.b_c_akhir_1, qcData.b_c_akhir_2);
+                    const b_cNet = b_cAkhir - b_cAwal;
+
+                    const netCawan = s_cNet - b_cNet;
+                    totalNetGram += netCawan;
+                }
+                
+                const totalNetMg = totalNetGram * 1000;
+                const vDgm = parseFloat(s.parameters[idx]?.volume_meter || 0);
+                const hasilKonsentrasi = vDgm > 0 ? (totalNetMg / vDgm).toFixed(2) : 0;
+
+                newParams[idx].grav_data = gravData;
+                newParams[idx].qc_data = qcData;
+                newParams[idx].result = hasilKonsentrasi; 
             }
-            return s;
         });
 
-        // Tentukan action type & description sebelum update
-        const targetS = samples.find(s => s.sample_id === sampleId);
-        const originalStatus = targetS ? targetS.status_lab : null;
+        const originalStatus = s.status_lab;
         const actionType = originalStatus === 'analyzed' || originalStatus === 'verified' ? 'EDIT_ANALYSIS' : 'INPUT_ANALYSIS';
         const desc = originalStatus === 'analyzed' || originalStatus === 'verified'
             ? `Mengubah hasil analisa gravimetri untuk sampel ${sampleId}`
             : `Menginput hasil analisa gravimetri untuk sampel ${sampleId}`;
 
-        const { error } = await _supabase.from('coc_emisi').update({ samples_data: updatedSamples }).eq('id', dbId);
+        const { error } = await _supabase
+            .from('samples')
+            .update({
+                parameters: newParams, 
+                status_lab: 'analyzed',
+                analyzed_at: finalDate
+            })
+            .eq('coc_id', dbId)
+            .eq('sample_id', sampleId);
+
         if (error) throw error;
 
         // Log audit
@@ -862,10 +814,10 @@ document.getElementById('btnSimpanAnalisa').addEventListener('click', async () =
                 user_id: session.user.id,
                 username: session.user.email,
                 action_type: actionType,
-                table_name: 'coc_emisi',
+                table_name: 'samples',
                 description: desc,
-                old_data: { samples_data: coc.samples_data },
-                new_data: { samples_data: updatedSamples }
+                old_data: { sample_id: sampleId, parameters: s.parameters },
+                new_data: { sample_id: sampleId, parameters: newParams, status_lab: 'analyzed' }
             }]);
         }
 
@@ -891,32 +843,15 @@ async function verifikasiHasil(dbId, sampleId) {
     if (!confirm(`Verifikasi hasil untuk ${sampleId}? Data akan dikunci.`)) return;
 
     try {
-        const { data: coc } = await _supabase
-            .from('coc_emisi')
-            .select('samples_data')
-            .eq('id', dbId)
-            .single();
-
-        let samples = typeof coc.samples_data === 'string' 
-            ? JSON.parse(coc.samples_data) 
-            : coc.samples_data;
-
-        const updated = samples.map(s => {
-            if (s.sample_id === sampleId) {
-                return { 
-                    ...s, 
-                    status_lab: 'verified', // <--- WAJIB TAMBAH INI
-                    is_verified: true, 
-                    verified_at: new Date().toISOString()
-                };
-            }
-            return s;
-        });
-
         const { error } = await _supabase
-            .from('coc_emisi')
-            .update({ samples_data: updated })
-            .eq('id', dbId);
+            .from('samples')
+            .update({ 
+                status_lab: 'verified',
+                is_verified: true, 
+                verified_at: new Date().toISOString()
+            })
+            .eq('coc_id', dbId)
+            .eq('sample_id', sampleId);
 
         if (error) throw error;
 

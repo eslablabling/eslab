@@ -1,29 +1,28 @@
 
+let currentUserRole = '';
 const paramTableBody = document.getElementById('paramTableBody');
 let currentEditId = null; // Untuk melacak apakah kita sedang edit atau tambah baru
-document.addEventListener('DOMContentLoaded', async () => {
-    // 1. Cek Sesi
-    const { data: { session } } = await _supabase.auth.getSession();
-    if (!session) {
-        window.location.href = 'index.html';
-        return;
-    }
 
-    // 2. Ambil Profil (Termasuk Role)
-    const { data: profile, error } = await _supabase
-        .from('profiles')
-        .select('full_name, role')
-        .eq('id', session.user.id)
-        .single();
-
-    if (profile) {
-        // 3. Panggil Fungsi dari auth.js
-        updateTopBar(profile.full_name, profile.role);
-        renderSidebar(profile.role); 
-        
-        // 4. Jalankan fungsi spesifik halaman ini
-        fetchMasterEmisi();
+window.addEventListener('auth-ready', async (e) => {
+    const { role } = e.detail;
+    currentUserRole = role;
+    
+    // Check if user is allowed to edit master data
+    const isAllowed = ['manager', 'admin_master', 'admin_ts'].includes(role);
+    
+    // Hide buttons if not allowed
+    const btnAdd = document.querySelector('button[onclick="openModal()"]');
+    if (btnAdd) {
+        btnAdd.style.display = isAllowed ? 'block' : 'none';
     }
+    
+    const btnImport = document.querySelector('button[onclick*="importFile"]');
+    if (btnImport) {
+        btnImport.style.display = isAllowed ? 'block' : 'none';
+    }
+    
+    // Jalankan fungsi spesifik halaman ini setelah auth siap
+    fetchMasterEmisi();
 });
 
 // Fungsi untuk update tampilan Top Bar
@@ -59,6 +58,14 @@ function renderTable(data) {
     let currentReg = "";
     let currentParam = "";
 
+    const isAllowed = ['manager', 'admin_master', 'admin_ts'].includes(currentUserRole);
+
+    // Hide or show action header
+    const actionHeader = document.querySelector('.action-header');
+    if (actionHeader) {
+        actionHeader.style.display = isAllowed ? 'table-cell' : 'none';
+    }
+
     data.forEach((item) => {
         const tr = document.createElement('tr');
         
@@ -87,18 +94,25 @@ function renderTable(data) {
             currentParam = item.parameter;
         }
 
+        let actionCellHtml = '';
+        if (isAllowed) {
+            actionCellHtml = `
+                <td>
+                    <div style="display: flex; gap: 8px;">
+                        <button class="btn-icon" onclick="editData('${item.id}')">📝</button>
+                        <button class="btn-icon" onclick="deleteData('${item.id}')">🗑️</button>
+                    </div>
+                </td>
+            `;
+        }
+
         // 3. Sisanya (Metode, Baku Mutu, Aksi)
         tr.innerHTML += `
             <td><span class="badge-method">${item.metode}</span></td>
             <td style="text-align:center;">${item.satuan || '-'}</td>
             <td style="font-weight: 800; color: #dc2626; text-align: center;">${item.baku_mutu || '-'}</td>
             <td style="text-align:center; color: #059669; font-weight: bold;">${item.koreksi_o2 ? item.koreksi_o2 + '%' : '-'}</td>
-            <td>
-                <div style="display: flex; gap: 8px;">
-                    <button class="btn-icon" onclick="editData('${item.id}')">📝</button>
-                    <button class="btn-icon" onclick="deleteData('${item.id}')">🗑️</button>
-                </div>
-            </td>
+            ${actionCellHtml}
         `;
         paramTableBody.appendChild(tr);
     });
@@ -124,6 +138,12 @@ window.onclick = function(event) {
 
 document.getElementById('formMaster').addEventListener('submit', async (e) => {
     e.preventDefault();
+    
+    const isAllowed = ['manager', 'admin_master', 'admin_ts'].includes(currentUserRole);
+    if (!isAllowed) {
+        alert("Akses ditolak: Anda tidak memiliki wewenang untuk mengubah master data.");
+        return;
+    }
     
     const regulasiValue = document.getElementById('regulasi').value;
     const paramRows = document.querySelectorAll('.param-row');
@@ -206,6 +226,12 @@ document.getElementById('searchBar').addEventListener('input', (e) => {
 
 // --- FUNGSI HAPUS DATA ---
 async function deleteData(id) {
+    const isAllowed = ['manager', 'admin_master', 'admin_ts'].includes(currentUserRole);
+    if (!isAllowed) {
+        alert("Akses ditolak: Anda tidak memiliki wewenang untuk mengubah master data.");
+        return;
+    }
+
     if (confirm("Apakah Anda yakin ingin menghapus parameter ini dari Master Data?")) {
         try {
             const { error } = await _supabase
@@ -224,6 +250,11 @@ async function deleteData(id) {
 }
 
 async function editData(id) {
+    const isAllowed = ['manager', 'admin_master', 'admin_ts'].includes(currentUserRole);
+    if (!isAllowed) {
+        alert("Akses ditolak: Anda tidak memiliki wewenang untuk mengubah master data.");
+        return;
+    }
     const { data: item, error } = await _supabase
         .from('master_emisi')
         .select('*')
@@ -389,6 +420,11 @@ async function exportToExcel() {
 }
 
 async function importFromExcel(event) {
+    const isAllowed = ['manager', 'admin_master', 'admin_ts'].includes(currentUserRole);
+    if (!isAllowed) {
+        alert("Akses ditolak: Anda tidak memiliki wewenang untuk mengimpor master data.");
+        return;
+    }
     const file = event.target.files[0];
     if (!file) return;
 

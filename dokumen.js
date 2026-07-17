@@ -372,10 +372,10 @@ async function renderCategoryTabs() {
         html += `<button class="tab-btn ${currentCategory === cat.id ? 'active' : ''}" onclick="filterCategory('${cat.id}')">${cat.name}</button>`;
     });
 
-    // Tambahkan tombol Kelola Kategori di ujung kanan jika user adalah admin_master
+    // Tambahkan tombol Kelola Kategori di ujung kanan jika user adalah admin_master, manager, admin_ts
     const userRole = sessionStorage.getItem('user_role') || 'sampling';
-    const isAdmin = (userRole === 'admin_master');
-    if (isAdmin) {
+    const isAllowedToEdit = ['admin_master', 'manager', 'admin_ts'].includes(userRole);
+    if (isAllowedToEdit) {
         html += `
             <button class="btn-outline" onclick="openCategoryModal()" style="margin-left: auto; padding: 6px 14px; font-size: 0.8rem; border-radius: 8px; font-weight: 700; border-color: #cbd5e1; cursor: pointer;">
                 ⚙️ Kelola Kategori
@@ -427,13 +427,14 @@ function renderDocuments(keyword = '') {
     const tableBody = document.getElementById('docTableBody');
     if (!tableBody) return;
 
-    // Ambil role user dari sessionStorage untuk pengecekan hak akses (Semua bisa tambah & edit, hapus hanya admin_master & manager)
+    // Ambil role user dari sessionStorage untuk pengecekan hak akses (Hanya admin_master, manager, dan admin_ts yang bisa edit/tambah/hapus)
     const userRole = sessionStorage.getItem('user_role') || 'sampling';
+    const isAllowedToEdit = ['admin_master', 'manager', 'admin_ts'].includes(userRole);
     const canDelete = ['admin_master', 'manager'].includes(userRole);
 
     const btnTambah = document.getElementById('btnTambahDokumen');
     if (btnTambah) {
-        btnTambah.style.display = 'inline-block'; // Semua role bisa tambah dokumen
+        btnTambah.style.display = isAllowedToEdit ? 'inline-block' : 'none'; 
     }
 
     // Filter kategori & pencarian kata kunci
@@ -583,9 +584,11 @@ function renderDocuments(keyword = '') {
                         <button onclick="copyDocLink('${mainUrl}')" class="table-action-btn" title="Salin Tautan" style="color: #64748b;">
                             📋
                         </button>
-                        <button onclick="editDoc(${doc.id})" class="table-action-btn btn-edit" title="Edit Dokumen">
-                            📝
-                        </button>
+                        ${isAllowedToEdit ? `
+                            <button onclick="editDoc(${doc.id})" class="table-action-btn btn-edit" title="Edit Dokumen">
+                                📝
+                            </button>
+                        ` : ''}
                         ${canDelete ? `
                             <button onclick="deleteDoc(${doc.id})" class="table-action-btn btn-delete" title="Hapus">
                                 🗑️
@@ -654,6 +657,13 @@ window.closeDocModalOuter = function(event) {
 // 8. Logika CRUD Dokumen dengan Unggah Otomatis ke Google Drive
 window.saveDoc = async function(event) {
     event.preventDefault();
+
+    const userRole = sessionStorage.getItem('user_role') || 'sampling';
+    const isAllowedToEdit = ['admin_master', 'manager', 'admin_ts'].includes(userRole);
+    if (!isAllowedToEdit) {
+        alert("Akses ditolak: Anda tidak memiliki wewenang untuk menambah atau mengubah dokumen.");
+        return;
+    }
 
     const idVal = document.getElementById('docId').value;
     const title = document.getElementById('title').value.trim();
@@ -790,6 +800,13 @@ window.saveDoc = async function(event) {
 
 // Fungsi Edit Detail Dokumen
 window.editDoc = async function(id) {
+    const userRole = sessionStorage.getItem('user_role') || 'sampling';
+    const isAllowedToEdit = ['admin_master', 'manager', 'admin_ts'].includes(userRole);
+    if (!isAllowedToEdit) {
+        alert("Akses ditolak: Anda tidak memiliki wewenang untuk mengubah dokumen.");
+        return;
+    }
+    
     try {
         const docs = await getAllDocsFromDB();
         const doc = docs.find(d => d.id === id);
@@ -824,6 +841,13 @@ window.editDoc = async function(id) {
 
 // Fungsi Hapus Dokumen
 window.deleteDoc = async function(id) {
+    const userRole = sessionStorage.getItem('user_role') || 'sampling';
+    const isAllowedToDelete = ['admin_master', 'manager'].includes(userRole);
+    if (!isAllowedToDelete) {
+        alert("Akses ditolak: Hanya Admin Master dan Manager yang memiliki wewenang untuk menghapus dokumen.");
+        return;
+    }
+
     if (confirm("Apakah Anda yakin ingin menghapus dokumen ini dari sistem LIMS dan Google Drive?")) {
         try {
             // 1. Ambil data dokumen dari DB untuk mendapatkan driveLink-nya

@@ -78,33 +78,11 @@ async function loadOfficerHistory() {
     }
 }
 
-document.addEventListener('DOMContentLoaded', async () => {
-    // 1. Cek Sesi Autentikasi
-    const { data: { session }, error: sessionError } = await _supabase.auth.getSession();
-    
-    if (sessionError || !session) {
-        window.location.href = 'index.html'; 
-        return;
-    }
+window.addEventListener('auth-ready', async (e) => {
+    const { role } = e.detail;
 
-    // 2. Ambil Profil User
-    const { data: profile, error: profileError } = await _supabase
-        .from('profiles')
-        .select('full_name, role')
-        .eq('id', session.user.id)
-        .single();
-
-    if (profileError) {
-        console.error("Gagal memuat profil:", profileError);
-        return;
-    }
-
-    window.currentUserRole = profile.role;
-    currentUserRole = profile.role;
-
-    // 3. Update UI & Sidebar
-    updateTopBar(profile.full_name, profile.role);
-    renderSidebar(profile.role);
+    window.currentUserRole = role;
+    currentUserRole = role;
     
     // 4. Inisialisasi Logika Khusus COC
     await generateCocNumber();    // Membuat nomor ES-COC/2026/... otomatis saat load
@@ -112,6 +90,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadRegulasiDropdown(); // Mengisi list regulasi untuk auto-complete
     await loadCompanyHistory();   // Memuat riwayat nama perusahaan
     await loadOfficerHistory();   // Memuat riwayat petugas sampling
+
+    if (role === 'sampling') {
+        setFormReadonly(true);
+    }
 
     // Event listener untuk auto-fill nama perusahaan dari history
     const companyInput = document.getElementById('companyName');
@@ -272,7 +254,7 @@ function addNewRow() {
         <td><input type="text" class="form-control sample-id" value="${sequenceOnly}.${rowCount}" readonly style="background: #f8fafc; font-weight: 800; color: #2563eb;"></td>
         <td><input type="text" class="form-control titik-uji" placeholder="Nama Titik & Deskripsi"></td>
         <td>
-            <input type="text" class="form-control regulasi-search" list="listRegulasi" onkeypress="if(event.key === 'Enter') addRegulasiTag(this)" placeholder="Ketik & Enter...">
+            <input type="text" class="form-control regulasi-search" list="listRegulasi" oninput="onRegulasiInput(this)" onkeypress="if(event.key === 'Enter') addRegulasiTag(this)" placeholder="Ketik & Pilih...">
             <div class="selected-regulasi-tags" style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px;"></div>
         </td>
                 <td style="vertical-align: top;">
@@ -287,7 +269,10 @@ function addNewRow() {
                 </div>
             </div>
         </td>
-        <td class="no-print"><button type="button" onclick="removeRow(this)" style="background:none; border:none; cursor:pointer;">❌</button></td>
+        <td class="no-print" style="text-align: center; vertical-align: middle;">
+            <button type="button" onclick="copyRow(this)" style="background:none; border:none; cursor:pointer; font-size: 1.1rem; margin-right: 8px;" title="Duplikat baris">📋</button>
+            <button type="button" onclick="removeRow(this)" style="background:none; border:none; cursor:pointer; font-size: 1.1rem;">❌</button>
+        </td>
     `;
     tableBody.appendChild(newRow);
 }
@@ -301,15 +286,95 @@ function removeRow(btn) {
         row.remove();
         
         // Re-indexing Nomor dan Sample ID
+        const sequenceOnly = cocNumber.slice(-4);
         document.querySelectorAll('#cocBody tr').forEach((r, index) => {
             const newIndex = index + 1;
             r.cells[0].innerText = newIndex; // Update Kolom No
-            r.querySelector('.sample-id').value = `${cocNumber}.${newIndex}`; // Update Sample ID
+            r.querySelector('.sample-id').value = `${sequenceOnly}.${newIndex}`; // Update Sample ID
         });
     } else {
         alert("Minimal harus ada satu titik uji.");
     }
 }
+
+async function copyRow(btn) {
+    const srcRow = btn.closest('tr');
+    if (!srcRow) return;
+
+    const description = srcRow.querySelector('.titik-uji').value.trim();
+    const regTags = Array.from(srcRow.querySelectorAll('.selected-regulasi-tags .reg-tag')).map(t => t.dataset.val);
+
+    const selectedParams = [];
+    srcRow.querySelectorAll('.param-checkbox:checked').forEach(cb => {
+        const paramName = cb.value;
+        const safeId = paramName.replace(/[^a-z0-9]/gi, '-');
+        const methodSelect = srcRow.querySelector(`#slot-metode-${safeId} .method-select`);
+        const methodVal = methodSelect ? methodSelect.value : '';
+        selectedParams.push({ parameter: paramName, method: methodVal });
+    });
+
+    // Buat baris baru
+    addNewRow();
+
+    const tableBody = document.getElementById('cocBody');
+    const destRow = tableBody.rows[tableBody.rows.length - 1];
+    if (!destRow) return;
+
+    // Set deskripsi
+    destRow.querySelector('.titik-uji').value = description;
+
+    // Set tag regulasi
+    const destTagContainer = destRow.querySelector('.selected-regulasi-tags');
+    regTags.forEach(val => {
+        const tag = document.createElement('span');
+        tag.className = 'reg-tag';
+        tag.dataset.val = val;
+        tag.style = "background: #eff6ff; color: #2563eb; padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 700; border: 1px solid #bfdbfe; display: flex; align-items: center; gap: 5px;";
+        tag.innerHTML = `${val} <span onclick="const p=this.parentElement; const c=p.closest('td'); p.remove(); updateParametersByTags(c)" style="cursor:pointer; color: #ef4444;">×</span>`;
+        destTagContainer.appendChild(tag);
+    });
+
+    // Update parameter list
+    await updateParametersByTags(destTagContainer);
+
+    // Centang checkbox & set metode
+    selectedParams.forEach(p => {
+        const cb = destRow.querySelector(`.param-checkbox[value="${p.parameter}"]`);
+        if (cb) {
+            cb.checked = true;
+            renderMethodDropdown(cb);
+            
+            const safeId = p.parameter.replace(/[^a-z0-9]/gi, '-');
+            const methodSelect = destRow.querySelector(`#slot-metode-${safeId} .method-select`);
+            if (methodSelect && p.method) {
+                methodSelect.value = p.method;
+            }
+        }
+    });
+
+    // Sesuaikan status Select All
+    const selectAllCb = destRow.querySelector('.select-all-area input[type="checkbox"]');
+    if (selectAllCb) {
+        const totalCbs = destRow.querySelectorAll('.param-checkbox').length;
+        const checkedCbs = destRow.querySelectorAll('.param-checkbox:checked').length;
+        selectAllCb.checked = totalCbs > 0 && totalCbs === checkedCbs;
+    }
+}
+window.copyRow = copyRow;
+
+function onRegulasiInput(input) {
+    const val = input.value.trim();
+    if (!val) return;
+    
+    const datalist = document.getElementById('listRegulasi');
+    if (!datalist) return;
+    
+    const options = Array.from(datalist.options).map(opt => opt.value.trim());
+    if (options.includes(val)) {
+        addRegulasiTag(input);
+    }
+}
+window.onRegulasiInput = onRegulasiInput;
 
 // 1. Fungsi untuk menambah tag regulasi (Bisa lebih dari satu)
 function addRegulasiTag(input) {
@@ -330,7 +395,7 @@ function addRegulasiTag(input) {
     tag.className = 'reg-tag';
     tag.dataset.val = val;
     tag.style = "background: #eff6ff; color: #2563eb; padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 700; border: 1px solid #bfdbfe; display: flex; align-items: center; gap: 5px;";
-    tag.innerHTML = `${val} <span onclick="this.parentElement.remove(); updateParametersByTags(this)" style="cursor:pointer; color: #ef4444;">×</span>`;
+    tag.innerHTML = `${val} <span onclick="const p=this.parentElement; const c=p.closest('td'); p.remove(); updateParametersByTags(c)" style="cursor:pointer; color: #ef4444;">×</span>`;
     
     tagContainer.appendChild(tag);
     input.value = '';
@@ -477,11 +542,59 @@ async function saveCoc() {
             oldData = oldRow;
         }
 
-        const { error } = await _supabase
+        const { data: cocRow, error: cocError } = await _supabase
             .from('coc_emisi')
-            .upsert([payload], { onConflict: 'nomor_coc' });
+            .upsert([cocData], { onConflict: 'nomor_coc' })
+            .select('id')
+            .single();
 
-        if (error) throw error;
+        if (cocError) throw cocError;
+        const cocId = cocRow.id;
+
+        // Sync samples table
+        const { data: existingSamples } = await _supabase
+            .from('samples')
+            .select('*')
+            .eq('coc_id', cocId);
+
+        const existingSamplesMap = new Map();
+        if (existingSamples) {
+            existingSamples.forEach(es => existingSamplesMap.set(es.sample_id, es));
+        }
+
+        // Delete removed samples
+        const inputSampleIds = items.map(it => it.sample_id);
+        if (existingSamples) {
+            const deleteIds = existingSamples
+                .filter(es => !inputSampleIds.includes(es.sample_id))
+                .map(es => es.id);
+            if (deleteIds.length > 0) {
+                await _supabase.from('samples').delete().in('id', deleteIds);
+            }
+        }
+
+        // Bulk upsert samples
+        const samplesPayload = items.map(item => {
+            const existingSample = existingSamplesMap.get(item.sample_id) || {};
+            return {
+                id: existingSample.id || undefined,
+                coc_id: cocId,
+                sample_id: item.sample_id,
+                description: item.description,
+                nama_cerobong: item.description,
+                regulations: item.regulations,
+                parameters: item.parameters,
+                status: existingSample.status || 'Pending',
+                status_lab: existingSample.status_lab || 'Pending',
+                is_verified: existingSample.is_verified || false
+            };
+        });
+
+        const { error: samplesError } = await _supabase
+            .from('samples')
+            .upsert(samplesPayload, { onConflict: 'coc_id, sample_id' });
+
+        if (samplesError) throw samplesError;
 
         // Log audit
         const { data: { session } } = await _supabase.auth.getSession();
@@ -872,6 +985,12 @@ window.switchCocMainTab = function(tabName) {
         savedContainer.style.display = tabName === 'saved' ? 'block' : 'none';
     }
 
+    // Selalu sembunyikan area preview cetak saat berpindah tab utama
+    const printArea = document.getElementById('printArea');
+    if (printArea) {
+        printArea.classList.remove('show-preview');
+    }
+
     if (tabName === 'saved') {
         fetchSavedCoc();
     }
@@ -930,16 +1049,28 @@ function renderCocTableRows() {
     }
 
     paginated.forEach(item => {
+        const allowedToEdit = ['admin_master', 'admin_ts', 'manager'].includes(currentUserRole);
+        let actionButtons = `<button class="btn-primary" onclick="loadCocToForm('${item.id}', true)" style="padding:5px 10px; font-size:0.7rem; background: #64748b;">BUKA</button>`;
+        
+        if (allowedToEdit) {
+            actionButtons += `
+                <button class="btn-primary" onclick="loadCocToForm('${item.id}', false)" style="padding:5px 10px; font-size:0.7rem; background: #2563eb;">EDIT</button>
+                <button class="btn-primary" onclick="directPrint('${item.id}')" style="padding:5px 10px; font-size:0.7rem; background: #059669;">CETAK</button>
+                <button class="btn-primary" onclick="deleteCoc('${item.id}')" style="padding:5px 10px; font-size:0.7rem; background: #ef4444;">HAPUS</button>
+            `;
+        } else {
+            actionButtons += `
+                <button class="btn-primary" onclick="directPrint('${item.id}')" style="padding:5px 10px; font-size:0.7rem; background: #059669;">CETAK</button>
+            `;
+        }
+
         container.innerHTML += `
             <tr>
                 <td style="padding:10px;">${new Date(item.sampling_date).toLocaleDateString('id-ID')}</td>
                 <td style="padding:10px; font-weight:800; color:#2563eb;">${item.nomor_coc}</td>
                 <td style="padding:10px;">${item.company_name}</td>
                 <td style="padding:10px; text-align:center; display: flex; gap: 5px; justify-content: center; flex-wrap: wrap;">
-                    <button class="btn-primary" onclick="loadCocToForm('${item.id}', true)" style="padding:5px 10px; font-size:0.7rem; background: #64748b;">BUKA</button>
-                    <button class="btn-primary" onclick="loadCocToForm('${item.id}', false)" style="padding:5px 10px; font-size:0.7rem; background: #2563eb;">EDIT</button>
-                    <button class="btn-primary" onclick="directPrint('${item.id}')" style="padding:5px 10px; font-size:0.7rem; background: #059669;">CETAK</button>
-                    <button class="btn-primary" onclick="deleteCoc('${item.id}')" style="padding:5px 10px; font-size:0.7rem; background: #ef4444;">HAPUS</button>
+                    ${actionButtons}
                 </td>
             </tr>
         `;
@@ -984,7 +1115,7 @@ function renderCocPaginationControls() {
 }
 
 async function directPrint(id) {
-    const { data, error } = await _supabase.from('coc_emisi').select('*').eq('id', id).single();
+    const { data, error } = await _supabase.from('coc_emisi').select('*, samples(*)').eq('id', id).single();
     
     if (error || !data) {
         alert("Gagal mengambil data untuk dicetak");
@@ -1001,7 +1132,7 @@ async function directPrint(id) {
         sampling_officer: data.sampling_officer
     };
 
-    fillPrintTemplate(cocData, data.samples_data);
+    fillPrintTemplate(cocData, data.samples || []);
 
     setTimeout(() => {
         window.print();
@@ -1011,7 +1142,7 @@ async function directPrint(id) {
 // --- MEMASUKKAN DATA KE FORM (LOAD DATA) ---
 async function loadCocToForm(id, isReadonly = false) {
     window.isLoadingSavedCoc = true;
-    const { data, error } = await _supabase.from('coc_emisi').select('*').eq('id', id).single();
+    const { data, error } = await _supabase.from('coc_emisi').select('*, samples(*)').eq('id', id).single();
     if (error) {
         window.isLoadingSavedCoc = false;
         return alert("Gagal memuat data");
@@ -1042,16 +1173,16 @@ async function loadCocToForm(id, isReadonly = false) {
     const tbody = document.getElementById('cocBody');
     tbody.innerHTML = '';
 
-    for (const [index, item] of data.samples_data.entries()) {
+    for (const [index, item] of (data.samples || []).entries()) {
         const row = document.createElement('tr');
         row.innerHTML = `
             <td>${index + 1}</td>
             <td><input type="text" class="form-control sample-id" value="${item.sample_id}" readonly style="background:#f8fafc; font-weight:800; color:#2563eb;"></td>
             <td><input type="text" class="form-control titik-uji" value="${item.description}"></td>
             <td>
-                <input type="text" class="form-control regulasi-search" list="listRegulasi" onkeypress="if(event.key === 'Enter') addRegulasiTag(this)" placeholder="Ketik & Enter...">
+                <input type="text" class="form-control regulasi-search" list="listRegulasi" oninput="onRegulasiInput(this)" onkeypress="if(event.key === 'Enter') addRegulasiTag(this)" placeholder="Ketik & Pilih...">
                 <div class="selected-regulasi-tags" style="display:flex; flex-wrap:wrap; gap:4px; margin-top:5px;">
-                    ${item.regulations.map(reg => `<span class="reg-tag" data-val="${reg}" style="background:#eff6ff; color:#2563eb; padding:2px 8px; border-radius:5px; font-size:0.7rem; display:flex; align-items:center; gap:5px; border:1px solid #dbeafe;">${reg}<span onclick="this.parentElement.remove(); updateParametersByTags(this.closest('td'))" style="cursor:pointer; font-weight:bold;">&times;</span></span>`).join('')}
+                    ${item.regulations.map(reg => `<span class="reg-tag" data-val="${reg}" style="background:#eff6ff; color:#2563eb; padding:2px 8px; border-radius:5px; font-size:0.7rem; display:flex; align-items:center; gap:5px; border:1px solid #dbeafe;">${reg}<span onclick="const p=this.parentElement; const c=p.closest('td'); p.remove(); updateParametersByTags(c)" style="cursor:pointer; font-weight:bold;">&times;</span></span>`).join('')}
                 </div>
             </td>
             <td style="vertical-align:top;">
@@ -1062,7 +1193,10 @@ async function loadCocToForm(id, isReadonly = false) {
                     <div class="param-container" style="display:flex; flex-direction:column; gap:6px;"></div>
                 </div>
             </td>
-            <td class="no-print"><button type="button" onclick="removeRow(this)" style="background:none; border:none; cursor:pointer;">❌</button></td>
+            <td class="no-print" style="text-align: center; vertical-align: middle;">
+                <button type="button" onclick="copyRow(this)" style="background:none; border:none; cursor:pointer; font-size: 1.1rem; margin-right: 8px;" title="Duplikat baris">📋</button>
+                <button type="button" onclick="removeRow(this)" style="background:none; border:none; cursor:pointer; font-size: 1.1rem;">❌</button>
+            </td>
         `;
         tbody.appendChild(row);
 
@@ -1098,6 +1232,19 @@ async function loadCocToForm(id, isReadonly = false) {
     }
 
     switchCocMainTab('form');
+
+    // Mengisi data ke area preview cetak di bawah form agar bisa dilihat langsung
+    const cocData = {
+        nomor_coc: data.nomor_coc,
+        company_name: data.company_name,
+        company_address: data.company_address,
+        contact_person: data.contact_person,
+        qt_no: data.qt_no,
+        sampling_date: data.sampling_date,
+        sampling_officer: data.sampling_officer
+    };
+    fillPrintTemplate(cocData, data.samples || []);
+
     alert("Data COC berhasil dimuat!");
 }
 
@@ -1212,7 +1359,7 @@ window.createNewCoc = async function() {
             <td><input type="text" class="form-control sample-id" readonly style="background: #f8fafc; font-weight: 800; color: #2563eb;" placeholder="Auto"></td>
             <td><input type="text" class="form-control titik-uji" placeholder="Nama Titik & Deskripsi"></td>
             <td>
-                <input type="text" class="form-control regulasi-search" list="listRegulasi" onkeypress="if(event.key === 'Enter') addRegulasiTag(this)" placeholder="Ketik & Enter...">
+                <input type="text" class="form-control regulasi-search" list="listRegulasi" oninput="onRegulasiInput(this)" onkeypress="if(event.key === 'Enter') addRegulasiTag(this)" placeholder="Ketik & Pilih...">
                 <div class="selected-regulasi-tags" style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px;"></div>
             </td>
             <td style="vertical-align: top;">

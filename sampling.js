@@ -41,26 +41,9 @@ function getRegulatoryLimit(paramName, regulationName) {
     return '-';
 }
 
-document.addEventListener('DOMContentLoaded', async () => {
-    // 1. Pastikan Sesi Auth Valid sebelum memuat data berat
-    const { data: { session } } = await _supabase.auth.getSession();
-    
-    if (!session) {
-        // Jika tidak ada sesi, biarkan auth.js yang menangani redirect
-        return; 
-    }
-
-    // 2. AMBIL ROLE (Tunggu sampai dapat)
-    userRole = session.user.user_metadata?.role;
-    if (!userRole) {
-        const { data: profile } = await _supabase
-            .from('profiles')
-            .select('role')
-            .eq('id', session.user.id)
-            .single();
-        userRole = profile?.role;
-    }
-
+window.addEventListener('auth-ready', async (e) => {
+    const { role } = e.detail;
+    userRole = role;
     console.log("Role terkonfirmasi di sampling:", userRole);
 
     // 3. Jika sesi aman, muat data sampling
@@ -146,7 +129,7 @@ window.goToPage = function(pageNumber) {
 
 // 1. Ambil data dari Supabase
 async function fetchSamplingData(keyword = '') {
-    let query = _supabase.from('coc_emisi').select('*').order('created_at', { ascending: false });
+    let query = _supabase.from('coc_emisi').select('*, samples(*)').order('created_at', { ascending: false });
     if (keyword) query = query.or(`nomor_coc.ilike.%${keyword}%,company_name.ilike.%${keyword}%`);
 
     const { data, error } = await query;
@@ -187,8 +170,8 @@ function renderTableRows() {
     const canVerify = ['manager', 'admin_master'].includes(userRole);
 
     tbody.innerHTML = paginatedSamples.map(item => {
-        const total = item.samples_data ? item.samples_data.length : 0;
-        const done = item.samples_data ? item.samples_data.filter(s => s.status === 'Done').length : 0;
+        const total = item.samples ? item.samples.length : 0;
+        const done = item.samples ? item.samples.filter(s => s.status === 'Done').length : 0;
         const isVerified = item.status_sampling === 'Verified';
         const isSelesai = item.status_sampling === 'Selesai';
 
@@ -280,11 +263,11 @@ function renderPaginationControls() {
 
 // 3. Logika Modal & Tab
 async function openSamplingModal(id, readOnly = false) {
-    const { data, error } = await _supabase.from('coc_emisi').select('*').eq('id', id).single();
+    const { data, error } = await _supabase.from('coc_emisi').select('*, samples(*)').eq('id', id).single();
     if (error) return alert("Gagal mengambil detail");
 
     currentCocId = id;
-    samplesDataArray = data.samples_data || [];
+    samplesDataArray = data.samples || [];
     
     // Auto-inject missing Nitrogen Monoxide (NO) and Nitrogen Dioxide (NO2) if Nitrogen Oxide (NOx) is present
     samplesDataArray.forEach(s => {
@@ -1326,18 +1309,27 @@ async function saveAllSamplingData() {
     const allDone = samplesDataArray.length > 0 && samplesDataArray.every(s => s.status === 'Done');
     const globalStatus = allDone ? 'Selesai' : 'In Progress';
 
-    const { error } = await _supabase.from('coc_emisi').update({ 
-        samples_data: samplesDataArray,
-        status_sampling: globalStatus,
-        updated_at: new Date().toISOString()
-    }).eq('id', currentCocId);
+    try {
+        const { error: samplesError } = await _supabase.from('samples').upsert(
+            samplesDataArray.map(s => {
+                const { coc_emisi, ...cleanSample } = s;
+                return cleanSample;
+            })
+        );
+        if (samplesError) throw samplesError;
 
-    if (error) {
-        alert("Gagal Simpan: " + error.message);
-    } else {
+        const { error: cocError } = await _supabase.from('coc_emisi').update({ 
+            status_sampling: globalStatus,
+            updated_at: new Date().toISOString()
+        }).eq('id', currentCocId);
+
+        if (cocError) throw cocError;
+
         alert("Data sampling berhasil diperbarui!");
         closeSamplingModal();
         fetchSamplingData();
+    } catch (e) {
+        alert("Gagal Simpan: " + e.message);
     }
     btn.disabled = false;
     btn.innerText = "💾 Simpan Data Sampling";

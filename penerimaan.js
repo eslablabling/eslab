@@ -8,25 +8,9 @@ let currentPage = 1;
 const pageSize = 10;
 let filteredSamplesList = [];
 
-document.addEventListener('DOMContentLoaded', async () => {
-    // 1. Cek Sesi (Pastikan _supabase sudah didefinisikan di config.js)
-    const { data: { session } } = await _supabase.auth.getSession();
-    if (!session) {
-        window.location.href = 'index.html';
-        return;
-    }
-
-    // Ambil Role
-    userRole = session.user.user_metadata?.role;
-    if (!userRole) {
-        const { data: profile } = await _supabase
-            .from('profiles')
-            .select('role')
-            .eq('id', session.user.id)
-            .single();
-        userRole = profile?.role;
-    }
-
+window.addEventListener('auth-ready', async (e) => {
+    const { role } = e.detail;
+    userRole = role;
     console.log("Role terkonfirmasi di penerimaan:", userRole);
 
     // 2. Ambil data pertama kali
@@ -86,6 +70,22 @@ window.goToPage = function(pageNumber) {
         renderPaginationControls();
     }
 };
+
+function formatTimestampDisplay(isoString) {
+    if (!isoString) return '-';
+    const date = new Date(isoString);
+    if (isNaN(date.getTime())) return isoString;
+    
+    const day = String(date.getDate()).padStart(2, '0');
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+    const monthStr = months[date.getMonth()];
+    const year = date.getFullYear();
+    
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    
+    return `${day} ${monthStr} ${year} ${hours}:${minutes}`;
+}
 
 // Helper untuk menghitung hari kerja (Sabtu & Minggu tidak dihitung)
 function getWorkingDays(startDate, endDate) {
@@ -189,24 +189,33 @@ function renderTableRows() {
             `;
         }
 
-        const canBatal = isReceived && userRole === 'admin_master';
+        const allowedToReceive = ['analis', 'admin_master', 'manager', 'admin_ts'].includes(userRole);
+        const canBatal = isReceived && ['admin_master', 'manager'].includes(userRole);
         
-        let aksiHtml = `
-            <button onclick="prosesTerimaSampel('${item.db_id}', '${item.sample_id}')" 
-                    class="btn-receive" 
-                    style="${isReceived ? 'background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1;' : ''}">
-                ${isReceived ? '📝 Edit Tgl' : '📥 Terima'}
-            </button>
-        `;
-
-        if (canBatal) {
-            aksiHtml += `
-                <button onclick="batalTerimaSampel('${item.db_id}', '${item.sample_id}')" 
-                        class="btn-receive" 
-                        style="background: #fff1f2; color: #e11d48; border: 1px solid #ffe4e6; margin-left: 6px;">
-                    🔓 Batal Terima
-                </button>
-            `;
+        let aksiHtml = '';
+        if (isReceived) {
+            // Jika sudah diterima, tidak ada tombol Edit Tgl. Hanya tombol Batal Terima untuk role tertentu.
+            if (canBatal) {
+                aksiHtml = `
+                    <button onclick="batalTerimaSampel('${item.db_id}', '${item.sample_id}')" 
+                            class="btn-receive" 
+                            style="background: #fff1f2; color: #e11d48; border: 1px solid #ffe4e6;">
+                        🔓 Batal Terima
+                    </button>
+                `;
+            }
+        } else {
+            // Jika belum diterima, tunjukkan tombol Terima untuk role yang berwenang
+            if (allowedToReceive) {
+                aksiHtml = `
+                    <button onclick="prosesTerimaSampel('${item.db_id}', '${item.sample_id}')" 
+                            class="btn-receive">
+                        📥 Terima
+                    </button>
+                `;
+            } else {
+                aksiHtml = `<span style="font-size: 0.75rem; color: #94a3b8; font-style: italic;">Akses Terbatas</span>`;
+            }
         }
 
         return `
@@ -224,7 +233,7 @@ function renderTableRows() {
                     <span class="tag ${isReceived ? 'tag-green' : 'tag-orange'}">
                         ${isReceived ? '● DITERIMA LAB' : '○ FISIK DITUNGGU'}
                     </span>
-                    ${isReceived && item.tgl_terima_lab ? `<div style="font-size:0.65rem; color:#64748b; margin-top:4px;">Masuk: ${item.tgl_terima_lab}</div>` : ''}
+                    ${isReceived && item.tgl_terima_lab ? `<div style="font-size:0.65rem; color:#64748b; margin-top:4px;">Masuk: ${formatTimestampDisplay(item.tgl_terima_lab)}</div>` : ''}
                 </td>
                 <td style="text-align: right; white-space: nowrap;">
                     <div style="display: flex; align-items: center; justify-content: flex-end;">
@@ -280,46 +289,36 @@ async function fetchDataPenerimaan(keyword = '') {
     }
 
     try {
-        const { data: cocList, error } = await _supabase
-            .from('coc_emisi')
-            .select('*')
+        const { data: samples, error } = await _supabase
+            .from('samples')
+            .select('*, coc_emisi(*)')
             .order('updated_at', { ascending: false });
 
         if (error) throw error;
 
         let allSamples = [];
 
-        cocList.forEach(coc => {
-            let samples = [];
-            try {
-                samples = typeof coc.samples_data === 'string' 
-                    ? JSON.parse(coc.samples_data) 
-                    : coc.samples_data;
-            } catch (e) {
-                console.error("Gagal parse JSON pada ID:", coc.id);
-            }
+        samples.forEach(s => {
+            const coc = s.coc_emisi || {};
+            const isReceivedVal = ['received', 'analyzed', 'verified'].includes(s.status_lab);
+            if (s.status === 'Done' || isReceivedVal) {
+                const hasParticulate = s.parameters && s.parameters.some(p => 
+                    p.parameter.toLowerCase().includes('particulate')
+                );
 
-            samples.forEach(s => {
-                const isReceivedVal = ['received', 'analyzed', 'verified'].includes(s.status_lab);
-                if (s.status === 'Done' || isReceivedVal) {
-                    const hasParticulate = s.parameters && s.parameters.some(p => 
-                        p.parameter.toLowerCase().includes('particulate')
-                    );
+                const sampleObj = {
+                    ...s,
+                    db_id: coc.id,
+                    company: coc.company_name,
+                    isPartikulat: hasParticulate
+                };
 
-                    const sampleObj = {
-                        ...s,
-                        db_id: coc.id,
-                        company: coc.company_name,
-                        isPartikulat: hasParticulate
-                    };
-
-                    if (currentFilterTab === 'belum_diterima' && !isReceivedVal) {
-                        allSamples.push(sampleObj);
-                    } else if (currentFilterTab === 'sudah_diterima' && isReceivedVal) {
-                        allSamples.push(sampleObj);
-                    }
+                if (currentFilterTab === 'belum_diterima' && !isReceivedVal) {
+                    allSamples.push(sampleObj);
+                } else if (currentFilterTab === 'sudah_diterima' && isReceivedVal) {
+                    allSamples.push(sampleObj);
                 }
-            });
+            }
         });
 
         if (keyword) {
@@ -345,23 +344,50 @@ async function fetchDataPenerimaan(keyword = '') {
 }
 
 async function prosesTerimaSampel(dbId, sampleId) {
+    const allowed = ['analis', 'admin_master', 'manager', 'admin_ts'].includes(userRole);
+    if (!allowed) {
+        alert("Akses ditolak: Hanya Analis, Admin, dan Manager yang dapat memproses penerimaan sampel.");
+        return;
+    }
+
     try {
-        // 1. Ambil data COC terlebih dahulu untuk cek tanggal lama
-        const { data: coc } = await _supabase.from('coc_emisi').select('samples_data').eq('id', dbId).single();
-        let samples = typeof coc.samples_data === 'string' ? JSON.parse(coc.samples_data) : coc.samples_data;
+        // 1. Ambil data sampel secara spesifik
+        const { data: targetSample, error: sampleError } = await _supabase
+            .from('samples')
+            .select('*')
+            .eq('coc_id', dbId)
+            .eq('sample_id', sampleId)
+            .single();
+            
+        if (sampleError) throw sampleError;
         
-        // Cari data sampel yang spesifik
-        const targetSample = samples.find(s => s.sample_id === sampleId);
-        const tglLama = targetSample.tgl_terima_lab || new Date().toISOString().split('T')[0];
+        let oldDate = "";
+        let oldTime = "08:00"; // default time
+
+        if (targetSample.tgl_terima_lab) {
+            const d = new Date(targetSample.tgl_terima_lab);
+            if (!isNaN(d.getTime())) {
+                oldDate = d.toISOString().split('T')[0];
+                const hours = String(d.getHours()).padStart(2, '0');
+                const minutes = String(d.getMinutes()).padStart(2, '0');
+                oldTime = `${hours}:${minutes}`;
+            }
+        } else {
+            const d = new Date();
+            oldDate = d.toISOString().split('T')[0];
+            const hours = String(d.getHours()).padStart(2, '0');
+            const minutes = String(d.getMinutes()).padStart(2, '0');
+            oldTime = `${hours}:${minutes}`;
+        }
         
         // 2. Format tanggal lama DD/MM/YYYY
         let tglTextVal = "";
-        if (tglLama) {
-            const parts = tglLama.split('-');
+        if (oldDate) {
+            const parts = oldDate.split('-');
             if (parts.length === 3) {
                 tglTextVal = `${parts[2]}/${parts[1]}/${parts[0]}`;
             } else {
-                tglTextVal = tglLama;
+                tglTextVal = oldDate;
             }
         }
 
@@ -372,7 +398,8 @@ async function prosesTerimaSampel(dbId, sampleId) {
             
         document.getElementById('penerimaanModalTitle').innerText = modalTitle;
         document.getElementById('penerimaanTglText').value = tglTextVal;
-        document.getElementById('penerimaanTglPicker').value = tglLama;
+        document.getElementById('penerimaanTglPicker').value = oldDate;
+        document.getElementById('penerimaanJam').value = oldTime;
         document.getElementById('modalPenerimaan').style.display = 'flex';
 
         // Bind simpan action
@@ -382,6 +409,8 @@ async function prosesTerimaSampel(dbId, sampleId) {
 
         newBtn.addEventListener('click', async () => {
             const typedVal = document.getElementById('penerimaanTglText').value.trim();
+            const timeVal = document.getElementById('penerimaanJam').value.trim() || '08:00';
+            
             let finalDate = "";
             if (typedVal) {
                 const parts = typedVal.split('/');
@@ -401,19 +430,28 @@ async function prosesTerimaSampel(dbId, sampleId) {
                 alert("Tanggal penerimaan tidak valid!");
                 return;
             }
-            
-            const updated = samples.map(s => {
-                if (s.sample_id === sampleId) {
-                    return { 
-                        ...s, 
-                        status_lab: 'received', 
-                        tgl_terima_lab: finalDate 
-                    };
-                }
-                return s;
-            });
 
-            const { error } = await _supabase.from('coc_emisi').update({ samples_data: updated }).eq('id', dbId);
+            // Gabungkan tanggal dengan jam (lokal timezone)
+            const combinedString = `${finalDate}T${timeVal}:00`;
+            const dateObj = new Date(combinedString);
+            
+            if (isNaN(dateObj.getTime())) {
+                alert("Format waktu tidak valid!");
+                return;
+            }
+
+            // Simpan ke Supabase sebagai ISO string UTC/Tz
+            const isoTimestamp = dateObj.toISOString();
+
+            const { error } = await _supabase
+                .from('samples')
+                .update({ 
+                    status_lab: 'received', 
+                    tgl_terima_lab: isoTimestamp 
+                })
+                .eq('coc_id', dbId)
+                .eq('sample_id', sampleId);
+                
             if (error) {
                 alert("Gagal memperbarui data: " + error.message);
             } else {
@@ -434,28 +472,24 @@ function showNotification(msg) {
 }
 
 async function batalTerimaSampel(dbId, sampleId) {
+    const allowed = ['admin_master', 'manager'].includes(userRole);
+    if (!allowed) {
+        alert("Akses ditolak: Hanya Admin Master dan Manager yang dapat membatalkan penerimaan sampel.");
+        return;
+    }
+
     if (!confirm(`Apakah Anda yakin ingin membatalkan penerimaan sampel ${sampleId}? Status lab akan dikembalikan ke Belum Diterima.`)) return;
 
     try {
-        // 1. Ambil data COC
-        const { data: coc } = await _supabase.from('coc_emisi').select('samples_data').eq('id', dbId).single();
-        let samples = typeof coc.samples_data === 'string' ? JSON.parse(coc.samples_data) : coc.samples_data;
-
-        // 2. Reset status_lab & tgl_terima_lab
-        const updated = samples.map(s => {
-            if (s.sample_id === sampleId) {
-                const { status_lab, tgl_terima_lab, ...rest } = s;
-                return {
-                    ...rest,
-                    status_lab: null,
-                    tgl_terima_lab: null
-                };
-            }
-            return s;
-        });
-
-        // 3. Simpan ke Supabase
-        const { error } = await _supabase.from('coc_emisi').update({ samples_data: updated }).eq('id', dbId);
+        // Update status_lab & tgl_terima_lab langsung ke tabel samples
+        const { error } = await _supabase
+            .from('samples')
+            .update({
+                status_lab: null,
+                tgl_terima_lab: null
+            })
+            .eq('coc_id', dbId)
+            .eq('sample_id', sampleId);
         if (error) throw error;
 
         // 4. Log audit

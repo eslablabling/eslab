@@ -479,7 +479,7 @@ td { padding: 16px; font-size: 0.85rem; border-bottom: 1px solid #f1f5f9; vertic
                             <td><input type="text" class="form-control sample-id" readonly style="background: #f8fafc; font-weight: 800; color: #2563eb;" placeholder="Auto"></td>
                             <td><input type="text" class="form-control titik-uji" placeholder="Nama Titik & Deskripsi"></td>
                             <td>
-                                <input type="text" class="form-control regulasi-search" list="listRegulasi" onkeypress="if(event.key === 'Enter') addRegulasiTag(this)" placeholder="Ketik & Enter...">
+                                <input type="text" class="form-control regulasi-search" list="listRegulasi" oninput="onRegulasiInput(this)" onkeypress="if(event.key === 'Enter') addRegulasiTag(this)" placeholder="Ketik & Pilih...">
                                 <div class="selected-regulasi-tags" style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px;"></div>
                             </td>
                             <td style="vertical-align: top;">
@@ -494,9 +494,10 @@ td { padding: 16px; font-size: 0.85rem; border-bottom: 1px solid #f1f5f9; vertic
                                     </div>
                                 </div>
                             </td>
-                            <td class="no-print" style="text-align: center; vertical-align: middle;">
-                                <button type="button" onclick="removeRow(this)" style="background:none; border:none; cursor:pointer; font-size: 1.1rem;">❌</button>
-                            </td>
+                             <td class="no-print" style="text-align: center; vertical-align: middle;">
+                                 <button type="button" onclick="copyRow(this)" style="background:none; border:none; cursor:pointer; font-size: 1.1rem; margin-right: 8px;" title="Duplikat baris">📋</button>
+                                 <button type="button" onclick="removeRow(this)" style="background:none; border:none; cursor:pointer; font-size: 1.1rem;">❌</button>
+                             </td>
                         </tr>
                     </tbody>
                 </table>
