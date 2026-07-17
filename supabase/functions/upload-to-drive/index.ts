@@ -1,29 +1,29 @@
-import { serve } from "https://deno.land/std@0.168/http/server.ts"
-
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   // Handle CORS
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
-    // Ambil isi kunci JSON Google Service Account dari Environment Variable Supabase secara aman
-    const serviceAccountStr = Deno.env.get("GOOGLE_SERVICE_ACCOUNT_JSON");
-    if (!serviceAccountStr) {
+    // Ambil kredensial OAuth dari Environment Variables Supabase secara aman
+    const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
+    const clientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
+    const refreshToken = Deno.env.get("GOOGLE_REFRESH_TOKEN");
+
+    if (!clientId || !clientSecret || !refreshToken) {
       return new Response(
-        JSON.stringify({ error: 'Google Service Account credentials missing in Supabase secrets' }), 
+        JSON.stringify({ error: 'OAuth credentials missing in Supabase secrets (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN)' }), 
         { status: 500, headers: corsHeaders }
       );
     }
-    const serviceAccount = JSON.parse(serviceAccountStr);
 
-    // 1. Generate JWT Token untuk meminta Google Access Token
-    const accessToken = await getGoogleAccessToken(serviceAccount);
+    // 1. Tukarkan Refresh Token dengan Google Access Token
+    const accessToken = await getAccessTokenFromRefreshToken(clientId, clientSecret, refreshToken);
     const folderId = "1ztYUlPERtgarjEuZPp1D_lAkzR54Ey62";
 
     const contentType = req.headers.get("content-type") || "";
@@ -94,63 +94,24 @@ serve(async (req) => {
   }
 });
 
-// Helper Crypto API untuk otentikasi Google Service Account secara native di Deno
-async function getGoogleAccessToken(serviceAccountJson: any) {
-  const jwtHeader = { alg: "RS256", typ: "JWT" };
-  const now = Math.floor(Date.now() / 1000);
-  const jwtClaim = {
-    iss: serviceAccountJson.client_email,
-    scope: "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly",
-    aud: "https://oauth2.googleapis.com/token",
-    exp: now + 3600,
-    iat: now,
-  };
-
-  const pemHeader = "-----BEGIN PRIVATE KEY-----";
-  const pemFooter = "-----END PRIVATE KEY-----";
-  const pemContents = serviceAccountJson.private_key
-    .replace(pemHeader, "")
-    .replace(pemFooter, "")
-    .replace(/\s/g, "");
-  const binaryDerString = atob(pemContents);
-  const binaryDer = new Uint8Array(binaryDerString.length);
-  for (let i = 0; i < binaryDerString.length; i++) {
-    binaryDer[i] = binaryDerString.charCodeAt(i);
-  }
-
-  const key = await crypto.subtle.importKey(
-    "pkcs8",
-    binaryDer,
-    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-
-  const textEncoder = new TextEncoder();
-  const encodedHeader = btoa(JSON.stringify(jwtHeader)).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
-  const encodedClaim = btoa(JSON.stringify(jwtClaim)).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
-  const signInput = `${encodedHeader}.${encodedClaim}`;
-
-  const signature = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, textEncoder.encode(signInput));
-  const encodedSignature = btoa(String.fromCharCode(...new Uint8Array(signature)))
-    .replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
-
-  const jwt = `${signInput}.${encodedSignature}`;
-
-  const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+// Helper untuk menukar Refresh Token ke Access Token Google secara background
+async function getAccessTokenFromRefreshToken(clientId: string, clientSecret: string, refreshToken: string) {
+  const response = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
-      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-      assertion: jwt,
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: refreshToken,
+      grant_type: "refresh_token",
     }),
   });
 
-  if (!tokenResponse.ok) {
-    const errText = await tokenResponse.text();
-    throw new Error("Gagal menukar JWT ke Token Akses Google: " + errText);
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error("Gagal menukar Refresh Token ke Token Akses Google: " + errText);
   }
 
-  const tokenData = await tokenResponse.json();
+  const tokenData = await response.json();
   return tokenData.access_token;
 }
