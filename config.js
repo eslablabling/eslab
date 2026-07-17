@@ -12,3 +12,9 @@ const SB_KEY = atob(_encKey);
 window._supabase = window.supabase.createClient(SB_URL, SB_KEY);
 
 console.log("✅ Supabase Client siap di window._supabase");
+
+// --- GOOGLE DRIVE & PICKER INTEGRATION CREDENTIALS ---
+// Isi variabel ini untuk mengaktifkan penyeleksi berkas (Picker) & unggah otomatis ke Google Drive
+window.GOOGLE_CLIENT_ID = "10521993809-t65pg21duj01l69n6ma2vsb0qv432b3p.apps.googleusercontent.com"; // Contoh: "1234567890-abc123xyz.apps.googleusercontent.com"
+window.GOOGLE_API_KEY = "AIzaSyAB0AySSzxnleA4zAEhDjtxsh27r6amX_M";     // Google Cloud API Key
+window.GOOGLE_APP_ID = "10521993809";     // Google Project Number (App ID)

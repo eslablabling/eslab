@@ -235,6 +235,32 @@
     font-family: inherit;
     background: #f1f5f9;
 }
+
+/* --- PARAMETER VISIBILITY & AUTOMATIC COUNTING --- */
+.coa-table-v2 tbody {
+    counter-reset: serial-num;
+}
+.coa-table-v2 tbody tr:not(.unchecked-param-row) {
+    counter-increment: serial-num;
+}
+.coa-table-v2 tbody tr:not(.unchecked-param-row) td.serial-col::before {
+    content: counter(serial-num);
+}
+.coa-table-v2 tbody tr.unchecked-param-row td.serial-col::before {
+    content: "-";
+}
+.unchecked-param-row {
+    opacity: 0.4;
+    background-color: #f1f5f9;
+}
+@media print {
+    .unchecked-param-row {
+        display: none !important;
+    }
+    .no-print {
+        display: none !important;
+    }
+}
     </style>
 </head>
 <body>

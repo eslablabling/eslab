@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manajemen Dokumen | LIMS Envirotama</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+    
+    <style>
+        /* --- RESET & BASE STYLE --- */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { 
+            font-family: 'Plus Jakarta Sans', sans-serif; 
+            background-color: #f8fafc; 
+            color: #1e293b; 
+            display: flex; 
+            min-height: 100vh; 
+        }
+
+        /* --- SIDEBAR --- */
+        .sidebar { 
+            width: 260px; 
+            background: #ffffff; 
+            border-right: 1px solid #e2e8f0; 
+            display: flex; 
+            flex-direction: column; 
+            padding: 20px; 
+            position: sticky; 
+            top: 0; 
+            height: 100vh; 
+        }
+        .brand { 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            margin-bottom: 30px; 
+            padding: 10px; 
+            height: 70px; 
+            overflow: hidden; 
+        }
+        .brand img { max-width: 100%; max-height: 50px; object-fit: contain; }
+        
+        .nav-label { 
+            font-size: 0.65rem; 
+            font-weight: 800; 
+            color: #94a3b8; 
+            text-transform: uppercase; 
+            letter-spacing: 1px; 
+            margin: 20px 0 10px 10px; 
+        }
+        .nav-item { 
+            padding: 12px 16px; 
+            border-radius: 12px; 
+            margin-bottom: 4px; 
+            color: #64748b; 
+            font-weight: 600; 
+            font-size: 0.85rem; 
+            display: flex; 
+            align-items: center; 
+            gap: 12px; 
+            text-decoration: none; 
+            transition: 0.2s; 
+        }
+        .nav-item:hover { background: #f1f5f9; color: #1e293b; }
+        .nav-item.active { background: #eff6ff; color: #2563eb; }
+
+        /* --- MAIN CONTENT & TOP BAR --- */
+        .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+        .top-bar { 
+            background: #f8fafc; 
+            padding: 20px 40px; 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            border-bottom: 1px solid #e2e8f0;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .welcome-text h2 { font-size: 1.2rem; font-weight: 800; color: #0f172a; }
+        .welcome-text p { font-size: 0.8rem; color: #64748b; }
+
+        /* --- CONTENT BODY --- */
+        .content-body { padding: 30px 40px; }
+        
+        /* --- STATS GRID --- */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .stat-card {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            padding: 20px;
+            border-radius: 20px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02);
+            transition: transform 0.2s, border-color 0.2s;
+        }
+        .stat-card:hover { transform: translateY(-3px); border-color: #cbd5e1; }
+        .stat-card h4 { font-size: 0.65rem; color: #94a3b8; text-transform: uppercase; margin-bottom: 6px; font-weight: 800; letter-spacing: 0.5px; }
+        .stat-card .number { font-size: 1.8rem; font-weight: 800; color: #0f172a; }
+        .stat-card p { font-size: 0.75rem; color: #64748b; margin-top: 4px; font-weight: 600; }
+
+        /* --- HEADER ACTIONS --- */
+        .header-actions { 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            margin-bottom: 25px; 
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .btn-primary { 
+            background: #2563eb; 
+            color: white; 
+            border: none; 
+            padding: 12px 24px; 
+            border-radius: 12px; 
+            font-weight: 700; 
+            cursor: pointer; 
+            transition: 0.3s; 
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.85rem;
+        }
+        .btn-primary:hover { background: #1d4ed8; transform: translateY(-1px); }
+        
+        .btn-success { 
+            background: #16a34a; 
+            color: white; 
+            border: none; 
+            padding: 12px 24px; 
+            border-radius: 12px; 
+            font-weight: 700; 
+            cursor: pointer; 
+            transition: 0.3s; 
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.85rem;
+        }
+        .btn-success:hover { background: #15803d; transform: translateY(-1px); }
+
+        .btn-outline {
+            background: white;
+            color: #475569;
+            border: 1px solid #cbd5e1;
+            padding: 12px 24px;
+            border-radius: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.85rem;
+        }
+        .btn-outline:hover { background: #f8fafc; border-color: #94a3b8; }
+
+        /* --- FILTERS & SEARCH --- */
+        .filter-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .search-box-wrapper {
+            position: relative;
+            flex: 1;
+            min-width: 280px;
+            max-width: 400px;
+        }
+        
+        .search-box { 
+            width: 100%; 
+            padding: 12px 18px; 
+            border: 1px solid #e2e8f0; 
+            border-radius: 14px; 
+            outline: none; 
+            font-size: 0.85rem;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            font-family: inherit;
+        }
+        .search-box:focus {
+            border-color: #2563eb;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.05);
+        }
+
+        /* --- TAB FILTER --- */
+        .tab-group {
+            display: flex;
+            gap: 6px;
+            overflow-x: auto;
+            padding-bottom: 5px;
+        }
+        .tab-btn {
+            padding: 8px 16px;
+            border: 1px solid #e2e8f0;
+            background: white;
+            color: #64748b;
+            font-weight: 700;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            white-space: nowrap;
+            transition: 0.2s;
+        }
+        .tab-btn:hover {
+            background: #f1f5f9;
+            color: #1e293b;
+        }
+        .tab-btn.active {
+            background: #eff6ff;
+            color: #2563eb;
+            border-color: #3b82f6;
+        }
+
+        /* --- TABLE CONTAINER --- */
+        .table-container { 
+            background: white; 
+            border-radius: 24px; 
+            border: 1px solid #e2e8f0; 
+            padding: 25px; 
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.02); 
+            overflow-x: auto;
+        }
+
+        table { width: 100%; border-collapse: collapse; text-align: left; }
+        th { padding: 16px; color: #94a3b8; font-size: 0.7rem; text-transform: uppercase; border-bottom: 2px solid #f1f5f9; font-weight: 800; letter-spacing: 0.5px; }
+        td { padding: 16px; font-size: 0.85rem; border-bottom: 1px solid #f1f5f9; color: #334155; }
+        tr:last-child td { border-bottom: none; }
+        tr:hover td { background-color: #f8fafc; }
+
+        /* Document Badges */
+        .doc-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            font-size: 1.2rem;
+            margin-right: 12px;
+            flex-shrink: 0;
+        }
+        .icon-pdf { background-color: #fef2f2; color: #ef4444; }
+        .icon-xlsx { background-color: #ecfdf5; color: #10b981; }
+        .icon-docx { background-color: #eff6ff; color: #3b82f6; }
+        .icon-pptx { background-color: #fff7ed; color: #f97316; }
+        .icon-other { background-color: #f8fafc; color: #64748b; }
+
+        .badge-cat {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.7rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            display: inline-block;
+        }
+        .badge-regulasi { background-color: #e0e7ff; color: #4338ca; border: 1px solid #c7d2fe; }
+        .badge-metode { background-color: #ecfeff; color: #0891b2; border: 1px solid #cffafe; }
+        .badge-verifikasi { background-color: #fff7ed; color: #c2410c; border: 1px solid #ffedd5; }
+        .badge-template { background-color: #eff6ff; color: #1d4ed8; border: 1px solid #dbeafe; }
+        .badge-lainnya { background-color: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
+
+        /* Action buttons in table */
+        .action-btn-group {
+            display: flex;
+            gap: 6px;
+        }
+        .table-action-btn {
+            border: 1px solid #e2e8f0;
+            background: white;
+            padding: 8px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: 0.2s;
+            font-size: 0.9rem;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .table-action-btn:hover { background: #f1f5f9; border-color: #cbd5e1; }
+        .btn-view-drive { color: #2563eb; }
+        .btn-view-drive:hover { background: #eff6ff; border-color: #bfdbfe; }
+        .btn-edit { color: #0f766e; }
+        .btn-edit:hover { background: #f0fdfa; border-color: #99f6e4; }
+        .btn-delete { color: #dc2626; }
+        .btn-delete:hover { background: #fef2f2; border-color: #fecaca; }
+
+        /* --- MODAL STYLE --- */
+        .modal { 
+            display: none; 
+            position: fixed; 
+            z-index: 1000; 
+            left: 0; 
+            top: 0; 
+            width: 100%; 
+            height: 100%; 
+            background: rgba(15, 23, 42, 0.6); 
+            backdrop-filter: blur(4px); 
+            overflow-y: auto;
+            padding: 20px;
+            align-items: flex-start;
+            justify-content: center;
+        }
+        .modal-content { 
+            background: white; 
+            width: 100%;
+            max-width: 600px; 
+            margin: 40px auto; 
+            border-radius: 24px; 
+            padding: 32px; 
+            box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); 
+            position: relative;
+        }
+        
+        .form-group { margin-bottom: 20px; }
+        .form-group label { display: block; font-size: 0.75rem; font-weight: 800; color: #64748b; text-transform: uppercase; margin-bottom: 8px; }
+        .form-control { 
+            width: 100%; 
+            padding: 12px 16px; 
+            border: 1px solid #e2e8f0; 
+            border-radius: 12px; 
+            outline: none; 
+            font-family: inherit; 
+            font-size: 0.85rem;
+            transition: border-color 0.2s;
+        }
+        .form-control:focus { border-color: #2563eb; }
+        
+        textarea.form-control { resize: vertical; min-height: 100px; }
+        
+        /* Floating toast notification */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: #0f172a;
+            color: white;
+            padding: 14px 24px;
+            border-radius: 12px;
+            font-weight: 700;
+            font-size: 0.85rem;
+            box-shadow: 0 20px 25px -5px rgba(0,0,0,0.15);
+            z-index: 2000;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transform: translateY(100px);
+            opacity: 0;
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        .toast.show { transform: translateY(0); opacity: 1; }
+
+        /* Empty state info */
+        .empty-state {
+            padding: 40px;
+            text-align: center;
+            color: #64748b;
+            font-weight: 600;
+        }
+        .empty-state h3 { color: #1e293b; margin-bottom: 8px; }
+
+        /* Guide box styling for Google Drive */
+        .guide-box {
+            background-color: #f0fdf4; /* emerald 50 */
+            border: 1px solid #bbf7d0; /* emerald 200 */
+            border-radius: 16px;
+            padding: 16px;
+            margin-bottom: 20px;
+        }
+        .guide-box h4 {
+            font-size: 0.8rem;
+            color: #15803d;
+            font-weight: 800;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .guide-steps {
+            list-style: none;
+            font-size: 0.72rem;
+            color: #166534;
+            line-height: 1.5;
+            font-weight: 600;
+        }
+        .guide-steps li {
+            margin-bottom: 8px;
+            position: relative;
+            padding-left: 20px;
+        }
+        .guide-steps li::before {
+            content: attr(data-step);
+            position: absolute;
+            left: 0;
+            top: 1px;
+            background: #16a34a;
+            color: white;
+            font-size: 0.55rem;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+
+    </style>
+</head>
+<body>
+
+    <aside class="sidebar">
+        <div class="brand"><img src="eslab-logo.gif" alt="Logo"></div>
+        <nav class="nav-menu" id="dynamicSidebar">
+            <p style="padding: 20px; color: #94a3b8; font-size: 0.8rem;">Memuat Menu...</p>
+        </nav>
+    </aside>
+
+    <main class="main">
+        <div class="top-bar">
+            <div class="welcome-text">
+                <h2 id="userName">Memuat...</h2>
+                <p>Manajemen regulasi, metode analisa, dan file dokumen LIMS.</p>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 15px;">
+                <div id="currentDate" style="font-size: 0.8rem; font-weight: 700; color: #475569; background: #fff; border: 1px solid #e2e8f0; padding: 10px 20px; border-radius: 12px;">
+                    Memuat tanggal...
+                </div>
+
+                <div style="display: flex; align-items: center; gap: 10px; border-left: 1px solid #e2e8f0; padding-left: 15px;">
+                    <div style="text-align: right;">
+                        <p id="userFullName" style="font-size: 0.8rem; font-weight: 800;">...</p>
+                        <p id="userRoleDisplay" style="font-size: 0.65rem; color: #64748b; text-transform: uppercase;">Role</p>
+                    </div>
+                    <button id="btnLogout" style="background: none; border: none; cursor: pointer; font-size: 1.2rem;">🚪</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="content-body">
+            
+            <!-- STATS SUMMARY CARDS -->
+            <div class="stats-grid">
+                <div class="stat-card" style="border-left: 4px solid #2563eb;">
+                    <h4>Total Dokumen</h4>
+                    <div class="number" id="statTotal">0</div>
+                    <p>Terdaftar di sistem DMS</p>
+                </div>
+                <div class="stat-card" style="border-left: 4px solid #4f46e5;">
+                    <h4>Regulasi & Hukum</h4>
+                    <div class="number" id="statRegulasi">0</div>
+                    <p>Baku Mutu & Dasar Hukum</p>
+                </div>
+                <div class="stat-card" style="border-left: 4px solid #0891b2;">
+                    <h4>Metode & Verifikasi</h4>
+                    <div class="number" id="statMetodeVerif">0</div>
+                    <p>Prosedur Uji & Kalibrasi</p>
+                </div>
+                <div class="stat-card" style="border-left: 4px solid #16a34a;">
+                    <h4>Template & Form</h4>
+                    <div class="number" id="statTemplate">0</div>
+                    <p>Excel, Word & Laporan</p>
+                </div>
+            </div>
+
+            <!-- HEADER ACTIONS -->
+            <div class="header-actions">
+                <div>
+                    <h3 style="font-weight: 800; font-size: 1.2rem; display: flex; align-items: center; gap: 8px;">
+                        📁 Repository Dokumen Kerja
+                    </h3>
+                </div>
+                <div class="btn-group">
+                    <a href="https://drive.google.com/drive/folders/1ztYUlPERtgarjEuZPp1D_lAkzR54Ey62?usp=drive_link" target="_blank" class="btn-success" style="text-decoration: none;">
+                        <span>📂</span> Google Drive Lab
+                    </a>
+                    <button class="btn-outline" onclick="syncDocumentsWithDrive()">
+                        <span>🔄</span> Sinkronisasi Drive
+                    </button>
+                    <button class="btn-primary" onclick="openDocModal()">
+                        <span>➕</span> Tambah Dokumen
+                    </button>
+                </div>
+            </div>
+
+            <!-- FILTERS & SEARCH -->
+            <div class="filter-container">
+                <div class="tab-group" id="categoryTabs">
+                    <button class="tab-btn active" onclick="filterCategory('all')">Semua</button>
+                    <button class="tab-btn" onclick="filterCategory('regulasi')">Regulasi</button>
+                    <button class="tab-btn" onclick="filterCategory('metode')">Metode Uji</button>
+                    <button class="tab-btn" onclick="filterCategory('verifikasi')">Verifikasi</button>
+                    <button class="tab-btn" onclick="filterCategory('template')">Template File</button>
+                    <button class="tab-btn" onclick="filterCategory('lainnya')">Lainnya</button>
+                </div>
+                
+                <div class="search-box-wrapper">
+                    <input type="text" id="searchDoc" class="search-box" placeholder="Cari judul, file, deskripsi...">
+                </div>
+            </div>
+
+            <!-- TABLE CONTAINER -->
+            <div class="table-container">
+                <table id="docTable">
+                    <thead>
+                        <tr>
+                            <th width="35%">Nama Dokumen / File</th>
+                            <th width="15%">Kategori</th>
+                            <th width="20%">Deskripsi / Catatan</th>
+                            <th width="12%">Diunggah Oleh</th>
+                            <th width="10%">Tgl. Unggah</th>
+                            <th width="8%" style="text-align: center;">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody id="docTableBody">
+                        <!-- Data will be loaded here dynamically -->
+                    </tbody>
+                </table>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- MODAL TAMBAH/EDIT DOKUMEN -->
+    <div id="modalDoc" class="modal" onclick="closeDocModalOuter(event)">
+        <div class="modal-content">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px;">
+                <h2 id="modalTitle" style="font-weight: 800; font-size: 1.3rem;">🛠️ Tambah Dokumen</h2>
+                <button onclick="closeDocModal()" style="background:none; border:none; font-size: 1.5rem; cursor:pointer;">✕</button>
+            </div>
+
+            <form id="formDoc" onsubmit="saveDoc(event)">
+                <input type="hidden" id="docId">
+                
+                <div class="form-group">
+                    <label for="title">Judul Dokumen / Nama File</label>
+                    <input type="text" id="title" class="form-control" placeholder="Contoh: Baku Mutu Emisi PermenLHK P.11/2021" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="category">Kategori Dokumen</label>
+                    <select id="category" class="form-control" required>
+                        <option value="regulasi">Regulasi & Hukum</option>
+                        <option value="metode">Metode Analisa / Uji</option>
+                        <option value="verifikasi">Laporan / Formulir Verifikasi</option>
+                        <option value="template">Template Kerja (Excel/Word/PPT)</option>
+                        <option value="lainnya">Lain-lain</option>
+                    </select>
+                </div>
+
+                <div class="guide-box" style="background-color: #eff6ff; border-color: #bfdbfe;">
+                    <h4 style="color: #1e3a8a;">🛡️ Langkah Menyimpan & Menyalin Link Google Drive (Aman/Internal):</h4>
+                    <ol class="guide-steps" style="color: #1e40af;">
+                        <li data-step="1">Buka folder utama melalui tombol <b>Google Drive Lab</b> di halaman LIMS (atau unggah ke folder Anda sendiri).</li>
+                        <li data-step="2">Unggah file dokumen Anda ke folder Google Drive tersebut.</li>
+                        <li data-step="3">Klik kanan folder/file di Drive -> pilih <b>Bagikan (Share)</b>.</li>
+                        <li data-step="4">Tetapkan akses ke <b>"Dibatasi" (Restricted)</b>, lalu undang email Google/Workspace masing-masing staf laboratorium Anda agar hanya mereka yang bisa mengakses.</li>
+                        <li data-step="5">Klik **Salin Link (Copy Link)** lalu tempelkan ke kolom tautan di bawah ini.</li>
+                    </ol>
+                </div>
+
+                <!-- Input Berkas Lokal (Diunggah ke Drive) -->
+                <div class="form-group" id="groupLocalFile">
+                    <label for="localFile" id="labelLocalFile" style="font-weight: 800;">Pilih Berkas Lokal (Akan Otomatis Disimpan di Google Drive)</label>
+                    <input type="file" id="localFile" class="form-control" style="padding: 10px;">
+                    <div id="uploadProgress" style="display: none; font-size: 0.78rem; color: #2563eb; font-weight: 700; margin-top: 6px; align-items: center; gap: 6px;">
+                        <span>⏳</span> Sedang mengunggah berkas ke Google Drive...
+                    </div>
+                </div>
+
+                <!-- Input Drive Link (Disembunyikan, terisi otomatis saat upload) -->
+                <div class="form-group" id="groupDriveLink" style="display: none;">
+                    <label for="driveLink">Tautan Google Drive</label>
+                    <input type="url" id="driveLink" class="form-control">
+                </div>
+
+                <div class="form-group">
+                    <label for="description">Deskripsi / Catatan Tambahan</label>
+                    <textarea id="description" class="form-control" placeholder="Masukkan keterangan singkat dokumen..."></textarea>
+                </div>
+
+                <div style="display: flex; gap: 10px; margin-top: 30px;">
+                    <button type="button" onclick="closeDocModal()" style="flex:1; padding:12px; border-radius:12px; border:1px solid #e2e8f0; background:white; font-weight:700; cursor:pointer; font-size: 0.85rem;">
+                        Batal
+                    </button>
+                    <button type="submit" class="btn-primary" style="flex:2; font-size: 0.85rem;">
+                        Simpan Dokumen
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL PREVIEW DOKUMEN -->
+    <div id="modalPreview" class="modal" onclick="closePreviewModalOuter(event)">
+        <div class="modal-content" style="max-width: 90%; width: 1000px; height: 85vh; display: flex; flex-direction: column; padding: 24px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-shrink: 0;">
+                <h2 id="previewTitle" style="font-weight: 800; font-size: 1.2rem; color: #0f172a; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; max-width: 70%;">Pratinjau Dokumen</h2>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <a id="btnOpenExternal" href="#" target="_blank" class="btn-outline" style="padding: 8px 16px; font-size: 0.8rem; border-radius: 10px; text-decoration: none; font-weight: 700;">🔗 Buka Tab Baru</a>
+                    <button onclick="closePreviewModal()" style="background:none; border:none; font-size: 1.5rem; cursor:pointer;">✕</button>
+                </div>
+            </div>
+            <div style="flex-grow: 1; width: 100%; height: 100%; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0; background: #f8fafc; position: relative;">
+                <!-- Loading indicator -->
+                <div id="previewLoader" style="position: absolute; top:0; left:0; width:100%; height:100%; display: flex; justify-content: center; align-items: center; background: #ffffff; z-index: 10; font-weight: 700; color: #64748b;">
+                    Memuat dokumen dari Google Drive...
+                </div>
+                <iframe id="previewIframe" src="" width="100%" height="100%" style="border: none;" onload="document.getElementById('previewLoader').style.display='none';"></iframe>
+            </div>
+        </div>
+    </div>
+
+    <!-- TOAST NOTIFICATION -->
+    <div id="toast" class="toast">
+        <span id="toastIcon">✅</span>
+        <span id="toastText">Aksi berhasil dilakukan</span>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="auth.js"></script>
+    <!-- Google APIs & Identity Services for Drive Picker -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://apis.google.com/js/api.js"></script>
+    <script src="dokumen.js"></script>
+</body>
+</html>

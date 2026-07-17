@@ -663,6 +663,7 @@ function renderCoA(data) {
             <table class="coa-table-v2">
                 <thead style="background: #f0f0f0;">
                     <tr>
+                        <th class="no-print" style="width: 40px; text-align: center;">Tampilkan</th>
                         <th>No.</th>
                         <th>Testing Parameter</th>
                         <th>Sample Result</th>
@@ -713,9 +714,20 @@ function renderCoA(data) {
                     const currentReg = sample.regulations?.[0] || '-';
                     const autoLimit = getRegulatoryLimit(p.parameter, currentReg);
 
+                    const isChecked = p.show_in_coa !== false;
+                    const uncheckedClass = isChecked ? '' : 'unchecked-param-row';
+
                     return `
-                        <tr>
-                            <td style="text-align:center; border: 1px solid #000;">${i + 1}</td>
+                        <tr class="${uncheckedClass}">
+                            <td class="no-print" style="text-align:center; border: 1px solid #000;">
+                                <input type="checkbox" 
+                                       class="param-visibility-chk" 
+                                       data-sample-id="${sample.sample_id}" 
+                                       data-param-name="${p.parameter}" 
+                                       ${isChecked ? 'checked' : ''} 
+                                       style="width: 16px; height: 16px; cursor: pointer;">
+                            </td>
+                            <td class="serial-col" style="text-align:center; border: 1px solid #000;"></td>
                             <td style="padding: 8px; border: 1px solid #000;">${p.parameter}${p.is_accredited ? '' : '*'}</td>
                             <td style="text-align:center; font-weight:bold; border: 1px solid #000;">${finalDisplayResult}</td>
                             <td style="text-align:center; border: 1px solid #000;">${autoLimit}</td>
@@ -795,8 +807,10 @@ function exportSingleCoA(docInfo, verifiedSamples) {
             return orderA - orderB;
         });
 
-        // Gunakan hasil sort (sortedParameters) untuk diproses ke baris Excel
-        sortedParameters.forEach(p => {
+        // Gunakan hasil sort (sortedParameters) untuk diproses ke baris Excel, saring yang disembunyikan
+        const visibleParams = sortedParameters.filter(p => p.show_in_coa !== false);
+        
+        visibleParams.forEach((p, idx) => {
             const pOriginal = p.parameter || '';
             const pName = pOriginal.replaceAll(/\s+/g, ' ').trim().toLowerCase();
             
@@ -839,7 +853,7 @@ function exportSingleCoA(docInfo, verifiedSamples) {
 
             // 5. Masukkan ke Baris Excel
             excelRows.push({
-                "No.": "", // Bisa diisi manual atau dibiarkan kosong untuk Excel
+                "No.": idx + 1,
                 "Testing Parameter": pOriginal,
                 "Sample Result": finalDisplayResult, 
                 "Regulatory Limit": limit,
@@ -980,3 +994,88 @@ function formatResultWithLOQ(paramName, value) {
     }
     return Number.isNaN(numValue) ? value : numValue.toFixed(2);
 }
+
+// Fungsi global untuk mengubah visibilitas parameter di COA dan menyimpannya ke database Supabase
+async function toggleParamVisibility(sampleId, paramName, isChecked) {
+    const urlParams = new URLSearchParams(window.location.search);
+    const docId = urlParams.get('id');
+    if (!docId) return;
+
+    try {
+        const { data: coc, error: fetchError } = await _supabase
+            .from('coc_emisi')
+            .select('samples_data')
+            .eq('id', docId)
+            .single();
+
+        if (fetchError) throw fetchError;
+
+        let samples = [];
+        if (typeof coc.samples_data === 'string') {
+            samples = JSON.parse(coc.samples_data);
+        } else {
+            samples = coc.samples_data || [];
+        }
+
+        let updated = false;
+        for (let s of samples) {
+            if (s.sample_id === sampleId) {
+                if (Array.isArray(s.parameters)) {
+                    for (let p of s.parameters) {
+                        if (p.parameter === paramName) {
+                            p.show_in_coa = isChecked;
+                            updated = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        if (!updated) {
+            console.warn("Parameter tidak ditemukan untuk diupdate:", sampleId, paramName);
+            return;
+        }
+
+        const { error: updateError } = await _supabase
+            .from('coc_emisi')
+            .update({ 
+                samples_data: samples,
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', docId);
+
+        if (updateError) throw updateError;
+        console.log(`Visibilitas parameter diperbarui: ${paramName} di sampel ${sampleId} menjadi ${isChecked}`);
+
+        // Update styling baris di layar secara lokal
+        const checkboxes = document.querySelectorAll(`.param-visibility-chk[data-sample-id="${sampleId}"][data-param-name="${paramName}"]`);
+        checkboxes.forEach(chk => {
+            chk.checked = isChecked;
+            const row = chk.closest('tr');
+            if (row) {
+                if (isChecked) {
+                    row.classList.remove('unchecked-param-row');
+                } else {
+                    row.classList.add('unchecked-param-row');
+                }
+            }
+        });
+
+    } catch (err) {
+        console.error("Gagal memperbarui visibilitas parameter:", err);
+        alert("Gagal menyimpan visibilitas parameter: " + err.message);
+    }
+}
+
+window.toggleParamVisibility = toggleParamVisibility;
+
+// Pasang event listener global dengan event delegation
+document.addEventListener('change', (e) => {
+    if (e.target && e.target.classList.contains('param-visibility-chk')) {
+        const sampleId = e.target.getAttribute('data-sample-id');
+        const paramName = e.target.getAttribute('data-param-name');
+        const isChecked = e.target.checked;
+        toggleParamVisibility(sampleId, paramName, isChecked);
+    }
+});

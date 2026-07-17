@@ -199,6 +199,10 @@ function updateStats(samplesList = allSamplesList) {
     const analisaCount = samplesList.filter(s => s.statusLabel === 'ANALISA').length;
     const finishCount = samplesList.filter(s => s.statusLabel === 'FINISH').length;
 
+    // Hitung jumlah unik Perusahaan dan COC
+    const uniqueCompanies = new Set(samplesList.map(s => s.company_name).filter(name => name && name !== '-')).size;
+    const uniqueCocs = new Set(samplesList.map(s => s.nomor_coc).filter(coc => coc && coc !== '-')).size;
+
     statsContainer.innerHTML = `
         <div class="stat-card" style="border-left: 4px solid #64748b;">
             <h4>Total Sampel</h4>
@@ -219,6 +223,16 @@ function updateStats(samplesList = allSamplesList) {
             <h4>Verifikasi & COA</h4>
             <div class="number" style="color: #15803d;">${finishCount}</div>
             <p style="font-size: 0.75rem; color: #64748b; margin-top: 4px; font-weight: 600;">Tervalidasi & COA terbit</p>
+        </div>
+        <div class="stat-card" style="border-left: 4px solid #8b5cf6;">
+            <h4>Jumlah Perusahaan</h4>
+            <div class="number" style="color: #6d28d9;">${uniqueCompanies}</div>
+            <p style="font-size: 0.75rem; color: #64748b; margin-top: 4px; font-weight: 600;">Perusahaan terlayani</p>
+        </div>
+        <div class="stat-card" style="border-left: 4px solid #06b6d4;">
+            <h4>Jumlah COC</h4>
+            <div class="number" style="color: #0e7490;">${uniqueCocs}</div>
+            <p style="font-size: 0.75rem; color: #64748b; margin-top: 4px; font-weight: 600;">Chain of Custody terbit</p>
         </div>
     `;
 }
@@ -511,7 +525,7 @@ async function loadUserProfile(userId) {
         if (userFullName) userFullName.innerText = name;
         if (userRoleDisplay) userRoleDisplay.innerText = profile.role ? profile.role.replace('_', ' ') : 'User';
 
-        renderMenu(profile.role);
+        renderSidebar(profile.role);
 
     } catch (err) {
         console.error("Gagal memuat profil:", err.message);
