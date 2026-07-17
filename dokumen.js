@@ -5,6 +5,9 @@ let db = null;
 let currentCategory = 'all';
 let allDocuments = [];
 let allCategories = [];
+let currentSort = 'newest';
+let currentPage = 1;
+const pageSize = 10;
 
 const GOOGLE_DRIVE_FOLDER = "https://drive.google.com/drive/folders/1ztYUlPERtgarjEuZPp1D_lAkzR54Ey62?usp=drive_link";
 
@@ -291,7 +294,36 @@ document.addEventListener('DOMContentLoaded', async () => {
         const searchDoc = document.getElementById('searchDoc');
         if (searchDoc) {
             searchDoc.addEventListener('input', (e) => {
+                currentPage = 1;
                 renderDocuments(e.target.value.toLowerCase().trim());
+            });
+        }
+
+        // Cari Sort
+        const sortDoc = document.getElementById('sortDoc');
+        if (sortDoc) {
+            sortDoc.addEventListener('change', (e) => {
+                currentPage = 1;
+                currentSort = e.target.value;
+                renderDocuments(document.getElementById('searchDoc')?.value || '');
+            });
+        }
+
+        // Cari Prev Page Button
+        const btnPrevPage = document.getElementById('btnPrevPage');
+        if (btnPrevPage) {
+            btnPrevPage.addEventListener('click', () => {
+                if (currentPage > 1) {
+                    goToPage(currentPage - 1);
+                }
+            });
+        }
+
+        // Cari Next Page Button
+        const btnNextPage = document.getElementById('btnNextPage');
+        if (btnNextPage) {
+            btnNextPage.addEventListener('click', () => {
+                goToPage(currentPage + 1);
             });
         }
 
@@ -415,7 +447,34 @@ function renderDocuments(keyword = '') {
         return matchesCategory && matchesKeyword;
     });
 
-    if (filteredDocs.length === 0) {
+    // Sorting berdasarkan pilihan user
+    if (currentSort === 'name_asc') {
+        filteredDocs.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+    } else if (currentSort === 'name_desc') {
+        filteredDocs.sort((a, b) => (b.title || '').localeCompare(a.title || ''));
+    } else if (currentSort === 'category') {
+        filteredDocs.sort((a, b) => {
+            const catA = (a.category || '').toLowerCase();
+            const catB = (b.category || '').toLowerCase();
+            return catA.localeCompare(catB);
+        });
+    } else if (currentSort === 'newest') {
+        filteredDocs.sort((a, b) => new Date(b.createdAt || b.updatedAt || 0) - new Date(a.createdAt || a.updatedAt || 0));
+    } else if (currentSort === 'oldest') {
+        filteredDocs.sort((a, b) => new Date(a.createdAt || a.updatedAt || 0) - new Date(b.createdAt || b.updatedAt || 0));
+    }
+
+    // Paginasi
+    const totalItems = filteredDocs.length;
+    const totalPages = Math.ceil(totalItems / pageSize) || 1;
+    if (currentPage > totalPages) currentPage = totalPages;
+    if (currentPage < 1) currentPage = 1;
+
+    const startIndex = (currentPage - 1) * pageSize;
+    const endIndex = Math.min(startIndex + pageSize, totalItems);
+    const paginatedDocs = filteredDocs.slice(startIndex, endIndex);
+
+    if (totalItems === 0) {
         tableBody.innerHTML = `
             <tr>
                 <td colspan="6">
@@ -424,13 +483,42 @@ function renderDocuments(keyword = '') {
                         <p>Belum ada file terdaftar dalam kategori ini atau hasil pencarian kosong.</p>
                     </div>
                 </td>
-            </div>
+            </tr>
         `;
+        const infoEl = document.getElementById('paginationInfo');
+        if (infoEl) infoEl.innerText = 'Menampilkan 0 - 0 dari 0 data';
+        const pageNumbers = document.getElementById('pageNumbers');
+        if (pageNumbers) pageNumbers.innerHTML = '';
+        const btnPrev = document.getElementById('btnPrevPage');
+        if (btnPrev) btnPrev.disabled = true;
+        const btnNext = document.getElementById('btnNextPage');
+        if (btnNext) btnNext.disabled = true;
         return;
     }
 
+    // Update controls
+    const infoEl = document.getElementById('paginationInfo');
+    if (infoEl) {
+        infoEl.innerText = `Menampilkan ${startIndex + 1} - ${endIndex} dari ${totalItems} data`;
+    }
+
+    const pageNumbers = document.getElementById('pageNumbers');
+    if (pageNumbers) {
+        let pagesHtml = '';
+        for (let i = 1; i <= totalPages; i++) {
+            pagesHtml += `<button class="page-btn ${i === currentPage ? 'active' : ''}" onclick="goToPage(${i})">${i}</button>`;
+        }
+        pageNumbers.innerHTML = pagesHtml;
+    }
+
+    const btnPrev = document.getElementById('btnPrevPage');
+    if (btnPrev) btnPrev.disabled = (currentPage === 1);
+
+    const btnNext = document.getElementById('btnNextPage');
+    if (btnNext) btnNext.disabled = (currentPage === totalPages);
+
     let rowsHtml = '';
-    filteredDocs.forEach(doc => {
+    paginatedDocs.forEach(doc => {
         // Tentukan ikon berdasarkan category dokumen
         let iconClass = 'icon-lainnya';
         let emoji = '📄';
@@ -520,6 +608,7 @@ function getCategoryLabel(categoryId) {
 // 6. Filter Kategori Tab
 function filterCategory(category) {
     currentCategory = category;
+    currentPage = 1;
     
     // Update active tab styles
     const tabs = document.querySelectorAll('#categoryTabs .tab-btn');
@@ -1287,3 +1376,8 @@ window.deleteCategory = async function(catId) {
         }
     }
 }
+
+window.goToPage = function(pageNumber) {
+    currentPage = pageNumber;
+    renderDocuments(document.getElementById('searchDoc')?.value || '');
+};

@@ -7,6 +7,39 @@ let currentPage = 1;
 const pageSize = 10;
 let filteredSamplesList = [];
 let currentSampleIdx = 0;
+let masterEmisi = [];
+
+async function fetchMasterEmisi() {
+    try {
+        const { data, error } = await _supabase
+            .from('master_emisi')
+            .select('parameter, metode, baku_mutu, unit, regulasi, koreksi_o2');
+        if (error) throw error;
+        masterEmisi = data || [];
+        console.log("Master Emisi Loaded in Sampling:", masterEmisi.length, "rows");
+    } catch (err) {
+        console.error("Gagal memuat Master Emisi:", err);
+        masterEmisi = [];
+    }
+}
+
+function getRegulatoryLimit(paramName, regulationName) {
+    if (!paramName || !regulationName || masterEmisi.length === 0) return '-';
+
+    const cleanParam = paramName.trim().toLowerCase();
+    const cleanReg = (Array.isArray(regulationName) ? regulationName[0] : regulationName).trim().toLowerCase();
+
+    const match = masterEmisi.find(m => {
+        const masterParam = m.parameter ? m.parameter.toLowerCase().trim() : '';
+        const masterReg = m.regulasi ? m.regulasi.toLowerCase().trim() : '';
+        return masterParam === cleanParam && masterReg === cleanReg;
+    });
+    
+    if (match && (match.baku_mutu !== null && match.baku_mutu !== undefined)) {
+        return match.baku_mutu.toString(); 
+    }
+    return '-';
+}
 
 document.addEventListener('DOMContentLoaded', async () => {
     // 1. Pastikan Sesi Auth Valid sebelum memuat data berat
@@ -31,6 +64,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.log("Role terkonfirmasi di sampling:", userRole);
 
     // 3. Jika sesi aman, muat data sampling
+    await fetchMasterEmisi();
     await fetchSamplingData();
 
     // 4. Inisialisasi Event Listeners
@@ -726,6 +760,9 @@ function renderSamplingForm(readOnly = false) {
 
                 const currentAvg = getAvgVal(currentP);
                 let displayHtml = "";
+                const currentReg = s.regulations?.[0] || s.regulation_name || '-';
+                const limitStr = getRegulatoryLimit(paramName, currentReg);
+                const bmBadge = (limitStr !== '-') ? `<span style="font-size:0.75rem; background:#f8fafc; color:#475569; padding:3px 10px; border-radius:6px; font-weight:700; border:1px solid #e2e8f0; margin-left:5px;">BM: ${limitStr} mg/Nm³</span>` : '';
 
                 if (paramName.includes("Oxygen") || paramName.includes("CO2")) {
                     displayHtml = `<span style="font-size:0.75rem; color:#166534; font-weight:800; background:#f0fdf4; padding:3px 10px; border-radius:6px; border:1px solid #bbf7d0;">Average: ${currentAvg.toFixed(2)} %</span>`;
@@ -738,6 +775,7 @@ function renderSamplingForm(readOnly = false) {
                         <div style="display:flex; align-items:center; gap:8px;">
                             <span style="font-size:0.7rem; color:#64748b;">Total Avg: ${currentAvg.toFixed(2)} ppm</span>
                             <span style="font-size:0.75rem; background:#fff1f2; color:#be123c; padding:3px 10px; border-radius:6px; font-weight:900; border:1.5px solid #fecdd3;">${(mgNO + mgNO2).toFixed(2)} mg/Nm³</span>
+                            ${bmBadge}
                         </div>`;
                 } else {
                     const mgValue = calculateGasMg(paramName, currentAvg) || 0;
@@ -745,6 +783,7 @@ function renderSamplingForm(readOnly = false) {
                         <div style="display:flex; align-items:center; gap:8px;">
                             <span style="font-size:0.7rem; color:#64748b;">Avg: ${currentAvg.toFixed(2)} ppm</span>
                             <span style="font-size:0.75rem; background:#eff6ff; color:#1e40af; padding:3px 10px; border-radius:6px; font-weight:900; border:1px solid #dbeafe;">${parseFloat(mgValue).toFixed(2)} mg/Nm³</span>
+                            ${bmBadge}
                         </div>`;
                 }
 

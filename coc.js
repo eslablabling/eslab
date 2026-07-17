@@ -4,6 +4,40 @@ const pageSize = 10;
 let filteredCocList = [];
 let rawCocListData = [];
 let currentUserRole = '';
+let companyHistory = [];
+
+async function loadCompanyHistory() {
+    try {
+        const { data, error } = await _supabase
+            .from('coc_emisi')
+            .select('company_name, company_address, contact_person, phone_no, email_coa')
+            .order('created_at', { ascending: false });
+            
+        if (error) throw error;
+        
+        // Filter unique by company_name
+        const seen = new Set();
+        companyHistory = [];
+        (data || []).forEach(item => {
+            if (item.company_name && !seen.has(item.company_name.trim().toLowerCase())) {
+                seen.add(item.company_name.trim().toLowerCase());
+                companyHistory.push(item);
+            }
+        });
+        
+        // Populate datalist
+        const datalist = document.getElementById('companyHistoryList');
+        if (datalist) {
+            datalist.innerHTML = companyHistory
+                .map(item => `<option value="${item.company_name}">${item.company_name}</option>`)
+                .join('');
+        }
+        
+        console.log("Company history loaded in COC:", companyHistory.length, "companies");
+    } catch (err) {
+        console.error("Gagal memuat history perusahaan:", err);
+    }
+}
 
 document.addEventListener('DOMContentLoaded', async () => {
     // 1. Cek Sesi Autentikasi
@@ -37,6 +71,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     await generateCocNumber();    // Membuat nomor ES-COC/2026/... otomatis saat load
     await initQuotationNumber();
     await loadRegulasiDropdown(); // Mengisi list regulasi untuk auto-complete
+    await loadCompanyHistory();   // Memuat riwayat nama perusahaan
+
+    // Event listener untuk auto-fill nama perusahaan dari history
+    const companyInput = document.getElementById('companyName');
+    if (companyInput) {
+        companyInput.addEventListener('input', (e) => {
+            const selectedVal = e.target.value.trim().toLowerCase();
+            const match = companyHistory.find(item => item.company_name && item.company_name.trim().toLowerCase() === selectedVal);
+            if (match) {
+                document.getElementById('companyAddress').value = match.company_address || '';
+                document.getElementById('contactPerson').value = match.contact_person || '';
+                document.getElementById('phoneNumber').value = match.phone_no || '';
+                document.getElementById('emailCoa').value = match.email_coa || '';
+            }
+        });
+    }
 
     // 5. Setup Event Listeners (Logout & Tambah Baris)
         document.addEventListener('click', async (e) => {
@@ -414,6 +464,7 @@ async function saveCoc() {
 
         // 5. UPDATE TEMPLATE CETAK & PRINT
         // Kita panggil fungsi fillPrintTemplate (yang sudah diletakkan di luar)
+        await loadCompanyHistory();
         alert("Berhasil disimpan! Menyiapkan dokumen...");
         
         fillPrintTemplate(cocData, items); // Mengisi data ke area preview cetak

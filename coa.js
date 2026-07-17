@@ -636,6 +636,17 @@ function renderCoA(data) {
 
     // 2. Render Data Pages (Halaman 2 dst)
     verifiedSamples.forEach((sample, index) => {
+        const o2Param = sample.parameters.find(sp => {
+            const spName = (sp.parameter || '').toLowerCase().trim();
+            return spName === 'o2' || spName === 'oksigen' || spName === 'oksigen (o2)' || spName === 'oxygen';
+        });
+        let o2Measured = null;
+        if (o2Param) {
+            const rawO2Val = o2Param.result || o2Param.konsentrasi_1 || '0';
+            o2Measured = parseFloat(rawO2Val);
+            if (isNaN(o2Measured)) o2Measured = null;
+        }
+
         htmlContent += `
         <div class="coa-page" style="padding: 20px; margin-top: 20px;">
             <div style="text-align:center; border-bottom: 1.5px solid #000; padding-bottom: 10px; margin-bottom: 10px;">
@@ -698,9 +709,23 @@ function renderCoA(data) {
                     }
 
                     // Eksekusi LOQ: Merubah angka 0 menjadi < LOQ
-                    const finalDisplayResult = formatResultWithLOQ(p.parameter, valToFormat);
+                    let finalDisplayResult = formatResultWithLOQ(p.parameter, valToFormat);
 
-                    // ... Sisa kode untuk displayUnit dan autoLimit tetap sama ...
+                    // --- OKSIGEN CORRECTION LOGIC ---
+                    const currentReg = sample.regulations?.[0] || '-';
+                    const refO2 = getO2Reference(p.parameter, currentReg);
+                    
+                    if (refO2 !== null && o2Measured !== null && o2Measured > 0 && o2Measured < 21) {
+                        const rawNum = parseFloat(valToFormat) || 0;
+                        if (rawNum > 0) {
+                            const factor = (21 - refO2) / (21 - o2Measured);
+                            const correctedVal = rawNum * factor;
+                            const formattedCorrected = formatResultWithLOQ(p.parameter, correctedVal.toFixed(2));
+                            const formattedRaw = formatResultWithLOQ(p.parameter, rawNum.toFixed(2));
+                            
+                            finalDisplayResult = `${formattedCorrected}<br><span style="font-size: 0.65rem; color: #64748b; font-weight: normal; display: block; margin-top: 2px;">(Terukur: ${formattedRaw}, Koreksi ${refO2}% O₂)</span>`;
+                        }
+                    }
 
                     // 3. Tentukan Satuan (DISPLAY UNIT)
                     let displayUnit = '-';
@@ -711,7 +736,6 @@ function renderCoA(data) {
                     else displayUnit = p.unit || '-';
 
                     // 4. Regulasi & Limit
-                    const currentReg = sample.regulations?.[0] || '-';
                     const autoLimit = getRegulatoryLimit(p.parameter, currentReg);
 
                     const isChecked = p.show_in_coa !== false;
@@ -807,6 +831,17 @@ function exportSingleCoA(docInfo, verifiedSamples) {
             return orderA - orderB;
         });
 
+        const o2Param = sample.parameters.find(sp => {
+            const spName = (sp.parameter || '').toLowerCase().trim();
+            return spName === 'o2' || spName === 'oksigen' || spName === 'oksigen (o2)' || spName === 'oxygen';
+        });
+        let o2Measured = null;
+        if (o2Param) {
+            const rawO2Val = o2Param.result || o2Param.konsentrasi_1 || '0';
+            o2Measured = parseFloat(rawO2Val);
+            if (isNaN(o2Measured)) o2Measured = null;
+        }
+
         // Gunakan hasil sort (sortedParameters) untuk diproses ke baris Excel, saring yang disembunyikan
         const visibleParams = sortedParameters.filter(p => p.show_in_coa !== false);
         
@@ -840,7 +875,22 @@ function exportSingleCoA(docInfo, verifiedSamples) {
             }
 
             // 3. Format LOQ & Baku Mutu
-            const finalDisplayResult = formatResultWithLOQ(pOriginal, processedValue);
+            let finalDisplayResult = formatResultWithLOQ(pOriginal, processedValue);
+
+            // --- OKSIGEN CORRECTION LOGIC ---
+            const refO2 = getO2Reference(pOriginal, regulation);
+            if (refO2 !== null && o2Measured !== null && o2Measured > 0 && o2Measured < 21) {
+                const rawNum = parseFloat(processedValue) || 0;
+                if (rawNum > 0) {
+                    const factor = (21 - refO2) / (21 - o2Measured);
+                    const correctedVal = rawNum * factor;
+                    const formattedCorrected = formatResultWithLOQ(pOriginal, correctedVal.toFixed(2));
+                    const formattedRaw = formatResultWithLOQ(pOriginal, rawNum.toFixed(2));
+                    
+                    finalDisplayResult = `${formattedCorrected} (Terukur: ${formattedRaw}, Koreksi ${refO2}% O2)`;
+                }
+            }
+
             const limit = getRegulatoryLimit(pOriginal, regulation);
 
             // 4. Penentuan Satuan
@@ -895,6 +945,24 @@ function exportSingleCoA(docInfo, verifiedSamples) {
 // Pastikan properti menggunakan 'metode' agar konsisten dengan logika pencarian
 let masterEmisi = []
 
+function getO2Reference(paramName, regulationName) {
+    if (!paramName || !regulationName || masterEmisi.length === 0) return null;
+
+    const cleanParam = paramName.trim().toLowerCase();
+    const cleanReg = (Array.isArray(regulationName) ? regulationName[0] : regulationName).trim().toLowerCase();
+
+    const match = masterEmisi.find(m => {
+        const masterParam = m.parameter ? m.parameter.toLowerCase().trim() : '';
+        const masterReg = m.regulasi ? m.regulasi.toLowerCase().trim() : '';
+        return masterParam === cleanParam && masterReg === cleanReg;
+    });
+
+    if (match && match.koreksi_o2 !== null && match.koreksi_o2 !== undefined) {
+        return parseFloat(match.koreksi_o2);
+    }
+    return null;
+}
+
 function getRegulatoryLimit(paramName, regulationName) {
     if (!paramName || !regulationName || masterEmisi.length === 0) return '-';
 
@@ -922,7 +990,7 @@ async function fetchMasterEmisi() {
     try {
         const { data, error } = await _supabase
             .from('master_emisi')
-            .select('parameter, metode, baku_mutu, unit, regulasi');
+            .select('parameter, metode, baku_mutu, unit, regulasi, koreksi_o2');
 
         if (error) throw error;
         

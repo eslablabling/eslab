@@ -4,6 +4,65 @@
 
 let currentEditSample = { dbId: null, sampleId: null };
 let userRole = null;
+let masterEmisi = [];
+
+// Helper to compute average of two values (ignoring 0/empty values)
+function hitungAvg(val1, val2) {
+    const n1 = parseFloat(val1) || 0;
+    const n2 = parseFloat(val2) || 0;
+    if (n1 > 0 && n2 > 0) return (n1 + n2) / 2;
+    return n1 || n2;
+}
+
+async function fetchMasterEmisi() {
+    try {
+        const { data, error } = await _supabase
+            .from('master_emisi')
+            .select('parameter, metode, baku_mutu, unit, regulasi, koreksi_o2');
+        if (error) throw error;
+        masterEmisi = data || [];
+        console.log("Master Emisi Loaded in Analisa:", masterEmisi.length, "rows");
+    } catch (err) {
+        console.error("Gagal memuat Master Emisi:", err);
+        masterEmisi = [];
+    }
+}
+
+function getO2Reference(paramName, regulationName) {
+    if (!paramName || !regulationName || masterEmisi.length === 0) return null;
+
+    const cleanParam = paramName.trim().toLowerCase();
+    const cleanReg = (Array.isArray(regulationName) ? regulationName[0] : regulationName).trim().toLowerCase();
+
+    const match = masterEmisi.find(m => {
+        const masterParam = m.parameter ? m.parameter.toLowerCase().trim() : '';
+        const masterReg = m.regulasi ? m.regulasi.toLowerCase().trim() : '';
+        return masterParam === cleanParam && masterReg === cleanReg;
+    });
+
+    if (match && match.koreksi_o2 !== null && match.koreksi_o2 !== undefined) {
+        return parseFloat(match.koreksi_o2);
+    }
+    return null;
+}
+
+function getRegulatoryLimit(paramName, regulationName) {
+    if (!paramName || !regulationName || masterEmisi.length === 0) return '-';
+
+    const cleanParam = paramName.trim().toLowerCase();
+    const cleanReg = (Array.isArray(regulationName) ? regulationName[0] : regulationName).trim().toLowerCase();
+
+    const match = masterEmisi.find(m => {
+        const masterParam = m.parameter ? m.parameter.toLowerCase().trim() : '';
+        const masterReg = m.regulasi ? m.regulasi.toLowerCase().trim() : '';
+        return masterParam === cleanParam && masterReg === cleanReg;
+    });
+    
+    if (match && (match.baku_mutu !== null && match.baku_mutu !== undefined)) {
+        return match.baku_mutu.toString(); 
+    }
+    return '-';
+}
 let currentFilterTab = 'belum_selesai';
 let currentPage = 1;
 const pageSize = 10;
@@ -35,6 +94,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.log("Role terkonfirmasi:", userRole);
 
     // 3. BARU PANGGIL TABEL
+    await fetchMasterEmisi();
     fetchAntreanAnalisa();
 
     // Listener lainnya...
@@ -121,6 +181,22 @@ function renderTableRows() {
             });
         }
         
+        const o2Param = item.parameters.find(sp => {
+            const spName = (sp.parameter || '').toLowerCase().trim();
+            return spName === 'o2' || spName === 'oksigen' || spName === 'oksigen (o2)' || spName === 'oxygen';
+        });
+        let o2Measured = null;
+        if (o2Param) {
+            const rawO2Val = o2Param.result || o2Param.konsentrasi_1 || '0';
+            o2Measured = parseFloat(rawO2Val);
+            if (isNaN(o2Measured)) o2Measured = null;
+        }
+
+        const pPart = item.parameters.find(p => p.parameter.toLowerCase().includes('particulate'));
+        let displayVolume = 'V.DGM: -';
+        let displayHasil = '-';
+        let metodeLabel = '';
+        
         // Warna badge mengikuti status
         let labColor = '#f1f5f9';
         let labTextColor = '#64748b';
@@ -140,50 +216,126 @@ function renderTableRows() {
                 labTextColor = '#c2410c';
                 labText = '⏳ TUNGGU PARTIKULAT';
             }
-        }
+            if (pPart) {
+                const vDgm = parseFloat(pPart.volume_meter || 0);
+                displayVolume = `V.DGM: ${vDgm.toFixed(4)} m³`;
+                metodeLabel = pPart.method || '';
 
-        const pPart = item.parameters.find(p => p.parameter.toLowerCase().includes('particulate'));
-        let displayVolume = 'V.DGM: -';
-        let displayHasil = '-';
-        let metodeLabel = '';
+                let rawVal = null;
 
-        const hitungAvg = (val1, val2) => {
-            const n1 = parseFloat(val1) || 0;
-            const n2 = parseFloat(val2) || 0;
-            if (n1 > 0 && n2 > 0) return (n1 + n2) / 2;
-            return n1 || n2;
-        };
-        
-        if (pPart) {
-            const vDgm = parseFloat(pPart.volume_meter || 0);
-            displayVolume = `V.DGM: ${vDgm.toFixed(4)} m³`;
-            metodeLabel = pPart.method || '';
+                if (pPart.grav_data) {
+                    const d = pPart.grav_data;
+                    const q = pPart.qc_data || {};
+                    const isSNI2021 = metodeLabel.includes('7117-21:2021');
 
-            if (pPart.grav_data) {
-                const d = pPart.grav_data;
-                const isSNI2021 = metodeLabel.includes('7117-21:2021');
+                    // 1. Hitung Net Filter (Sampel - Blanko)
+                    const s_fAwal = hitungAvg(d.s_f_awal_1, d.s_f_awal_2);
+                    const s_fAkhir = hitungAvg(d.s_f_akhir_1, d.s_f_akhir_2);
+                    const s_fNet = s_fAkhir - s_fAwal;
 
-                const fAwal = hitungAvg(d.s_f_awal_1, d.s_f_awal_2);
-                const fAkhir = hitungAvg(d.s_f_akhir_1, d.s_f_akhir_2);
-                let totalNetGram = fAkhir - fAwal;
+                    const b_fAwal = hitungAvg(q.b_f_awal_1, q.b_f_awal_2);
+                    const b_fAkhir = hitungAvg(q.b_f_akhir_1, q.b_f_akhir_2);
+                    const b_fNet = b_fAkhir - b_fAwal;
 
-                if (!isSNI2021) {
-                    const cAwal = hitungAvg(d.s_c_awal_1, d.s_c_awal_2);
-                    const cAkhir = hitungAvg(d.s_c_akhir_1, d.s_c_akhir_2);
-                    totalNetGram += (cAkhir - cAwal);
+                    const netFilter = s_fNet - b_fNet;
+
+                    let totalNetGram = netFilter;
+
+                    if (isSNI2021) {
+                        // 2. Hitung Net Aceton (Sampel - Blanko)
+                        const s_aAwal = hitungAvg(d.s_a_awal_1, d.s_a_awal_2);
+                        const s_aAkhir = hitungAvg(d.s_a_akhir_1, d.s_a_akhir_2);
+                        const s_aNet = s_aAkhir - s_aAwal;
+
+                        const b_aAwal = hitungAvg(q.b_a_awal_1, q.b_a_awal_2);
+                        const b_aAkhir = hitungAvg(q.b_a_akhir_1, q.b_a_akhir_2);
+                        const b_aNet = b_aAkhir - b_aAwal;
+
+                        const netAceton = s_aNet - b_aNet;
+                        totalNetGram += netAceton;
+                    } else {
+                        // 2. Hitung Net Cawan (Sampel - Blanko)
+                        const s_cAwal = hitungAvg(d.s_c_awal_1, d.s_c_awal_2);
+                        const s_cAkhir = hitungAvg(d.s_c_akhir_1, d.s_c_akhir_2);
+                        const s_cNet = s_cAkhir - s_cAwal;
+
+                        const b_cAwal = hitungAvg(q.b_c_awal_1, q.b_c_awal_2);
+                        const b_cAkhir = hitungAvg(q.b_c_akhir_1, q.b_c_akhir_2);
+                        const b_cNet = b_cAkhir - b_cAwal;
+
+                        const netCawan = s_cNet - b_cNet;
+                        totalNetGram += netCawan;
+                    }
+
+                    const totalNetMg = totalNetGram * 1000;
+                    if (vDgm > 0) {
+                        rawVal = parseFloat((totalNetMg / vDgm).toFixed(2));
+                    }
                 }
 
-                const totalNetMg = totalNetGram * 1000;
+                // Fallback jika tidak ada grav_data atau vDgm <= 0
+                if (rawVal === null) {
+                    const rawStr = pPart.result || pPart.hasil_mg_nm3 || pPart.konsentrasi_1;
+                    if (rawStr !== undefined && rawStr !== null && rawStr !== '') {
+                        rawVal = parseFloat(rawStr);
+                    }
+                }
 
-                if (vDgm > 0) {
-                    const konsentrasi = (totalNetMg / vDgm).toFixed(2);
-                    if (totalNetMg < 0) {
-                        displayHasil = `<span style="color: #ef4444; font-weight: bold;">${konsentrasi} mg/m³ ⚠️</span>`;
+                if (rawVal !== null && !isNaN(rawVal)) {
+                    const currentReg = item.regulations?.[0] || item.regulation_name || '-';
+                    const limitStr = getRegulatoryLimit(pPart.parameter, currentReg);
+                    const limitVal = parseFloat(limitStr);
+                    const limitDisplay = isNaN(limitVal) ? '-' : `${limitStr} mg/m³`;
+                    
+                    const refO2 = getO2Reference(pPart.parameter, currentReg);
+                    
+                    let correctedVal = rawVal;
+                    let isCorrected = false;
+
+                    if (refO2 !== null) {
+                        isCorrected = true;
+                        if (o2Measured !== null && o2Measured > 0 && o2Measured < 21) {
+                            const factor = (21 - refO2) / (21 - o2Measured);
+                            correctedVal = parseFloat((rawVal * factor).toFixed(2));
+                        }
+                    }
+
+                    const rawExceeds = !isNaN(limitVal) && rawVal > limitVal;
+                    const correctedExceeds = !isNaN(limitVal) && correctedVal > limitVal;
+
+                    if (isCorrected) {
+                        displayHasil = `
+                            <div style="font-size: 0.85rem; line-height: 1.4; text-align: left;">
+                                <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #cbd5e1; padding-bottom: 2px; margin-bottom: 2px; gap: 20px;">
+                                    <span style="color: #64748b; font-weight: 600;">Terukur:</span>
+                                    <strong style="color: ${rawExceeds ? '#ef4444' : '#1e293b'}">${rawVal.toFixed(2)} mg/m³ ${rawExceeds ? '⚠️' : ''}</strong>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #cbd5e1; padding-bottom: 2px; margin-bottom: 2px; gap: 20px;">
+                                    <span style="color: #0284c7; font-weight: 700;">Terkoreksi (${refO2}% O₂):</span>
+                                    <strong style="color: ${correctedExceeds ? '#ef4444' : '#0284c7'}">${correctedVal.toFixed(2)} mg/m³ ${correctedExceeds ? '⚠️' : ''}</strong>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; font-size: 0.75rem;">
+                                    <span style="color: #64748b; font-weight: 600;">Baku Mutu:</span>
+                                    <span style="font-weight: 700; color: #334155;">${limitDisplay}</span>
+                                </div>
+                            </div>
+                        `;
                     } else {
-                        displayHasil = `${konsentrasi} mg/m³`;
+                        displayHasil = `
+                            <div style="font-size: 0.85rem; line-height: 1.4; text-align: left;">
+                                <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #cbd5e1; padding-bottom: 2px; margin-bottom: 2px; gap: 20px;">
+                                    <span style="color: #64748b; font-weight: 600;">Terukur:</span>
+                                    <strong style="color: ${rawExceeds ? '#ef4444' : '#1e293b'}">${rawVal.toFixed(2)} mg/m³ ${rawExceeds ? '⚠️' : ''}</strong>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; font-size: 0.75rem;">
+                                    <span style="color: #64748b; font-weight: 600;">Baku Mutu:</span>
+                                    <span style="font-weight: 700; color: #334155;">${limitDisplay}</span>
+                                </div>
+                            </div>
+                        `;
                     }
                 } else {
-                    displayHasil = `<span style="color: #f59e0b;">Cek V.DGM</span>`;
+                    displayHasil = `<span style="color: #f59e0b; font-weight: bold;">Cek V.DGM</span>`;
                 }
             }
         }
@@ -197,8 +349,9 @@ function renderTableRows() {
                     <div style="font-size: 0.7rem; font-weight: 600; color: var(--primary);">${displayVolume}</div>
                 </td>
                 <td>
-                    <div style="font-weight: 800; color: #0f172a; font-size: 1.1rem;">${displayHasil}</div>
-                    <div style="font-size: 0.6rem; color: var(--text-muted);">Hasil Akhir (mg/m³)</div>
+                    <div style="background: #f8fafc; border: 1px solid #cbd5e1; padding: 10px; border-radius: 12px; width: max-content; min-width: 220px; display: inline-block;">
+                        ${displayHasil}
+                    </div>
                 </td>
                 <td>
                     <span class="badge" style="background:${labColor}; color:${labTextColor};">
@@ -321,7 +474,8 @@ async function fetchAntreanAnalisa(keyword = '') {
                         ...s,
                         db_id: coc.id,
                         company: coc.company_name,
-                        needLab: hasLabWork
+                        needLab: hasLabWork,
+                        regulation_name: s.regulation_name || coc.regulation || ''
                     };
 
                     // Saring lokal berdasarkan tab aktif
@@ -468,10 +622,10 @@ async function bukaModalAnalisa(dbId, sampleId) {
                 return `
                     <div style="background: ${isVerified ? '#f8fafc' : '#f0f9ff'}; padding: 15px; border-radius: 12px; border: 1px solid #bae6fd; opacity: ${isVerified ? '0.7' : '1'}; margin-bottom:10px;">
                         <input type="hidden" class="original-idx" value="${originalIndex}">
-                        <div style="font-size: 0.65rem; font-weight: 800; color: #0369a1; margin-bottom: 10px;">METODE: SNI 7117-21:2021 (FILTER ONLY) ${isVerified ? '🔒 LOCKED' : ''}</div>
+                        <div style="font-size: 0.65rem; font-weight: 800; color: #0369a1; margin-bottom: 10px;">METODE: SNI 7117-21:2021 (FILTER + ACETON) ${isVerified ? '🔒 LOCKED' : ''}</div>
                         
                         <div style="margin-bottom: 15px;">
-                            <h4 style="font-size: 0.7rem; color: #64748b; margin-bottom: 8px;">🛡️ QC BLANKO FILTER (mg)</h4>
+                            <h4 style="font-size: 0.7rem; color: #64748b; margin-bottom: 8px;">🛡️ QC BLANKO FILTER (g)</h4>
                             <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px;">
                                 <input ${disabledAttr} type="number" step="0.0001" placeholder="Awal 1" class="qc-input" data-key="b_f_awal_1" value="${p.qc_data?.b_f_awal_1 || ''}">
                                 <input ${disabledAttr} type="number" step="0.0001" placeholder="Awal 2" class="qc-input" data-key="b_f_awal_2" value="${p.qc_data?.b_f_awal_2 || ''}">
@@ -480,13 +634,33 @@ async function bukaModalAnalisa(dbId, sampleId) {
                             </div>
                         </div>
 
-                        <div>
+                        <div style="margin-bottom: 15px;">
+                            <h4 style="font-size: 0.7rem; color: #64748b; margin-bottom: 8px;">🛡️ QC BLANKO ACETON (g)</h4>
+                            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px;">
+                                <input ${disabledAttr} type="number" step="0.0001" placeholder="Awal 1" class="qc-input" data-key="b_a_awal_1" value="${p.qc_data?.b_a_awal_1 || ''}">
+                                <input ${disabledAttr} type="number" step="0.0001" placeholder="Awal 2" class="qc-input" data-key="b_a_awal_2" value="${p.qc_data?.b_a_awal_2 || ''}">
+                                <input ${disabledAttr} type="number" step="0.0001" placeholder="Akhir 1" class="qc-input" data-key="b_a_akhir_1" value="${p.qc_data?.b_a_akhir_1 || ''}">
+                                <input ${disabledAttr} type="number" step="0.0001" placeholder="Akhir 2" class="qc-input" data-key="b_a_akhir_2" value="${p.qc_data?.b_a_akhir_2 || ''}">
+                            </div>
+                        </div>
+
+                        <div style="margin-bottom: 15px;">
                             <h4 style="font-size: 0.7rem; color: var(--primary); margin-bottom: 8px;">🧪 SAMPEL FILTER (g)</h4>
                             <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px;">
                                 <input ${disabledAttr} type="number" step="0.0001" placeholder="Awal 1" class="grav-input" data-key="s_f_awal_1" value="${p.grav_data?.s_f_awal_1 || ''}">
                                 <input ${disabledAttr} type="number" step="0.0001" placeholder="Awal 2" class="grav-input" data-key="s_f_awal_2" value="${p.grav_data?.s_f_awal_2 || ''}">
                                 <input ${disabledAttr} type="number" step="0.0001" placeholder="Akhir 1" class="grav-input" data-key="s_f_akhir_1" value="${p.grav_data?.s_f_akhir_1 || ''}">
                                 <input ${disabledAttr} type="number" step="0.0001" placeholder="Akhir 2" class="grav-input" data-key="s_f_akhir_2" value="${p.grav_data?.s_f_akhir_2 || ''}">
+                            </div>
+                        </div>
+
+                        <div>
+                            <h4 style="font-size: 0.7rem; color: var(--primary); margin-bottom: 8px;">🧪 SAMPEL ACETON (g)</h4>
+                            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px;">
+                                <input ${disabledAttr} type="number" step="0.0001" placeholder="Awal 1" class="grav-input" data-key="s_a_awal_1" value="${p.grav_data?.s_a_awal_1 || ''}">
+                                <input ${disabledAttr} type="number" step="0.0001" placeholder="Awal 2" class="grav-input" data-key="s_a_awal_2" value="${p.grav_data?.s_a_awal_2 || ''}">
+                                <input ${disabledAttr} type="number" step="0.0001" placeholder="Akhir 1" class="grav-input" data-key="s_a_akhir_1" value="${p.grav_data?.s_a_akhir_1 || ''}">
+                                <input ${disabledAttr} type="number" step="0.0001" placeholder="Akhir 2" class="grav-input" data-key="s_a_akhir_2" value="${p.grav_data?.s_a_akhir_2 || ''}">
                             </div>
                         </div>
                     </div>
@@ -498,7 +672,7 @@ async function bukaModalAnalisa(dbId, sampleId) {
                         <div style="font-size: 0.65rem; font-weight: 800; color: #475569; margin-bottom: 10px;">METODE: GRAVIMETRI (FILTER + CAWAN) ${isVerified ? '🔒 LOCKED' : ''}</div>
                         
                         <div style="margin-bottom: 15px;">
-                            <h4 style="font-size: 0.7rem; color: #64748b; margin-bottom: 8px;">🛡️ QC BLANKO (mg)</h4>
+                            <h4 style="font-size: 0.7rem; color: #64748b; margin-bottom: 8px;">🛡️ QC BLANKO (g)</h4>
                             <div style="display: grid; gap: 5px;">
                                 <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px;">
                                     <input ${disabledAttr} type="number" step="0.0001" placeholder="F.Aw 1" class="qc-input" data-key="b_f_awal_1" value="${p.qc_data?.b_f_awal_1 || ''}">
@@ -603,13 +777,51 @@ document.getElementById('btnSimpanAnalisa').addEventListener('click', async () =
                             qcData[input.dataset.key] = input.value;
                         });
 
-                        // 3. HITUNG BERAT BERSIH (mg)
-                        // Menggunakan perhitungan sederhana fNet + cNet
-                        const fNet = parseFloat(gravData.s_f_akhir_1 || 0) - parseFloat(gravData.s_f_awal_1 || 0);
-                        const cNet = parseFloat(gravData.s_c_akhir_1 || 0) - parseFloat(gravData.s_c_awal_1 || 0);
+                        // 3. HITUNG BERAT BERSIH MURNI (mg) DENGAN KOREKSI BLANKO
+                        const method = s.parameters[idx]?.method || '';
+                        const isSNI2021 = method.includes('7117-21:2021');
                         
+                        // A. Hitung Selisih Filter (Rata-rata Sampel - Rata-rata Blanko)
+                        const s_fAwal = hitungAvg(gravData.s_f_awal_1, gravData.s_f_awal_2);
+                        const s_fAkhir = hitungAvg(gravData.s_f_akhir_1, gravData.s_f_akhir_2);
+                        const s_fNet = s_fAkhir - s_fAwal;
+
+                        const b_fAwal = hitungAvg(qcData.b_f_awal_1, qcData.b_f_awal_2);
+                        const b_fAkhir = hitungAvg(qcData.b_f_akhir_1, qcData.b_f_akhir_2);
+                        const b_fNet = b_fAkhir - b_fAwal;
+
+                        const netFilter = s_fNet - b_fNet;
+
+                        let totalNetGram = netFilter;
+                        
+                        if (isSNI2021) {
+                            // B. Hitung Selisih Aceton (Rata-rata Sampel - Rata-rata Blanko)
+                            const s_aAwal = hitungAvg(gravData.s_a_awal_1, gravData.s_a_awal_2);
+                            const s_aAkhir = hitungAvg(gravData.s_a_akhir_1, gravData.s_a_akhir_2);
+                            const s_aNet = s_aAkhir - s_aAwal;
+
+                            const b_aAwal = hitungAvg(qcData.b_a_awal_1, qcData.b_a_awal_2);
+                            const b_aAkhir = hitungAvg(qcData.b_a_akhir_1, qcData.b_a_akhir_2);
+                            const b_aNet = b_aAkhir - b_aAwal;
+
+                            const netAceton = s_aNet - b_aNet;
+                            totalNetGram += netAceton;
+                        } else {
+                            // B. Hitung Selisih Cawan (Rata-rata Sampel - Rata-rata Blanko)
+                            const s_cAwal = hitungAvg(gravData.s_c_awal_1, gravData.s_c_awal_2);
+                            const s_cAkhir = hitungAvg(gravData.s_c_akhir_1, gravData.s_c_akhir_2);
+                            const s_cNet = s_cAkhir - s_cAwal;
+
+                            const b_cAwal = hitungAvg(qcData.b_c_awal_1, qcData.b_c_awal_2);
+                            const b_cAkhir = hitungAvg(qcData.b_c_akhir_1, qcData.b_c_akhir_2);
+                            const b_cNet = b_cAkhir - b_cAwal;
+
+                            const netCawan = s_cNet - b_cNet;
+                            totalNetGram += netCawan;
+                        }
+                        
+                        const totalNetMg = totalNetGram * 1000;
                         const vDgm = parseFloat(s.parameters[idx]?.volume_meter || 0);
-                        const totalNetMg = (fNet + cNet) * 1000;
                         const hasilKonsentrasi = vDgm > 0 ? (totalNetMg / vDgm).toFixed(2) : 0;
 
                         // SIMPAN KE DALAM PARAMETER
