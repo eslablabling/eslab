@@ -372,6 +372,9 @@ async function loadDocuments() {
     await populateCategoryDropdown();
     updateStats();
     renderDocuments();
+
+    // Jalankan auto-sync background secara senyap setelah loading pertama selesai
+    performDriveSync(true);
 }
 
 // Mengupdate Kartu Statistik
@@ -856,10 +859,9 @@ window.closePreviewModalOuter = function(event) {
 };
 
 // --- SYNC ALL LIMS DOCUMENTS WITH ACTUAL GOOGLE DRIVE FILES ---
-async function syncDocumentsWithDrive() {
-    showToast("Menghubungkan ke Google Drive via Supabase Helper...", true);
+async function performDriveSync(silent = false) {
+    if (!silent) showToast("Menghubungkan ke Google Drive via Supabase Helper...", true);
     try {
-        // Panggil Supabase Edge Function untuk mendapatkan daftar file dari Google Drive
         const response = await fetch(`${SB_URL}/functions/v1/upload-to-drive`, {
             method: 'POST',
             headers: {
@@ -876,26 +878,31 @@ async function syncDocumentsWithDrive() {
 
         const data = await response.json();
         const driveFiles = data.files || [];
+        
         if (driveFiles.length === 0) {
-            alert(`Tidak ada berkas yang ditemukan di folder Google Drive. Pastikan berkas-berkas tersebut sudah diunggah ke folder Drive Anda.`);
+            if (!silent) alert(`Tidak ada berkas yang ditemukan di folder Google Drive. Pastikan berkas-berkas tersebut sudah diunggah ke folder Drive Anda.`);
             return;
         }
 
         console.log("Berkas Google Drive ditemukan:", driveFiles);
 
-        // Ambil semua dokumen dari IndexedDB lokal
         const docs = await getAllDocsFromDB();
         let updatedCount = 0;
         let importedCount = 0;
+        let deletedCount = 0;
+        let changed = false;
 
-        // 1. Sinkronisasi berkas LIMS lokal yang sudah ada
+        // 1. Sinkronisasi berkas LIMS lokal yang cocok dengan file di Drive
         for (let doc of docs) {
             const match = driveFiles.find(df => df.name.toLowerCase().trim() === (doc.fileName || '').toLowerCase().trim());
             if (match) {
-                doc.driveLink = match.webViewLink;
-                doc.updatedAt = new Date().toISOString();
-                await updateDocInDB(doc);
-                updatedCount++;
+                if (doc.driveLink !== match.webViewLink) {
+                    doc.driveLink = match.webViewLink;
+                    doc.updatedAt = new Date().toISOString();
+                    await updateDocInDB(doc);
+                    updatedCount++;
+                    changed = true;
+                }
             }
         }
 
@@ -903,7 +910,6 @@ async function syncDocumentsWithDrive() {
         for (let df of driveFiles) {
             const isRegistered = docs.some(doc => (doc.fileName || '').toLowerCase().trim() === df.name.toLowerCase().trim());
             if (!isRegistered) {
-                // Deteksi file extension untuk menentukan fileType
                 const extMatch = df.name.match(/\.([a-zA-Z0-9]+)$/);
                 const ext = extMatch ? extMatch[1].toLowerCase() : '';
                 let fileType = 'other';
@@ -912,10 +918,8 @@ async function syncDocumentsWithDrive() {
                 else if (['docx', 'doc'].includes(ext)) fileType = 'docx';
                 else if (['pptx', 'ppt'].includes(ext)) fileType = 'pptx';
 
-                // Bersihkan nama file untuk judul (tanpa ekstensi)
                 let title = df.name.replace(/\.[a-zA-Z0-9]+$/, "");
                 
-                // Deteksi kategori kasar dari nama file
                 let category = 'lainnya';
                 const lowerName = df.name.toLowerCase();
                 if (lowerName.includes('regulasi') || lowerName.includes('hukum') || lowerName.includes('permen')) category = 'regulasi';
@@ -938,20 +942,46 @@ async function syncDocumentsWithDrive() {
 
                 await addDocToDB(newDoc);
                 importedCount++;
+                changed = true;
             }
         }
 
-        if (updatedCount > 0 || importedCount > 0) {
-            showToast(`Sinkronisasi berhasil! ${updatedCount} berkas terhubung, ${importedCount} berkas baru berhasil diimpor dari Google Drive.`, true);
-            await loadDocuments();
-        } else {
-            alert("Sinkronisasi selesai. Semua berkas di Google Drive sudah tersinkronisasi dengan sistem LIMS.");
+        // 3. Hapus berkas LIMS lokal yang sudah tidak ada di Google Drive (kecuali jika link-nya kosongan/default)
+        for (let doc of docs) {
+            if (doc.driveLink && doc.driveLink !== GOOGLE_DRIVE_FOLDER && doc.fileName) {
+                const stillExists = driveFiles.some(df => df.name.toLowerCase().trim() === doc.fileName.toLowerCase().trim());
+                if (!stillExists) {
+                    await deleteDocFromDB(doc.id);
+                    deletedCount++;
+                    changed = true;
+                }
+            }
         }
 
+        if (changed) {
+            allDocuments = await getAllDocsFromDB();
+            allDocuments.sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt));
+            updateStats();
+            renderDocuments();
+        }
+
+        if (!silent) {
+            if (updatedCount > 0 || importedCount > 0 || deletedCount > 0) {
+                showToast(`Sinkronisasi berhasil! ${updatedCount} berkas terhubung, ${importedCount} berkas baru diimpor, ${deletedCount} berkas usang dihapus.`, true);
+            } else {
+                alert("Sinkronisasi selesai. Semua berkas di Google Drive sudah tersinkronisasi dengan sistem LIMS.");
+            }
+        }
     } catch (err) {
-        console.error("Error saat sinkronisasi:", err);
-        alert("Gagal melakukan sinkronisasi dengan Google Drive: " + err.message);
+        console.error("Gagal melakukan sinkronisasi dengan Google Drive:", err);
+        if (!silent) {
+            alert("Gagal melakukan sinkronisasi dengan Google Drive: " + err.message);
+        }
     }
+}
+
+async function syncDocumentsWithDrive() {
+    await performDriveSync(false);
 }
 
 // --- FUNGSI UNGGAL BERKAS LOKAL LANGSUNG KE GOOGLE DRIVE ---
