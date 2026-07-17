@@ -305,7 +305,7 @@ function handleParameterChange(parameterName) {
         if (pName.includes('velocity')) displayUnit = 'm/s';
         else if (pName.includes('volumetric flow')) displayUnit = 'm³/s';
         else if (isGasPolutan || pName.includes('particulate') || pName.includes('partikulat')) displayUnit = 'mg/Nm³';
-        else if (pName.includes('co2') || pName.includes('o2') || pName.includes('opacity') || pName.includes('opasitas') || pName.includes('isokinetic')) displayUnit = '%';
+        else if (pName.includes('co2') || pName.includes('o2') || pName.includes('opacity') || pName.includes('opasitas') || pName.includes('isokinetic') || pName.includes('water vapor')) displayUnit = '%';
         else displayUnit = firstP.unit || '-';
 
         const currentReg = firstSample.regulations?.[0] || '-';

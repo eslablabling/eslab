@@ -453,9 +453,10 @@ td { padding: 16px; font-size: 0.85rem; border-bottom: 1px solid #f1f5f9; vertic
                         <div class="form-group">
                             <label>Sampling Officers (Max 3)</label>
                             <div style="display: flex; flex-direction: column; gap: 8px;">
-                                <input type="text" id="officer1" class="form-control" placeholder="Petugas 1 (Lead)">
-                                <input type="text" id="officer2" class="form-control" placeholder="Petugas 2">
-                                <input type="text" id="officer3" class="form-control" placeholder="Petugas 3">
+                                <input type="text" id="officer1" class="form-control" placeholder="Petugas 1 (Lead)" list="officerHistoryList">
+                                <input type="text" id="officer2" class="form-control" placeholder="Petugas 2" list="officerHistoryList">
+                                <input type="text" id="officer3" class="form-control" placeholder="Petugas 3" list="officerHistoryList">
+                                <datalist id="officerHistoryList"></datalist>
                             </div>
                         </div>
                     </div>

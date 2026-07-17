@@ -22,7 +22,8 @@ function renderSidebar(role) {
                     { title: "Log Analisa", icon: "🧪", link: "analisa.html", cat: "Menu Kerja" },
                     { title: "Verifikasi & COA", icon: "📜", link: "coa.html", cat: "Menu Kerja" },
                     { title: "Tren Analisa", icon: "📈", link: "tren.html", cat: "Menu Kerja" },
-                    { title: "Dokumen", icon: "📁", link: "dokumen.html", cat: "Menu Kerja" }
+                    { title: "Dokumen", icon: "📁", link: "dokumen.html", cat: "Menu Kerja" },
+                    { title: "Activity Logger", icon: "🛡️", link: "logger.html", cat: "Developer" }
                 ],
                 sampling: [
                     { title: "Master Data", icon: "🗂️", link: "master-data.html", cat: "Main" },
@@ -30,7 +31,8 @@ function renderSidebar(role) {
                     { title: "Monitoring Sampling", icon: "📍", link: "sampling.html", cat: "Menu Kerja" },
                     { title: "Penerimaan Sampel", icon: "📥", link: "penerimaan.html", cat: "Menu Kerja" },
                     { title: "Tren Analisa", icon: "📈", link: "tren.html", cat: "Menu Kerja" },
-                    { title: "Dokumen", icon: "📁", link: "dokumen.html", cat: "Menu Kerja" }
+                    { title: "Dokumen", icon: "📁", link: "dokumen.html", cat: "Menu Kerja" },
+                    { title: "Activity Logger", icon: "🛡️", link: "logger.html", cat: "Developer" }
                 ],
                 admin_ts: [
                     { title: "Master Data", icon: "🗂️", link: "master-data.html", cat: "Main" },
@@ -45,7 +47,8 @@ function renderSidebar(role) {
                     { title: "Penerimaan Sampel", icon: "📥", link: "penerimaan.html", cat: "Menu Kerja" },
                     { title: "Log Analisa", icon: "🧪", link: "analisa.html", cat: "Menu Kerja" },
                     { title: "Tren Analisa", icon: "📈", link: "tren.html", cat: "Menu Kerja" },
-                    { title: "Dokumen", icon: "📁", link: "dokumen.html", cat: "Menu Kerja" }
+                    { title: "Dokumen", icon: "📁", link: "dokumen.html", cat: "Menu Kerja" },
+                    { title: "Activity Logger", icon: "🛡️", link: "logger.html", cat: "Developer" }
                 ],
             };
 

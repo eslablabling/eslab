@@ -450,6 +450,117 @@ async function unverifikasiCoASampling(id, nomorCoc) {
 window.verifikasiCoASampling = verifikasiCoASampling;
 window.unverifikasiCoASampling = unverifikasiCoASampling;
 
+const COA_PARAMETER_ORDER = {
+    // 1. Nitrogen Dioxide (NO2)
+    "nitrogen dioxide (no2)": 1,
+    "nitrogen dioxide": 1,
+    "no2": 1,
+    "nitrogen oxide (no2)": 1,
+    "nitrogen dioksida (no2)": 1, 
+
+    // 2. Nitrogen Monoxide (NO)
+    "nitrogen monoxide (no)": 2,
+    "nitrogen monoxide": 2,
+    "no": 2,
+    "nitrogen monoksida (no)": 2,
+
+    // 3. Nitrogen Oxide (NOx)
+    "nitrogen oxide (nox)": 3,
+    "nitrogen oxide": 3,
+    "nox": 3,
+    "oksida-oksida nitrogen (nox)": 3,
+
+    // 4. Opacity
+    "opacity": 4,
+    "opasitas": 4,
+
+    // 5. Particulate
+    "particulate": 5,
+    "partikulat": 5,
+
+    // 6. Sulfur Dioxide (SO2)
+    "sulfur dioxide (so2)": 6,
+    "sulfur dioksida (so2)": 6,
+    "so2": 6,
+    "sulfur dioxide": 6,
+    "sulfur dioksida": 6,
+
+    // 7. Carbon Monoxide (CO)
+    "carbon monoxide (co)": 7,
+    "karbon monoksida (co)": 7,
+    "co": 7,
+    "carbon monoxide": 7,
+    "karbon monoksida": 7,
+
+    // 8. Oksigen (O2)
+    "oksigen (o2)": 8,
+    "o2": 8,
+    "oxygen (o2)": 8,
+    "oxygen": 8,
+    "oksigen": 8,
+
+    // 9. Carbon Dioxide (CO2)
+    "carbon dioxide (co2)": 9,
+    "co2": 9,
+    "carbon dioxide": 9,
+
+    // 10. Metana (CH4)
+    "metana (ch4)": 10,
+    "ch4": 10,
+    "methane (ch4)": 10,
+    "metana": 10,
+    "methane": 10,
+
+    // 11. Velocity
+    "velocity": 11,
+    "laju alir": 11,
+
+    // 12. Volumetric Flow Rate
+    "volumetric flow rate": 12,
+    "volumetric flow rate (gas volumetric flow rate)": 12,
+
+    // 13. Water Vapor in flue gas
+    "water vapor in flue gas": 13,
+    "water vapor": 13,
+
+    // 14. Num of Traverse Point
+    "num of traverse point": 14,
+
+    // 15. Percent of Isokinetic
+    "percent of isokinetic": 15,
+    "percent of isokinetik": 15
+};
+
+function sortParametersForCoa(parameters) {
+    const getOrder = (paramName) => {
+        if (!paramName) return 99;
+        let clean = paramName.toLowerCase().trim();
+        // Ganti spasi non-breaking (\xa0) dan spasi berulang dengan spasi standar
+        clean = clean.replace(/[\s\xa0]+/g, ' ');
+        // Buang tanda bintang di akhir jika ada
+        if (clean.endsWith('*')) clean = clean.slice(0, -1).trim();
+        
+        // 1. Pencocokan langsung (exact match)
+        if (COA_PARAMETER_ORDER[clean] !== undefined) {
+            return COA_PARAMETER_ORDER[clean];
+        }
+        
+        // 2. Pencocokan sebagian (substring) dengan memprioritaskan kunci terpanjang
+        const keys = Object.keys(COA_PARAMETER_ORDER).sort((a, b) => b.length - a.length);
+        for (const key of keys) {
+            if (clean.includes(key) || key.includes(clean)) {
+                return COA_PARAMETER_ORDER[key];
+            }
+        }
+        
+        return 99;
+    };
+
+    return [...parameters].sort((a, b) => {
+        return getOrder(a.parameter) - getOrder(b.parameter);
+    });
+}
+
 function formatDateEnglish(dateInput) {
     if (!dateInput) return '-';
     const d = new Date(dateInput);
@@ -685,7 +796,7 @@ function renderCoA(data) {
                 </thead>
                 <tbody>
 
-                   ${sample.parameters.map((p, i) => {
+                   ${sortParametersForCoa(sample.parameters).map((p, i) => {
                     const pName = p.parameter ? p.parameter.replace(/\s+/g, ' ').trim().toLowerCase() : '';
                     
                     // Deteksi Gas Polutan
@@ -732,7 +843,7 @@ function renderCoA(data) {
                     if (pName.includes('velocity')) displayUnit = 'm/s';
                     else if (pName.includes('volumetric flow')) displayUnit = 'm³/s';
                     else if (isGasPolutan || pName.includes('particulate')) displayUnit = 'mg/Nm³';
-                    else if (pName.includes('co2') || pName.includes('o2') || pName.includes('opacity') || pName.includes('isokinetic')) displayUnit = '%';
+                    else if (pName.includes('co2') || pName.includes('o2') || pName.includes('opacity') || pName.includes('isokinetic') || pName.includes('water vapor')) displayUnit = '%';
                     else displayUnit = p.unit || '-';
 
                     // 4. Regulasi & Limit
@@ -752,7 +863,7 @@ function renderCoA(data) {
                                        style="width: 16px; height: 16px; cursor: pointer;">
                             </td>
                             <td class="serial-col" style="text-align:center; border: 1px solid #000;"></td>
-                            <td style="padding: 8px; border: 1px solid #000;">${p.parameter}${p.is_accredited ? '' : '*'}</td>
+                            <td style="padding: 6px 8px; border: 1px solid #000; white-space: nowrap;">${p.parameter}${p.is_accredited ? '' : '*'}</td>
                             <td style="text-align:center; font-weight:bold; border: 1px solid #000;">${finalDisplayResult}</td>
                             <td style="text-align:center; border: 1px solid #000;">${autoLimit}</td>
                             <td style="text-align:center; border: 1px solid #000;">${displayUnit}</td>
@@ -786,50 +897,12 @@ function renderCoA(data) {
 }
 function exportSingleCoA(docInfo, verifiedSamples) {
     const excelRows = [];
-    
-    // 1. Definisikan Urutan sesuai gambar (Gas Polutan -> Fisik/Isokinetik)
-    const parameterOrder = {
-        // Gas Polutan (Urutan Awal)
-        "nitrogen oxide (no2)": 1,
-        "nitrogen dioksida (no2)": 1, 
-        "nitrogen monoksida (no)": 2,
-        "oksida-oksida nitrogen (nox)": 3,
-        "sulfur dioxide (so2)": 6,
-        "sulfur dioksida (so2)": 6,
-        "carbon monoxide (co)": 7,
-        "karbon monoksida (co)": 7,
-
-        // Parameter Fisik & Isokinetik (Urutan Akhir)
-        "opacity": 4,
-        "opasitas": 4,
-        "particulate": 5,
-        "partikulat": 5,
-        "oksigen (o2)": 8,
-        "o2": 8,
-        "carbon dioxide (co2)": 9,
-        "co2": 9,
-        "velocity": 10,
-        "laju alir": 10,
-        "volumetric flow rate": 11,
-        "water vapor in flue gas": 12,
-        "num of traverse point": 13,
-        "percent of isokinetic": 14
-    };
 
     verifiedSamples.forEach(sample => {
         const regulation = sample?.regulation_name ?? docInfo?.regulation ?? '';
 
         // --- PROSES PENGURUTAN (SORTING) ---
-        const sortedParameters = [...sample.parameters].sort((a, b) => {
-            const nameA = (a.parameter || '').toLowerCase().trim();
-            const nameB = (b.parameter || '').toLowerCase().trim();
-            
-            // Jika parameter tidak ada di daftar, beri urutan besar (99) agar tampil di paling bawah
-            const orderA = parameterOrder[nameA] ?? 99;
-            const orderB = parameterOrder[nameB] ?? 99;
-            
-            return orderA - orderB;
-        });
+        const sortedParameters = sortParametersForCoa(sample.parameters);
 
         const o2Param = sample.parameters.find(sp => {
             const spName = (sp.parameter || '').toLowerCase().trim();

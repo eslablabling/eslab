@@ -5,6 +5,7 @@ let filteredCocList = [];
 let rawCocListData = [];
 let currentUserRole = '';
 let companyHistory = [];
+let officerHistory = [];
 
 async function loadCompanyHistory() {
     try {
@@ -36,6 +37,44 @@ async function loadCompanyHistory() {
         console.log("Company history loaded in COC:", companyHistory.length, "companies");
     } catch (err) {
         console.error("Gagal memuat history perusahaan:", err);
+    }
+}
+
+async function loadOfficerHistory() {
+    try {
+        const { data, error } = await _supabase
+            .from('coc_emisi')
+            .select('sampling_officer')
+            .order('created_at', { ascending: false });
+            
+        if (error) throw error;
+
+        const seen = new Set();
+        officerHistory = [];
+        
+        (data || []).forEach(item => {
+            if (item.sampling_officer) {
+                const officersList = item.sampling_officer.split(',').map(name => name.trim());
+                officersList.forEach(name => {
+                    if (name && !seen.has(name.toLowerCase())) {
+                        seen.add(name.toLowerCase());
+                        officerHistory.push(name);
+                    }
+                });
+            }
+        });
+
+        // Populate datalist
+        const datalist = document.getElementById('officerHistoryList');
+        if (datalist) {
+            datalist.innerHTML = officerHistory
+                .map(name => `<option value="${name}">${name}</option>`)
+                .join('');
+        }
+        
+        console.log("Officer history loaded in COC:", officerHistory.length, "officers");
+    } catch (err) {
+        console.error("Gagal memuat history petugas:", err);
     }
 }
 
@@ -72,6 +111,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     await initQuotationNumber();
     await loadRegulasiDropdown(); // Mengisi list regulasi untuk auto-complete
     await loadCompanyHistory();   // Memuat riwayat nama perusahaan
+    await loadOfficerHistory();   // Memuat riwayat petugas sampling
 
     // Event listener untuk auto-fill nama perusahaan dari history
     const companyInput = document.getElementById('companyName');
@@ -465,6 +505,7 @@ async function saveCoc() {
         // 5. UPDATE TEMPLATE CETAK & PRINT
         // Kita panggil fungsi fillPrintTemplate (yang sudah diletakkan di luar)
         await loadCompanyHistory();
+        await loadOfficerHistory();
         alert("Berhasil disimpan! Menyiapkan dokumen...");
         
         fillPrintTemplate(cocData, items); // Mengisi data ke area preview cetak
@@ -587,15 +628,47 @@ async function updateParametersByTags(tagContainer) {
     // Tampilkan tombol Select All karena parameter sudah siap
     selectAllArea.style.display = isReadonly ? 'none' : 'block'; 
 
-    paramContainer.innerHTML = uniqueParams.map(p => `
-        <div class="param-row" style="display: flex; align-items: center; justify-content: space-between; gap: 15px; min-height: 32px;">
-            <label style="font-size: 0.8rem; display: flex; align-items: center; gap: 10px; cursor:${isReadonly ? 'not-allowed' : 'pointer'}; margin:0; flex: 1; color: #334155;">
-                <input type="checkbox" class="param-checkbox" value="${p}" ${isReadonly ? 'disabled' : ''} onchange="renderMethodDropdown(this)"> 
-                <span style="font-weight: 600;">${p}</span>
-            </label>
-            <div id="slot-metode-${p.replace(/[^a-z0-9]/gi, '-')}" style="width: 220px; display: flex; align-items: center;"></div>
-        </div>
-    `).join('');
+    const hasDashReg = selectedRegs.includes('-');
+    const hasParticulateInMap = uniqueParams.some(param => param.toUpperCase().includes('PARTICULATE') || param.toUpperCase().includes('PARTIKULAT'));
+
+    const shouldAutoCheck = (p) => {
+        if (window.isLoadingSavedCoc) return false;
+
+        const pUpper = p.toUpperCase();
+        const isO2 = pUpper.includes('OXYGEN') || pUpper.includes('O2');
+        const isCO2 = pUpper.includes('CARBON DIOXIDE') || pUpper.includes('CO2');
+        if (isO2 || isCO2) return true;
+
+        if (hasDashReg && hasParticulateInMap) {
+            const isIsokineticOrParticulate = [
+                'VOLUMETRIC FLOW RATE', 'NUM OF TRAVERSE POINT', 'PERCENT OF ISOKINETIC', 
+                'VELOCITY', 'PARTICULATE', 'PARTIKULAT', 'WATER VAPOR'
+            ].some(k => pUpper.includes(k));
+            if (isIsokineticOrParticulate) return true;
+        }
+
+        return false;
+    };
+
+    paramContainer.innerHTML = uniqueParams.map(p => {
+        const checkedStr = shouldAutoCheck(p) ? 'checked' : '';
+        return `
+            <div class="param-row" style="display: flex; align-items: center; justify-content: space-between; gap: 15px; min-height: 32px;">
+                <label style="font-size: 0.8rem; display: flex; align-items: center; gap: 10px; cursor:${isReadonly ? 'not-allowed' : 'pointer'}; margin:0; flex: 1; color: #334155;">
+                    <input type="checkbox" class="param-checkbox" value="${p}" ${checkedStr} ${isReadonly ? 'disabled' : ''} onchange="renderMethodDropdown(this)"> 
+                    <span style="font-weight: 600;">${p}</span>
+                </label>
+                <div id="slot-metode-${p.replace(/[^a-z0-9]/gi, '-')}" style="width: 220px; display: flex; align-items: center;"></div>
+            </div>
+        `;
+    }).join('');
+
+    // Render dropdown metode untuk parameter yang otomatis dicentang
+    if (!window.isLoadingSavedCoc) {
+        paramContainer.querySelectorAll('.param-checkbox:checked').forEach(cb => {
+            renderMethodDropdown(cb);
+        });
+    }
 }
 
 // Fungsi untuk memunculkan dropdown saat checkbox dicentang
@@ -612,14 +685,133 @@ function renderMethodDropdown(checkbox) {
     const isReadonly = formContainer && formContainer.dataset.readonly === 'true';
 
     if (checkbox.checked) {
+        let defaultValue = availableMethods[0] || '';
+        
+        // 1. Isokinetik & Velocity matching Particulate
+        const targetParams = ['Volumetric Flow Rate', 'Num of Traverse Point', 'Percent of Isokinetic', 'Velocity', 'Water Vapor in flue gas'];
+        if (targetParams.includes(paramName)) {
+            const partSelect = row.querySelector(`select[data-param="Particulate"]`) || row.querySelector(`select[data-param="Partikulat"]`);
+            if (partSelect) {
+                const partVal = partSelect.value || '';
+                let keyword = '';
+                if (partVal.toUpperCase().includes('EPA')) {
+                    keyword = 'EPA';
+                } else if (partVal.includes('2009')) {
+                    keyword = '2009';
+                } else if (partVal.includes('2021')) {
+                    keyword = '2021';
+                }
+                
+                if (keyword) {
+                    const match = availableMethods.find(m => {
+                        const txt = m.toUpperCase();
+                        if (keyword === 'EPA') return txt.includes('EPA');
+                        if (keyword === '2009') return txt.includes('2009');
+                        if (keyword === '2021') return txt.includes('2021');
+                        return false;
+                    });
+                    if (match) {
+                        defaultValue = match;
+                    }
+                }
+            }
+        }
+
+        // 2. Gas NDIR matching Oxygen Paramagnetic
+        const gasParams = ['CARBON MONOXIDE', 'CARBON DIOXIDE', 'NITROGEN OXIDE', 'NITROGEN MONOXIDE', 'SULFUR DIOXIDE', 'NITROGEN DIOXIDE', 'CO', 'CO2', 'NOX', 'NO', 'SO2', 'NO2'];
+        if (gasParams.some(g => paramName.toUpperCase().includes(g))) {
+            const o2Select = row.querySelector(`select[data-param="Oxygen (O2)"]`) || row.querySelector(`select[data-param="O2"]`);
+            if (o2Select) {
+                const o2Val = o2Select.value || '';
+                const isParamagnetic = o2Val.toUpperCase().includes('PARAMAGNETIC') || o2Val.toUpperCase().includes('PARAMAGNETIK');
+                if (isParamagnetic) {
+                    const match = availableMethods.find(m => m.toUpperCase().includes('NDIR'));
+                    if (match) defaultValue = match;
+                } else {
+                    const match = availableMethods.find(m => !m.toUpperCase().includes('NDIR'));
+                    if (match) defaultValue = match;
+                }
+            }
+        }
+
         slot.innerHTML = `
             <select class="form-control select-metode" data-param="${paramName}" ${isReadonly ? 'disabled' : ''}
+                    onchange="handleMethodDropdownChange(this)"
                     style="font-size: 0.7rem; height: 28px; padding: 0 10px; border-radius: 20px; border: 1px solid ${isReadonly ? '#cbd5e1' : '#2563eb'}; width: 100%; background: ${isReadonly ? '#f1f5f9' : '#fff'}; cursor: ${isReadonly ? 'not-allowed' : 'pointer'};">
-                ${availableMethods.map(m => `<option value="${m}">${m}</option>`).join('')}
+                ${availableMethods.map(m => `<option value="${m}" ${m === defaultValue ? 'selected' : ''}>${m}</option>`).join('')}
             </select>
         `;
     } else {
         slot.innerHTML = ''; 
+    }
+}
+
+function handleMethodDropdownChange(select) {
+    const paramName = select.dataset.param;
+    
+    // 1. Particulate / Partikulat change propagates to isokinetic / velocity
+    if (paramName.toUpperCase().includes('PARTICULATE') || paramName.toUpperCase().includes('PARTIKULAT')) {
+        const val = select.value || '';
+        let keyword = '';
+        if (val.toUpperCase().includes('EPA')) {
+            keyword = 'EPA';
+        } else if (val.includes('2009')) {
+            keyword = '2009';
+        } else if (val.includes('2021')) {
+            keyword = '2021';
+        }
+
+        if (keyword) {
+            const row = select.closest('tr');
+            const targetParams = ['Volumetric Flow Rate', 'Num of Traverse Point', 'Percent of Isokinetic', 'Velocity', 'Water Vapor in flue gas'];
+            targetParams.forEach(target => {
+                const safeId = target.replace(/[^a-z0-9]/gi, '-');
+                const otherSelect = row.querySelector(`#slot-metode-${safeId} select`);
+                if (otherSelect) {
+                    const options = Array.from(otherSelect.options);
+                    const match = options.find(opt => {
+                        const txt = opt.value.toUpperCase();
+                        if (keyword === 'EPA') return txt.includes('EPA');
+                        if (keyword === '2009') return txt.includes('2009');
+                        if (keyword === '2021') return txt.includes('2021');
+                        return false;
+                    });
+                    if (match) {
+                        otherSelect.value = match.value;
+                    }
+                }
+            });
+        }
+    }
+
+    // 2. Oxygen (O2) / O2 change propagates to gas parameters (NDIR vs non-NDIR)
+    const isO2 = paramName.toUpperCase() === 'OXYGEN (O2)' || paramName.toUpperCase() === 'O2';
+    if (isO2) {
+        const val = select.value || '';
+        const isParamagnetic = val.toUpperCase().includes('PARAMAGNETIC') || val.toUpperCase().includes('PARAMAGNETIK');
+        const row = select.closest('tr');
+        
+        const gasParams = ['CARBON MONOXIDE', 'CARBON DIOXIDE', 'NITROGEN OXIDE', 'NITROGEN MONOXIDE', 'SULFUR DIOXIDE', 'NITROGEN DIOXIDE', 'CO', 'CO2', 'NOX', 'NO', 'SO2', 'NO2'];
+        const otherSelects = Array.from(row.querySelectorAll('select.select-metode'));
+        otherSelects.forEach(otherSelect => {
+            const otherParamName = otherSelect.dataset.param;
+            if (otherParamName.toUpperCase() === 'OXYGEN (O2)' || otherParamName.toUpperCase() === 'O2') return;
+
+            const isGas = gasParams.some(g => otherParamName.toUpperCase().includes(g));
+            if (isGas) {
+                if (isParamagnetic) {
+                    const ndirOption = Array.from(otherSelect.options).find(opt => opt.value.toUpperCase().includes('NDIR'));
+                    if (ndirOption) {
+                        otherSelect.value = ndirOption.value;
+                    }
+                } else {
+                    const nonNdirOption = Array.from(otherSelect.options).find(opt => !opt.value.toUpperCase().includes('NDIR'));
+                    if (nonNdirOption) {
+                        otherSelect.value = nonNdirOption.value;
+                    }
+                }
+            }
+        });
     }
 }
 
@@ -818,8 +1010,12 @@ async function directPrint(id) {
 
 // --- MEMASUKKAN DATA KE FORM (LOAD DATA) ---
 async function loadCocToForm(id, isReadonly = false) {
+    window.isLoadingSavedCoc = true;
     const { data, error } = await _supabase.from('coc_emisi').select('*').eq('id', id).single();
-    if (error) return alert("Gagal memuat data");
+    if (error) {
+        window.isLoadingSavedCoc = false;
+        return alert("Gagal memuat data");
+    }
 
     const formContainer = document.getElementById('cocFormContainer');
     if (formContainer) {
@@ -886,6 +1082,7 @@ async function loadCocToForm(id, isReadonly = false) {
         });
     }
 
+    window.isLoadingSavedCoc = false;
     setFormReadonly(isReadonly);
 
     let existingPrintBtn = document.getElementById('extraPrintBtn');

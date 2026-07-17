@@ -494,7 +494,7 @@ function renderSamplingForm(readOnly = false) {
         };
         const missingSet = new Set();
         Object.keys(checkMap).forEach(key => {
-            const val = currentSample[key];
+            const val = key === 'nama_cerobong' ? (currentSample.nama_cerobong || currentSample.description) : currentSample[key];
             if (val === undefined || val === null || (typeof val === 'string' && val.trim() === '')) {
                 missingSet.add(checkMap[key]);
             }
@@ -614,7 +614,7 @@ function renderSamplingForm(readOnly = false) {
                     missingSet.add(`Konsentrasi ${p.parameter}`);
                 }
                 if (isParticulate) {
-                    if (!p.no_filter) {
+                    if (!p.no_filter && !currentSample.sample_id) {
                         missingSet.add(`No. Filter ${p.parameter}`);
                     }
                     if (p.volume_meter === undefined || p.volume_meter === '') {
@@ -686,7 +686,16 @@ function renderSamplingForm(readOnly = false) {
                     <div><label class="input-label">Ambien (°C)</label><input type="number" step="0.1" class="inp-field" ${disabledAttr} value="${s.temp_ambien || ''}" oninput="updateLocalData(${idx}, 'temp_ambien', this.value)"></div>
                     <div><label class="input-label">Lembab (%)</label><input type="number" step="0.1" class="inp-field" ${disabledAttr} value="${s.kelembaban || ''}" oninput="updateLocalData(${idx}, 'kelembaban', this.value)"></div>
                     <div><label class="input-label">Kec. Angin (m/s)</label><input type="number" step="0.1" class="inp-field" ${disabledAttr} value="${s.kec_angin || ''}" oninput="updateLocalData(${idx}, 'kec_angin', this.value)"></div>
-                    <div><label class="input-label">Cuaca</label><input type="text" class="inp-field" ${disabledAttr} placeholder="Cerah" value="${s.catatan_cuaca || ''}" oninput="updateLocalData(${idx}, 'catatan_cuaca', this.value)"></div>
+                    <div>
+                        <label class="input-label">Cuaca</label>
+                        <select class="inp-field" ${disabledAttr} onchange="updateLocalData(${idx}, 'catatan_cuaca', this.value)">
+                            <option value="" ${!s.catatan_cuaca ? 'selected' : ''}>- Pilih Cuaca -</option>
+                            <option value="Cerah" ${s.catatan_cuaca === 'Cerah' ? 'selected' : ''}>Cerah</option>
+                            <option value="Cerah Berawan" ${s.catatan_cuaca === 'Cerah Berawan' ? 'selected' : ''}>Cerah Berawan</option>
+                            <option value="Berawan" ${s.catatan_cuaca === 'Berawan' ? 'selected' : ''}>Berawan</option>
+                            <option value="Hujan" ${s.catatan_cuaca === 'Hujan' ? 'selected' : ''}>Hujan</option>
+                        </select>
+                    </div>
                 </div>
             </div>`;
         }
@@ -1112,8 +1121,144 @@ function getParamCategory(paramName) {
 }
 
 
+function getSampleMissingFields(s) {
+    const missing = [];
+    if (!s) return missing;
+
+    // 1. Identitas & Meteo
+    const checkMap = {
+        'nama_cerobong': 'Nama Cerobong',
+        'bahan_bakar': 'Bahan Bakar',
+        'koordinat': 'Koordinat',
+        'tgl_sampling': 'Tgl Sampling',
+        'temp_ambien': 'Ambien (°C)',
+        'kelembaban': 'Lembab (%)',
+        'kec_angin': 'Kec. Angin (m/s)',
+        'catatan_cuaca': 'Cuaca'
+    };
+    Object.keys(checkMap).forEach(key => {
+        const val = key === 'nama_cerobong' ? (s.nama_cerobong || s.description) : s[key];
+        if (val === undefined || val === null || (typeof val === 'string' && val.trim() === '')) {
+            missing.push(`Identitas: ${checkMap[key]}`);
+        }
+    });
+
+    // 2. Gas Direct
+    const hasGasParams = s.parameters.some(p => {
+        const name = p.parameter.toUpperCase();
+        return ['NO', 'NO2', 'NOX', 'SO2', 'CO', 'O2', 'CO2', 'VELOCITY'].some(key => name.includes(key));
+    });
+    if (hasGasParams) {
+        const headerMap = {
+            'waktu_gas': 'Waktu Gas Analyzer',
+            'no_alat_gas': 'No. Alat Gas Analyzer',
+            'temp_gas': 'Suhu Gas (°C)',
+            'tekanan_atm': 'Tekanan ATM (mmHg)'
+        };
+        Object.keys(headerMap).forEach(key => {
+            const val = s[key];
+            if (val === undefined || val === null || (typeof val === 'string' && val.trim() === '')) {
+                missing.push(`Gas: ${headerMap[key]}`);
+            }
+        });
+
+        s.parameters.forEach(p => {
+            const name = p.parameter.toUpperCase();
+            const isGas = ['NO', 'NO2', 'NOX', 'SO2', 'CO', 'O2', 'CO2', 'VELOCITY'].some(key => name.includes(key));
+            if (!isGas) return;
+            if (name.includes('NOX') || name.includes('NITROGEN OXIDE')) return;
+            
+            if (p.konsentrasi_1 === undefined || p.konsentrasi_1 === '' ||
+                p.konsentrasi_2 === undefined || p.konsentrasi_2 === '' ||
+                p.konsentrasi_3 === undefined || p.konsentrasi_3 === '') {
+                missing.push(`Gas: R1/R2/R3 untuk ${p.parameter}`);
+            }
+        });
+    }
+
+    // 3. Opasitas
+    const hasOpacity = s.parameters.some(p => p.parameter.toUpperCase().includes('OPACITY') || p.parameter.toUpperCase().includes('OPASITAS'));
+    if (hasOpacity) {
+        const opacityMap = {
+            'jarak_pengamat_awal': 'Jarak Pengamat Awal',
+            'jarak_pengamat_akhir': 'Jarak Pengamat Akhir',
+            'arah_pengamat_awal': 'Arah Pengamat Awal',
+            'arah_pengamat_akhir': 'Arah Pengamat Akhir',
+            'warna_emisi_awal': 'Warna Emisi Awal',
+            'warna_emisi_akhir': 'Warna Emisi Akhir',
+            'latar_asap_awal': 'Latar Belakang Awal',
+            'latar_asap_akhir': 'Latar Belakang Akhir'
+        };
+        Object.keys(opacityMap).forEach(key => {
+            const val = s[key];
+            if (val === undefined || val === null || (typeof val === 'string' && val.trim() === '')) {
+                missing.push(`Opasitas: ${opacityMap[key]}`);
+            }
+        });
+
+        if (!s.opasitas_mulai || !s.opasitas_akhir) {
+            missing.push(`Opasitas: Waktu Pengamatan`);
+        }
+
+        if (!s.opasitas_matrix) {
+            missing.push(`Opasitas: Matrix Pembacaan belum lengkap`);
+        } else {
+            let matrixIncomplete = false;
+            for (let m = 0; m < 6; m++) {
+                for (let d = 0; d < 4; d++) {
+                    const cell = s.opasitas_matrix[m]?.[d];
+                    if (cell === undefined || cell === null || cell === '') {
+                        matrixIncomplete = true;
+                        break;
+                    }
+                }
+                if (matrixIncomplete) break;
+            }
+            if (matrixIncomplete) {
+                missing.push(`Opasitas: Matrix Pembacaan belum lengkap`);
+            }
+        }
+    }
+
+    // 4. Isokinetik & Inlab
+    const hasParticulate = s.parameters.some(p => p.parameter.toUpperCase().includes('PARTICULATE') || p.parameter.toUpperCase().includes('PARTIKULAT'));
+    if (hasParticulate) {
+        const techKeys = ['VELOCITY', 'VOLUMETRIC FLOW RATE', 'WATER VAPOR', 'NUM OF TRAVERSE POINT', 'PERCENT OF ISOKINETIC'];
+        techKeys.forEach(key => {
+            const found = s.parameters.find(p => p.parameter.toUpperCase().includes(key));
+            if (found && (found.konsentrasi_1 === undefined || found.konsentrasi_1 === '')) {
+                missing.push(`Isokinetik: ${found.parameter}`);
+            }
+        });
+
+        const inlabParams = s.parameters.filter(p => p.parameter.toUpperCase().includes('PARTICULATE') || p.parameter.toUpperCase().includes('PARTIKULAT'));
+        inlabParams.forEach(p => {
+            if (!p.no_filter && !s.sample_id) {
+                missing.push(`Inlab: No. Filter ${p.parameter}`);
+            }
+            if (p.volume_meter === undefined || p.volume_meter === '') {
+                missing.push(`Inlab: Vol Gas Meter ${p.parameter}`);
+            }
+        });
+    }
+
+    return missing;
+}
+
 function triggerTabCompletenessUpdate() {
     const isReadOnly = document.getElementById('btnSaveSampling')?.style.display === 'none';
+
+    // Auto-update status of current sample if it becomes complete
+    const s = samplesDataArray[currentSampleIdx];
+    if (s && !isReadOnly) {
+        const missing = getSampleMissingFields(s);
+        if (missing.length === 0 && s.status !== 'Done') {
+            s.status = 'Done';
+        } else if (missing.length > 0 && s.status === 'Done') {
+            s.status = 'Pending';
+        }
+    }
+
     renderTabNavigation(isReadOnly);
 }
 
@@ -1143,7 +1288,17 @@ function updateParamField(sampleIdx, paramIdx, key, val) {
 }
 
 function updateLocalData(idx, key, val) {
-    samplesDataArray[idx][key] = val;
+    const s = samplesDataArray[idx];
+    if (key === 'status' && val === 'Done') {
+        const missing = getSampleMissingFields(s);
+        if (missing.length > 0) {
+            alert(`Tidak dapat mengubah status menjadi 'Done' karena beberapa kolom masih kosong:\n\n- ${missing.join('\n- ')}`);
+            s.status = 'Pending';
+            triggerTabCompletenessUpdate();
+            return;
+        }
+    }
+    s[key] = val;
     triggerTabCompletenessUpdate();
 }
 
@@ -1151,6 +1306,22 @@ async function saveAllSamplingData() {
     const btn = document.getElementById('btnSaveSampling');
     btn.disabled = true;
     btn.innerText = "⏳ MENYIMPAN...";
+
+    // Validasi & Update status dari semua sampel otomatis saat simpan
+    let warningText = "";
+    samplesDataArray.forEach(s => {
+        const missing = getSampleMissingFields(s);
+        if (missing.length === 0) {
+            s.status = 'Done';
+        } else {
+            s.status = 'Pending';
+            warningText += `\n📍 Sampel ${s.sample_id} (${s.description || ''}) belum lengkap:\n - ${missing.join('\n - ')}\n`;
+        }
+    });
+
+    if (warningText) {
+        alert("Peringatan: Beberapa sampel belum terisi lengkap dan statusnya diatur ke 'Pending':" + warningText);
+    }
 
     const allDone = samplesDataArray.length > 0 && samplesDataArray.every(s => s.status === 'Done');
     const globalStatus = allDone ? 'Selesai' : 'In Progress';
