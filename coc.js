@@ -573,11 +573,22 @@ async function saveCoc() {
             }
         }
 
+        // Helper untuk generate UUID secara offline/client-side jika sampel baru
+        const generateUUID = () => {
+            if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+                return crypto.randomUUID();
+            }
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+        };
+
         // Bulk upsert samples
         const samplesPayload = items.map(item => {
             const existingSample = existingSamplesMap.get(item.sample_id) || {};
             return {
-                id: existingSample.id || undefined,
+                id: existingSample.id || generateUUID(),
                 coc_id: cocId,
                 sample_id: item.sample_id,
                 description: item.description,

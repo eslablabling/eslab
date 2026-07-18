@@ -27,18 +27,81 @@ function getRegulatoryLimit(paramName, regulationName) {
     if (!paramName || !regulationName || masterEmisi.length === 0) return '-';
 
     const cleanParam = paramName.trim().toLowerCase();
-    const cleanReg = (Array.isArray(regulationName) ? regulationName[0] : regulationName).trim().toLowerCase();
+    const regs = (Array.isArray(regulationName) ? regulationName : [regulationName])
+        .map(r => r ? r.trim().toLowerCase() : '')
+        .filter(r => r !== '' && r !== '-');
 
-    const match = masterEmisi.find(m => {
-        const masterParam = m.parameter ? m.parameter.toLowerCase().trim() : '';
-        const masterReg = m.regulasi ? m.regulasi.toLowerCase().trim() : '';
-        return masterParam === cleanParam && masterReg === cleanReg;
-    });
-    
-    if (match && (match.baku_mutu !== null && match.baku_mutu !== undefined)) {
-        return match.baku_mutu.toString(); 
+    if (regs.length === 0) return '-';
+
+    for (const r of regs) {
+        const match = masterEmisi.find(m => {
+            const masterParam = m.parameter ? m.parameter.toLowerCase().trim() : '';
+            const masterReg = m.regulasi ? m.regulasi.toLowerCase().trim() : '';
+            return masterParam === cleanParam && masterReg === r;
+        });
+        
+        if (match && match.baku_mutu !== null && match.baku_mutu !== undefined) {
+            return match.baku_mutu.toString(); 
+        }
     }
     return '-';
+}
+
+function getO2Reference(paramName, regulationName) {
+    if (!paramName || !regulationName || masterEmisi.length === 0) return null;
+
+    const cleanParam = paramName.trim().toLowerCase();
+    const regs = (Array.isArray(regulationName) ? regulationName : [regulationName])
+        .map(r => r ? r.trim().toLowerCase() : '')
+        .filter(r => r !== '' && r !== '-');
+
+    if (regs.length === 0) return null;
+
+    for (const r of regs) {
+        const match = masterEmisi.find(m => {
+            const masterParam = m.parameter ? m.parameter.toLowerCase().trim() : '';
+            const masterReg = m.regulasi ? m.regulasi.toLowerCase().trim() : '';
+            return masterParam === cleanParam && masterReg === r;
+        });
+        
+        if (match && match.koreksi_o2 !== null && match.koreksi_o2 !== undefined && match.koreksi_o2 !== '') {
+            const ref = parseFloat(match.koreksi_o2);
+            if (!isNaN(ref)) return ref;
+        }
+    }
+    return null;
+}
+
+function getO2MeasuredValue(s) {
+    const o2Param = s.parameters.find(p => /Oxygen|Oksigen|\bO2\b/i.test(p.parameter));
+    if (!o2Param) return 0;
+    const r1 = parseFloat(o2Param.konsentrasi_1) || 0;
+    const r2 = parseFloat(o2Param.konsentrasi_2) || 0;
+    const r3 = parseFloat(o2Param.konsentrasi_3) || 0;
+    return (r1 + r2 + r3) / 3;
+}
+
+function getBadgeHtml(label, val, limitVal) {
+    const isNumberLimit = !isNaN(limitVal);
+    let style = "";
+    let icon = "";
+    
+    if (isNumberLimit) {
+        if (val > limitVal) {
+            // Exceeds Baku Mutu (RED)
+            style = "background: #fee2e2; color: #991b1b; border: 1.5px solid #fca5a5; font-weight: 800;";
+            icon = "⚠️ ";
+        } else {
+            // Safe (GREEN)
+            style = "background: #f0fdf4; color: #166534; border: 1.5px solid #bbf7d0; font-weight: 800;";
+            icon = "✅ ";
+        }
+    } else {
+        // Neutral (BLUE)
+        style = "background: #eff6ff; color: #1e40af; border: 1px solid #dbeafe; font-weight: 700;";
+    }
+    
+    return `<span style="font-size:0.75rem; padding:3px 10px; border-radius:6px; ${style}">${icon}${label}: ${val.toFixed(2)} mg/Nm³</span>`;
 }
 
 window.addEventListener('auth-ready', async (e) => {
@@ -138,10 +201,11 @@ async function fetchSamplingData(keyword = '') {
     // Saring data berdasarkan tab aktif secara lokal
     const filteredData = data.filter(item => {
         const status = item.status_sampling || 'Pending';
+        const isVerifiedStatus = status === 'Sampling Verified' || status === 'Verified';
         if (currentFilterTab === 'belum_verif') {
-            return status !== 'Verified';
+            return !isVerifiedStatus;
         } else {
-            return status === 'Verified';
+            return isVerifiedStatus;
         }
     });
 
@@ -172,7 +236,7 @@ function renderTableRows() {
     tbody.innerHTML = paginatedSamples.map(item => {
         const total = item.samples ? item.samples.length : 0;
         const done = item.samples ? item.samples.filter(s => s.status === 'Done').length : 0;
-        const isVerified = item.status_sampling === 'Verified';
+        const isVerified = item.status_sampling === 'Sampling Verified' || item.status_sampling === 'Verified';
         const isSelesai = item.status_sampling === 'Selesai';
 
         // Styling Badge Status
@@ -180,8 +244,11 @@ function renderTableRows() {
         let statusLabel = item.status_sampling || 'Pending';
         let badgeStyle = "";
 
-        if (isVerified) {
-            statusLabel = "🔒 Verified";
+        if (item.status_sampling === 'Verified') {
+            statusLabel = "🔒 Verified COA";
+            badgeStyle = "background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 700;";
+        } else if (item.status_sampling === 'Sampling Verified') {
+            statusLabel = "🔒 Verified Sampling";
             badgeStyle = "background: #eff6ff; color: #1d4ed8; border: 1px solid #dbeafe; padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 700;";
         } else if (isSelesai) {
             statusLabel = "Selesai";
@@ -661,7 +728,20 @@ function renderSamplingForm(readOnly = false) {
                 </div>
                 <div class="grid-field">
                     <div><label class="input-label">Nama Cerobong</label><input type="text" class="inp-field" ${disabledAttr} value="${s.nama_cerobong || s.description || ''}" oninput="updateLocalData(${idx}, 'nama_cerobong', this.value)"></div>
-                    <div><label class="input-label">Bahan Bakar</label><input type="text" class="inp-field" ${disabledAttr} value="${s.bahan_bakar || ''}" oninput="updateLocalData(${idx}, 'bahan_bakar', this.value)"></div>
+                    <div>
+                        <label class="input-label">Bahan Bakar</label>
+                        <select class="inp-field" ${disabledAttr} onchange="handleBahanBakarChange(${idx}, this.value)" id="select-bahan-bakar-${idx}">
+                            <option value="">- Pilih Bahan Bakar -</option>
+                            <option value="Natural Gas" ${s.bahan_bakar === 'Natural Gas' ? 'selected' : ''}>Natural Gas</option>
+                            <option value="Minyak" ${s.bahan_bakar === 'Minyak' ? 'selected' : ''}>Minyak</option>
+                            <option value="Batubara" ${s.bahan_bakar === 'Batubara' ? 'selected' : ''}>Batubara</option>
+                            <option value="Lainnya" ${s.bahan_bakar !== 'Natural Gas' && s.bahan_bakar !== 'Minyak' && s.bahan_bakar !== 'Batubara' && s.bahan_bakar ? 'selected' : ''}>Lainnya</option>
+                        </select>
+                        <input type="text" class="inp-field" ${disabledAttr} placeholder="Ketik Bahan Bakar..." id="input-bahan-bakar-lainnya-${idx}" 
+                            value="${s.bahan_bakar !== 'Natural Gas' && s.bahan_bakar !== 'Minyak' && s.bahan_bakar !== 'Batubara' && s.bahan_bakar ? s.bahan_bakar : ''}" 
+                            style="margin-top:8px; display: ${s.bahan_bakar !== 'Natural Gas' && s.bahan_bakar !== 'Minyak' && s.bahan_bakar !== 'Batubara' && s.bahan_bakar ? 'block' : 'none'};" 
+                            oninput="updateLocalData(${idx}, 'bahan_bakar', this.value)">
+                    </div>
                     <div><label class="input-label">Koordinat</label><input type="text" class="inp-field" ${disabledAttr} value="${s.koordinat || ''}" oninput="updateLocalData(${idx}, 'koordinat', this.value)"></div>
                     <div><label class="input-label">Tgl Sampling</label><input type="date" class="inp-field" ${disabledAttr} value="${s.tgl_sampling || ''}" oninput="updateLocalData(${idx}, 'tgl_sampling', this.value)"></div>
                 </div>
@@ -740,7 +820,7 @@ function renderSamplingForm(readOnly = false) {
                 const actualPIdx = s.parameters.findIndex(op => op.parameter === p.parameter);
                 const currentP = s.parameters[actualPIdx];
                 const paramName = currentP.parameter;
-                const isNox = paramName === "Nitrogen Oxide (NOx)";
+                const isNox = paramName === "Nitrogen Oxide (NOx)" || paramName.includes("NOx");
 
                 const getAvgVal = (obj) => {
                     if (!obj) return 0;
@@ -752,31 +832,58 @@ function renderSamplingForm(readOnly = false) {
 
                 const currentAvg = getAvgVal(currentP);
                 let displayHtml = "";
-                const currentReg = s.regulations?.[0] || s.regulation_name || '-';
-                const limitStr = getRegulatoryLimit(paramName, currentReg);
-                const bmBadge = (limitStr !== '-') ? `<span style="font-size:0.75rem; background:#f8fafc; color:#475569; padding:3px 10px; border-radius:6px; font-weight:700; border:1px solid #e2e8f0; margin-left:5px;">BM: ${limitStr} mg/Nm³</span>` : '';
+                const regsToUse = s.regulations || (s.regulation_name ? [s.regulation_name] : ['-']);
+                const limitStr = getRegulatoryLimit(paramName, regsToUse);
+                const refO2 = getO2Reference(paramName, regsToUse);
+                const o2Measured = getO2MeasuredValue(s);
+                const bmBadge = (limitStr !== '-') ? `<span style="font-size:0.75rem; background:#f8fafc; color:#475569; padding:3px 10px; border-radius:6px; font-weight:700; border:1px solid #e2e8f0;">BM: ${limitStr} mg/Nm³</span>` : '';
 
                 if (paramName.includes("Oxygen") || paramName.includes("CO2")) {
                     displayHtml = `<span style="font-size:0.75rem; color:#166534; font-weight:800; background:#f0fdf4; padding:3px 10px; border-radius:6px; border:1px solid #bbf7d0;">Average: ${currentAvg.toFixed(2)} %</span>`;
                 } else if (paramName.toUpperCase().includes("VELOCITY")) {
                     displayHtml = `<span style="font-size:0.75rem; color:#334155; font-weight:800; background:#f8fafc; padding:3px 10px; border-radius:6px; border:1px solid #e2e8f0;">Average: ${currentAvg.toFixed(2)} m/s</span>`;
-                } else if (isNox) {
-                    const mgNO = parseFloat(calculateGasMg("Nitrogen Monoxide (NO)", getAvgVal(noObj))) || 0;
-                    const mgNO2 = parseFloat(calculateGasMg("Nitrogen Dioxide (NO2)", getAvgVal(no2Obj))) || 0;
-                    displayHtml = `
-                        <div style="display:flex; align-items:center; gap:8px;">
-                            <span style="font-size:0.7rem; color:#64748b;">Total Avg: ${currentAvg.toFixed(2)} ppm</span>
-                            <span style="font-size:0.75rem; background:#fff1f2; color:#be123c; padding:3px 10px; border-radius:6px; font-weight:900; border:1.5px solid #fecdd3;">${(mgNO + mgNO2).toFixed(2)} mg/Nm³</span>
-                            ${bmBadge}
-                        </div>`;
                 } else {
-                    const mgValue = calculateGasMg(paramName, currentAvg) || 0;
-                    displayHtml = `
-                        <div style="display:flex; align-items:center; gap:8px;">
-                            <span style="font-size:0.7rem; color:#64748b;">Avg: ${currentAvg.toFixed(2)} ppm</span>
-                            <span style="font-size:0.75rem; background:#eff6ff; color:#1e40af; padding:3px 10px; border-radius:6px; font-weight:900; border:1px solid #dbeafe;">${parseFloat(mgValue).toFixed(2)} mg/Nm³</span>
-                            ${bmBadge}
-                        </div>`;
+                    let finalMg = 0;
+                    let labelText = isNox ? `Total Avg: ${currentAvg.toFixed(2)} ppm` : `Avg: ${currentAvg.toFixed(2)} ppm`;
+
+                    if (isNox) {
+                        const mgNO = parseFloat(calculateGasMg("Nitrogen Monoxide (NO)", getAvgVal(noObj))) || 0;
+                        const mgNO2 = parseFloat(calculateGasMg("Nitrogen Dioxide (NO2)", getAvgVal(no2Obj))) || 0;
+                        finalMg = mgNO + mgNO2;
+                        labelText = `Total Avg: ${(getAvgVal(noObj) + getAvgVal(no2Obj)).toFixed(2)} ppm`;
+                    } else {
+                        finalMg = parseFloat(calculateGasMg(paramName, currentAvg)) || 0;
+                    }
+
+                    const limitVal = parseFloat(limitStr);
+                    if (refO2 !== null) {
+                        let factor = 1;
+                        if (o2Measured > 0 && o2Measured < 21) {
+                            factor = (21 - refO2) / (21 - o2Measured);
+                        }
+                        const finalMgCorrected = finalMg * factor;
+
+                        const terukurBadge = getBadgeHtml("Terukur", finalMg, limitVal);
+                        const terkoreksiBadge = getBadgeHtml(`Terkoreksi (O₂ ${refO2}%)`, finalMgCorrected, limitVal);
+
+                        displayHtml = `
+                            <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px; width:100%;">
+                                <div style="display:flex; align-items:center; gap:8px;">
+                                    <span style="font-size:0.7rem; color:#64748b;">${labelText}</span>
+                                    ${terukurBadge}
+                                    ${terkoreksiBadge}
+                                    ${bmBadge}
+                                </div>
+                            </div>`;
+                    } else {
+                        const terukurBadge = getBadgeHtml("Hasil", finalMg, limitVal);
+                        displayHtml = `
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <span style="font-size:0.7rem; color:#64748b;">${labelText}</span>
+                                ${terukurBadge}
+                                ${bmBadge}
+                            </div>`;
+                    }
                 }
 
                 return `
@@ -787,7 +894,7 @@ function renderSamplingForm(readOnly = false) {
                         <input type="number" step="0.01" class="inp-field" ${disabledAttr} id="inp-${idx}-${actualPIdx}-konsentrasi_2" value="${currentP.konsentrasi_2 || ''}" ${isNox ? 'readonly style="background:#f1f5f9;"' : ''} onchange="updateParamFieldWithLogic(${idx}, ${actualPIdx}, 'konsentrasi_2', this.value)">
                         <input type="number" step="0.01" class="inp-field" ${disabledAttr} id="inp-${idx}-${actualPIdx}-konsentrasi_3" value="${currentP.konsentrasi_3 || ''}" ${isNox ? 'readonly style="background:#f1f5f9;"' : ''} onchange="updateParamFieldWithLogic(${idx}, ${actualPIdx}, 'konsentrasi_3', this.value)">
                     </div>
-                    <div id="display-container-${idx}-${actualPIdx}" style="display:flex; justify-content:flex-end; margin-top:8px; padding:0 15px;">
+                    <div id="display-container-${idx}-${actualPIdx}" style="display:flex; justify-content:flex-end; margin-top:8px; padding:0 15px; width:100%;">
                         ${displayHtml}
                     </div>
                 </div>`;
@@ -1336,7 +1443,7 @@ async function saveAllSamplingData() {
                         if (trimmed === '') {
                             // Jika kosong, jadikan null untuk kolom numerik/tanggal
                             cleanSample[key] = NULLABLE_KEYS.has(key) ? null : '';
-                        } else if (NULLABLE_KEYS.has(key) && !key.includes('at') && key !== 'tgl_terima_lab') {
+                        } else if (NULLABLE_KEYS.has(key) && !key.includes('at') && key !== 'tgl_terima_lab' && key !== 'tgl_sampling') {
                             // Jika numerik, ganti desimal koma (,) menjadi titik (.) dan parse ke number
                             const normalized = trimmed.replace(',', '.');
                             const num = parseFloat(normalized);
@@ -1490,8 +1597,20 @@ function updateParamFieldWithLogic(sampleIdx, paramIdx, key, val) {
 
     // Update label hasil (mg/Nm3) untuk baris yang sedang diketik
     updateSingleDisplay(sampleIdx, paramIdx);
+
+    // Jika O2 di-update, trigger update tampilan untuk semua parameter gas lainnya agar koreksi O2 langsung dihitung ulang
+    if (/Oxygen|Oksigen|\bO2\b/i.test(pName)) {
+        s.parameters.forEach((item, idx) => {
+            const name = item.parameter.toUpperCase();
+            if (['NO', 'NO2', 'NOX', 'SO2', 'CO', 'CO2', 'VELOCITY'].some(key => name.includes(key))) {
+                updateSingleDisplay(sampleIdx, idx);
+            }
+        });
+    }
+
     triggerTabCompletenessUpdate();
 }
+
 function updateSingleDisplay(sampleIdx, paramIdx) {
     const s = samplesDataArray[sampleIdx];
     const p = s.parameters[paramIdx];
@@ -1539,16 +1658,45 @@ function updateSingleDisplay(sampleIdx, paramIdx) {
         }
 
         const isNox = pName.includes("NOx");
-        html = `
-            <div style="display:flex; align-items:center; gap:8px;">
-                <span style="font-size:0.7rem; color:#64748b;">${labelText}</span>
-                <span style="font-size:0.75rem; background:${isNox ? '#fff1f2' : '#eff6ff'}; color:${isNox ? '#be123c' : '#1e40af'}; padding:3px 10px; border-radius:6px; font-weight:900; border:1px solid ${isNox ? '#fecdd3' : '#dbeafe'};">
-                    ${finalMg.toFixed(2)} mg/Nm³
-                </span>
-            </div>`;
+        const regsToUse = s.regulations || (s.regulation_name ? [s.regulation_name] : ['-']);
+        const limitStr = getRegulatoryLimit(pName, regsToUse);
+        const refO2 = getO2Reference(pName, regsToUse);
+        const o2Measured = getO2MeasuredValue(s);
+        const bmBadge = (limitStr !== '-') ? `<span style="font-size:0.75rem; background:#f8fafc; color:#475569; padding:3px 10px; border-radius:6px; font-weight:700; border:1px solid #e2e8f0;">BM: ${limitStr} mg/Nm³</span>` : '';
+
+        const limitVal = parseFloat(limitStr);
+        if (refO2 !== null) {
+            let factor = 1;
+            if (o2Measured > 0 && o2Measured < 21) {
+                factor = (21 - refO2) / (21 - o2Measured);
+            }
+            const finalMgCorrected = finalMg * factor;
+
+            const terukurBadge = getBadgeHtml("Terukur", finalMg, limitVal);
+            const terkoreksiBadge = getBadgeHtml(`Terkoreksi (O₂ ${refO2}%)`, finalMgCorrected, limitVal);
+
+            html = `
+                <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px; width:100%;">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <span style="font-size:0.7rem; color:#64748b;">${labelText}</span>
+                        ${terukurBadge}
+                        ${terkoreksiBadge}
+                        ${bmBadge}
+                    </div>
+                </div>`;
+        } else {
+            const terukurBadge = getBadgeHtml("Hasil", finalMg, limitVal);
+            html = `
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span style="font-size:0.7rem; color:#64748b;">${labelText}</span>
+                    ${terukurBadge}
+                    ${bmBadge}
+                </div>`;
+        }
     }
     container.innerHTML = html;
 }
+
 const getParamByKey = (params, key) => {
     return params.find(p => {
         const cleanName = p.parameter.replace(/\s+/g, '').toLowerCase();
@@ -1564,7 +1712,7 @@ async function verifikasiSampling(id, nomorCoc) {
         const { error } = await _supabase
             .from('coc_emisi')
             .update({ 
-                status_sampling: 'Verified',
+                status_sampling: 'Sampling Verified',
                 updated_at: new Date().toISOString()
             })
             .eq('id', id);
@@ -1581,7 +1729,7 @@ async function verifikasiSampling(id, nomorCoc) {
                 table_name: 'coc_emisi',
                 description: `Memverifikasi data sampling untuk COC ${nomorCoc}`,
                 old_data: { status_sampling: 'Selesai' },
-                new_data: { status_sampling: 'Verified' }
+                new_data: { status_sampling: 'Sampling Verified' }
             }]);
         }
 
@@ -1593,7 +1741,7 @@ async function verifikasiSampling(id, nomorCoc) {
 }
 
 async function unverifikasiSampling(id, nomorCoc) {
-    if (!confirm(`Apakah Anda yakin ingin membatalkan verifikasi data sampling untuk COC ${nomorCoc}? Status akan kembali menjadi 'Selesai' dan data dapat diedit kembali.`)) return;
+    if (!confirm(`Apakah Anda yakin ingin membatalkan verifikasi data sampling untuk COC ${nomorCoc}? Status akan kembali menjadi Selesai.`)) return;
 
     try {
         const { error } = await _supabase
@@ -1615,7 +1763,7 @@ async function unverifikasiSampling(id, nomorCoc) {
                 action_type: 'UNVERIFY_SAMPLING',
                 table_name: 'coc_emisi',
                 description: `Membatalkan verifikasi data sampling untuk COC ${nomorCoc}`,
-                old_data: { status_sampling: 'Verified' },
+                old_data: { status_sampling: 'Sampling Verified' },
                 new_data: { status_sampling: 'Selesai' }
             }]);
         }
@@ -1633,4 +1781,17 @@ window.openSamplingModal = openSamplingModal;
 window.switchSample = function(idx, readOnly = false) {
     currentSampleIdx = idx;
     renderSamplingForm(readOnly);
+};
+
+window.handleBahanBakarChange = function(idx, val) {
+    const customInput = document.getElementById(`input-bahan-bakar-lainnya-${idx}`);
+    if (!customInput) return;
+    if (val === 'Lainnya') {
+        customInput.style.display = 'block';
+        customInput.value = '';
+        updateLocalData(idx, 'bahan_bakar', '');
+    } else {
+        customInput.style.display = 'none';
+        updateLocalData(idx, 'bahan_bakar', val);
+    }
 };

@@ -174,7 +174,7 @@ async function fetchCoAList(keyword = '') {
         let filtered = rawCoAListData.filter(item => {
             const status = item.status_sampling ? item.status_sampling.trim().toLowerCase() : 'pending';
             const isVerified = status === 'verified';
-            const isSelesai = status === 'selesai';
+            const isSelesai = status === 'selesai' || status === 'sampling verified';
 
             // Cek apakah semua sampel sudah diverifikasi oleh lab
             const samples = item.samples || [];

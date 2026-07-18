@@ -28,41 +28,68 @@ async function fetchMasterEmisi() {
     }
 }
 
-function getO2Reference(paramName, regulationName) {
-    if (!paramName || !regulationName || masterEmisi.length === 0) return null;
-
-    const cleanParam = paramName.trim().toLowerCase();
-    const cleanReg = (Array.isArray(regulationName) ? regulationName[0] : regulationName).trim().toLowerCase();
-
-    const match = masterEmisi.find(m => {
-        const masterParam = m.parameter ? m.parameter.toLowerCase().trim() : '';
-        const masterReg = m.regulasi ? m.regulasi.toLowerCase().trim() : '';
-        return masterParam === cleanParam && masterReg === cleanReg;
-    });
-
-    if (match && match.koreksi_o2 !== null && match.koreksi_o2 !== undefined) {
-        return parseFloat(match.koreksi_o2);
-    }
-    return null;
-}
-
 function getRegulatoryLimit(paramName, regulationName) {
     if (!paramName || !regulationName || masterEmisi.length === 0) return '-';
 
     const cleanParam = paramName.trim().toLowerCase();
-    const cleanReg = (Array.isArray(regulationName) ? regulationName[0] : regulationName).trim().toLowerCase();
+    const regs = (Array.isArray(regulationName) ? regulationName : [regulationName])
+        .map(r => r ? r.trim().toLowerCase() : '')
+        .filter(r => r !== '' && r !== '-');
 
-    const match = masterEmisi.find(m => {
-        const masterParam = m.parameter ? m.parameter.toLowerCase().trim() : '';
-        const masterReg = m.regulasi ? m.regulasi.toLowerCase().trim() : '';
-        return masterParam === cleanParam && masterReg === cleanReg;
-    });
-    
-    if (match && (match.baku_mutu !== null && match.baku_mutu !== undefined)) {
-        return match.baku_mutu.toString(); 
+    if (regs.length === 0) return '-';
+
+    for (const r of regs) {
+        const match = masterEmisi.find(m => {
+            const masterParam = m.parameter ? m.parameter.toLowerCase().trim() : '';
+            const masterReg = m.regulasi ? m.regulasi.toLowerCase().trim() : '';
+            return masterParam === cleanParam && masterReg === r;
+        });
+        
+        if (match && match.baku_mutu !== null && match.baku_mutu !== undefined) {
+            return match.baku_mutu.toString(); 
+        }
     }
     return '-';
 }
+
+function getO2Reference(paramName, regulationName) {
+    if (!paramName || !regulationName || masterEmisi.length === 0) return null;
+
+    const cleanParam = paramName.trim().toLowerCase();
+    const regs = (Array.isArray(regulationName) ? regulationName : [regulationName])
+        .map(r => r ? r.trim().toLowerCase() : '')
+        .filter(r => r !== '' && r !== '-');
+
+    if (regs.length === 0) return null;
+
+    for (const r of regs) {
+        const match = masterEmisi.find(m => {
+            const masterParam = m.parameter ? m.parameter.toLowerCase().trim() : '';
+            const masterReg = m.regulasi ? m.regulasi.toLowerCase().trim() : '';
+            return masterParam === cleanParam && masterReg === r;
+        });
+        
+        if (match && match.koreksi_o2 !== null && match.koreksi_o2 !== undefined && match.koreksi_o2 !== '') {
+            const ref = parseFloat(match.koreksi_o2);
+            if (!isNaN(ref)) return ref;
+        }
+    }
+    return null;
+}
+
+function getO2MeasuredValue(parameters) {
+    if (!parameters || !Array.isArray(parameters)) return null;
+    const o2Param = parameters.find(sp => /Oxygen|Oksigen|\bO2\b/i.test(sp.parameter || ''));
+    if (!o2Param) return null;
+    const r1 = parseFloat(o2Param.konsentrasi_1) || 0;
+    const r2 = parseFloat(o2Param.konsentrasi_2) || 0;
+    const r3 = parseFloat(o2Param.konsentrasi_3) || 0;
+    const avg = (r1 + r2 + r3) / 3;
+    if (avg > 0) return avg;
+    const resVal = parseFloat(o2Param.result);
+    return isNaN(resVal) ? null : resVal;
+}
+
 let currentFilterTab = 'belum_selesai';
 let currentPage = 1;
 const pageSize = 10;
@@ -164,16 +191,7 @@ function renderTableRows() {
             });
         }
         
-        const o2Param = item.parameters.find(sp => {
-            const spName = (sp.parameter || '').toLowerCase().trim();
-            return spName === 'o2' || spName === 'oksigen' || spName === 'oksigen (o2)' || spName === 'oxygen';
-        });
-        let o2Measured = null;
-        if (o2Param) {
-            const rawO2Val = o2Param.result || o2Param.konsentrasi_1 || '0';
-            o2Measured = parseFloat(rawO2Val);
-            if (isNaN(o2Measured)) o2Measured = null;
-        }
+        const o2Measured = getO2MeasuredValue(item.parameters);
 
         const pPart = item.parameters.find(p => p.parameter.toLowerCase().includes('particulate'));
         let displayVolume = 'V.DGM: -';
@@ -265,12 +283,12 @@ function renderTableRows() {
                 }
 
                 if (rawVal !== null && !isNaN(rawVal)) {
-                    const currentReg = item.regulations?.[0] || item.regulation_name || '-';
-                    const limitStr = getRegulatoryLimit(pPart.parameter, currentReg);
+                    const regsToUse = item.regulations || (item.regulation_name ? [item.regulation_name] : ['-']);
+                    const limitStr = getRegulatoryLimit(pPart.parameter, regsToUse);
                     const limitVal = parseFloat(limitStr);
                     const limitDisplay = isNaN(limitVal) ? '-' : `${limitStr} mg/m³`;
                     
-                    const refO2 = getO2Reference(pPart.parameter, currentReg);
+                    const refO2 = getO2Reference(pPart.parameter, regsToUse);
                     
                     let correctedVal = rawVal;
                     let isCorrected = false;
@@ -932,18 +950,9 @@ function getConversionMgm3(parameter, ppmValue) {
 }
 
 function isSampleExceedingBakuMutu(item) {
-    const currentReg = item.regulations?.[0] || item.regulation_name || '-';
+    const regsToUse = item.regulations || (item.regulation_name ? [item.regulation_name] : ['-']);
     
-    const o2Param = item.parameters.find(sp => {
-        const spName = (sp.parameter || '').toLowerCase().trim();
-        return spName === 'o2' || spName === 'oksigen' || spName === 'oksigen (o2)' || spName === 'oxygen';
-    });
-    let o2Measured = null;
-    if (o2Param) {
-        const rawO2Val = o2Param.result || o2Param.konsentrasi_1 || '0';
-        o2Measured = parseFloat(rawO2Val);
-        if (isNaN(o2Measured)) o2Measured = null;
-    }
+    const o2Measured = getO2MeasuredValue(item.parameters);
 
     for (let p of item.parameters) {
         const pName = p.parameter ? p.parameter.replace(/\s+/g, ' ').trim().toLowerCase() : '';
@@ -967,11 +976,11 @@ function isSampleExceedingBakuMutu(item) {
         const rawVal = parseFloat(valToFormat) || 0;
         if (rawVal <= 0) continue;
 
-        const limitStr = getRegulatoryLimit(p.parameter, currentReg);
+        const limitStr = getRegulatoryLimit(p.parameter, regsToUse);
         const limitVal = parseFloat(limitStr);
         if (isNaN(limitVal)) continue;
 
-        const refO2 = getO2Reference(p.parameter, currentReg);
+        const refO2 = getO2Reference(p.parameter, regsToUse);
         let finalVal = rawVal;
         if (refO2 !== null && o2Measured !== null && o2Measured > 0 && o2Measured < 21) {
             const factor = (21 - refO2) / (21 - o2Measured);
@@ -986,18 +995,9 @@ function isSampleExceedingBakuMutu(item) {
 }
 
 function updateLiveCalculations(sampleObj) {
-    const currentReg = sampleObj.regulation_name || '-';
+    const regsToUse = sampleObj.regulations || (sampleObj.regulation_name ? [sampleObj.regulation_name] : ['-']);
     
-    const o2Param = sampleObj.parameters.find(sp => {
-        const spName = (sp.parameter || '').toLowerCase().trim();
-        return spName === 'o2' || spName === 'oksigen' || spName === 'oksigen (o2)' || spName === 'oxygen';
-    });
-    let o2Measured = null;
-    if (o2Param) {
-        const rawO2Val = o2Param.result || o2Param.konsentrasi_1 || '0';
-        o2Measured = parseFloat(rawO2Val);
-        if (isNaN(o2Measured)) o2Measured = null;
-    }
+    const o2Measured = getO2MeasuredValue(sampleObj.parameters);
 
     const gravSections = document.querySelectorAll('#parameterInputs > div');
     gravSections.forEach(section => {
@@ -1092,7 +1092,7 @@ function updateLiveCalculations(sampleObj) {
             </div>
         `;
 
-        const refO2 = getO2Reference(p.parameter, currentReg);
+        const refO2 = getO2Reference(p.parameter, regsToUse);
         let finalVal = hasilKonsentrasi;
         if (refO2 !== null) {
             if (o2Measured !== null && o2Measured > 0 && o2Measured < 21) {
@@ -1113,7 +1113,7 @@ function updateLiveCalculations(sampleObj) {
             }
         }
 
-        const limitStr = getRegulatoryLimit(p.parameter, currentReg);
+        const limitStr = getRegulatoryLimit(p.parameter, regsToUse);
         const limitVal = parseFloat(limitStr);
         let alertHtml = '';
         
