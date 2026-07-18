@@ -1313,6 +1313,37 @@ async function saveAllSamplingData() {
         const { error: samplesError } = await _supabase.from('samples').upsert(
             samplesDataArray.map(s => {
                 const { coc_emisi, ...cleanSample } = s;
+                
+                // Kolom database yang bertipe NUMERIC atau TIMESTAMP
+                const NULLABLE_KEYS = new Set([
+                    'temp_gas', 'tekanan_atm', 
+                    'jarak_pengamat_awal', 'jarak_pengamat_akhir',
+                    'temp_ambien_awal', 'temp_ambien_akhir', 
+                    'kelembaban_awal', 'kelembaban_akhir',
+                    'kec_angin_awal', 'kec_angin_akhir', 
+                    'opasitas_avg',
+                    'temp_ambien', 'kelembaban',
+                    'tgl_terima_lab', 'analyzed_at', 'verified_at'
+                ]);
+
+                Object.keys(cleanSample).forEach(key => {
+                    let val = cleanSample[key];
+                    if (val === undefined || val === null) {
+                        cleanSample[key] = null;
+                    } else if (typeof val === 'string') {
+                        const trimmed = val.trim();
+                        if (trimmed === '') {
+                            // Jika kosong, jadikan null untuk kolom numerik/tanggal
+                            cleanSample[key] = NULLABLE_KEYS.has(key) ? null : '';
+                        } else if (NULLABLE_KEYS.has(key) && !key.includes('at') && key !== 'tgl_terima_lab') {
+                            // Jika numerik, ganti desimal koma (,) menjadi titik (.) dan parse ke number
+                            const normalized = trimmed.replace(',', '.');
+                            const num = parseFloat(normalized);
+                            cleanSample[key] = isNaN(num) ? null : num;
+                        }
+                    }
+                });
+
                 return cleanSample;
             })
         );
