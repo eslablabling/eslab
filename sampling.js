@@ -1323,7 +1323,8 @@ async function saveAllSamplingData() {
                     'kec_angin_awal', 'kec_angin_akhir', 
                     'opasitas_avg',
                     'temp_ambien', 'kelembaban',
-                    'tgl_terima_lab', 'analyzed_at', 'verified_at'
+                    'tgl_terima_lab', 'analyzed_at', 'verified_at',
+                    'tgl_sampling', 'kec_angin'
                 ]);
 
                 Object.keys(cleanSample).forEach(key => {
