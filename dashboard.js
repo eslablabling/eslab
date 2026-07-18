@@ -76,6 +76,20 @@ window.addEventListener('auth-ready', async (e) => {
             exportDashboardToExcel();
         });
     }
+
+    // Filter Rentang Tanggal Dashboard (#19)
+    const filterDashDateStart = document.getElementById('filterDashDateStart');
+    const filterDashDateEnd   = document.getElementById('filterDashDateEnd');
+    const btnResetDashDate    = document.getElementById('btnResetDashDate');
+    if (filterDashDateStart) filterDashDateStart.addEventListener('change', applyDashboardFilters);
+    if (filterDashDateEnd)   filterDashDateEnd.addEventListener('change', applyDashboardFilters);
+    if (btnResetDashDate) {
+        btnResetDashDate.addEventListener('click', () => {
+            if (filterDashDateStart) filterDashDateStart.value = '';
+            if (filterDashDateEnd)   filterDashDateEnd.value   = '';
+            applyDashboardFilters();
+        });
+    }
 });
 
 // 4. Ambil data dari Supabase
@@ -140,17 +154,20 @@ async function fetchActiveLogs() {
             const tglTerima = rawTerima ? new Date(rawTerima).toLocaleDateString('id-ID') : '-';
             const tglSelesai = rawSelesai ? new Date(rawSelesai).toLocaleDateString('id-ID') : '-';
 
-            // Logika Status
+            // Logika Status — berdasarkan status_lab di tabel samples
             let statusLabel = "SAMPLING";
             let statusClass = "tag-orange";
 
             if (!coc.status_sampling || coc.status_sampling.trim().toLowerCase() !== 'verified') {
+                // COC belum diverifikasi sampling-nya → masih tahap SAMPLING
                 statusLabel = "SAMPLING";
                 statusClass = "tag-orange";
             } else if (s.status_lab === 'verified' || s.is_verified === true) {
+                // Lab sudah verifikasi → FINISH
                 statusLabel = "FINISH";
                 statusClass = "tag-green";
-            } else if (s.status === 'Done' || s.tgl_terima_lab) {
+            } else if (s.status_lab === 'analyzed' || s.status_lab === 'received' || s.tgl_terima_lab) {
+                // Sampel sudah diterima/dianalisa tapi belum diverifikasi → ANALISA
                 statusLabel = "ANALISA";
                 statusClass = "tag-blue";
             }
@@ -180,6 +197,8 @@ async function fetchActiveLogs() {
         allSamplesList = activeSamples;
         populateYearFilter();
         applyDashboardFilters();
+        // Pastikan TAT chart dirender dengan data penuh saat pertama kali load
+        updateTatAnalysis(activeSamples);
 
     } catch (err) {
         console.error("CRITICAL ERROR:", err);
@@ -302,24 +321,32 @@ function renderStatusChart(samplesList = allSamplesList) {
 // 8. Pencarian & Filter Terintegrasi
 function applyDashboardFilters() {
     const monthSelect = document.getElementById('filterStatsMonth');
-    const yearSelect = document.getElementById('filterStatsYear');
-    const searchLog = document.getElementById('searchLog');
+    const yearSelect  = document.getElementById('filterStatsYear');
+    const searchLog   = document.getElementById('searchLog');
 
     const monthVal = monthSelect ? monthSelect.value : 'all';
-    const yearVal = yearSelect ? yearSelect.value : 'all';
-    const keyword = searchLog ? searchLog.value.toLowerCase().trim() : '';
+    const yearVal  = yearSelect  ? yearSelect.value  : 'all';
+    const keyword  = searchLog   ? searchLog.value.toLowerCase().trim() : '';
+
+    // Filter tanggal rentang dari filterDashDate (#19)
+    const dashDateStart = document.getElementById('filterDashDateStart')?.value || '';
+    const dashDateEnd   = document.getElementById('filterDashDateEnd')?.value   || '';
 
     // Step 1: Filter berdasarkan Bulan & Tahun dari tanggal sampling
     const dateFiltered = allSamplesList.filter(s => {
-        if (monthVal === 'all' && yearVal === 'all') return true;
+        if (monthVal === 'all' && yearVal === 'all' && !dashDateStart && !dashDateEnd) return true;
         if (!s.sampling_date) return false;
 
         const date = new Date(s.sampling_date);
         const m = date.getMonth();
         const y = date.getFullYear();
+        // Format YYYY-MM-DD dari sampling_date
+        const samplingDateStr = s.sampling_date.slice(0, 10);
 
         if (monthVal !== 'all' && m !== parseInt(monthVal)) return false;
         if (yearVal !== 'all' && y !== parseInt(yearVal)) return false;
+        if (dashDateStart && samplingDateStr < dashDateStart) return false;
+        if (dashDateEnd   && samplingDateStr > dashDateEnd)   return false;
 
         return true;
     });
@@ -609,7 +636,7 @@ function setupRealtimeSubscription() {
 
 // 15. Navigasi Cerdas Berdasarkan Kartu Statistik & Akses Role
 window.navigateFromStat = function(targetType) {
-    const role = sessionStorage.getItem('user_role') || 'sampling';
+    const role = sessionStorage.getItem('userRole') || 'sampling';
     
     // Pemetaan izin akses halaman LIMS
     const hasAccess = {
@@ -646,7 +673,7 @@ window.navigateFromStat = function(targetType) {
 
 // 16. Navigasi Baris Tabel Berdasarkan Status Proses Sampel
 window.navigateFromRow = function(dbId, statusLabel) {
-    const role = sessionStorage.getItem('user_role') || 'sampling';
+    const role = sessionStorage.getItem('userRole') || 'sampling';
 
     // Pemetaan izin akses halaman LIMS
     const hasAccess = {
@@ -716,7 +743,7 @@ window.changeTatPeriod = function(period) {
     if (btnMonthly) btnMonthly.classList.toggle('active', period === 'monthly');
     if (btnYearly) btnYearly.classList.toggle('active', period === 'yearly');
     
-    updateTatAnalysis();
+    updateTatAnalysis(filteredSamplesList);
 };
 
 function updateTatAnalysis(samplesList = filteredSamplesList) {
@@ -760,8 +787,28 @@ function updateTatAnalysis(samplesList = filteredSamplesList) {
     
     if (tatChartInstance) {
         tatChartInstance.destroy();
+        tatChartInstance = null;
     }
-    
+
+    // Tampilkan pesan kosong HANYA jika benar-benar tidak ada data kelompok
+    if (groupedData.length === 0) {
+        ctx.style.display = 'none';
+        let emptyMsg = document.getElementById('tatEmptyMsg');
+        if (!emptyMsg) {
+            emptyMsg = document.createElement('div');
+            emptyMsg.id = 'tatEmptyMsg';
+            emptyMsg.style.cssText = 'display:flex; align-items:center; justify-content:center; height:100%; color:#94a3b8; font-size:0.85rem; font-weight:700; flex-direction:column; gap:8px;';
+            emptyMsg.innerHTML = '📊<br>Belum ada data penerimaan sampel lab<br>untuk periode yang dipilih';
+            ctx.parentElement.appendChild(emptyMsg);
+        }
+        emptyMsg.style.display = 'flex';
+        return;
+    }
+    // Sembunyikan pesan kosong jika data ada
+    const emptyMsg = document.getElementById('tatEmptyMsg');
+    if (emptyMsg) emptyMsg.style.display = 'none';
+    ctx.style.display = '';
+
     tatChartInstance = new Chart(ctx, {
         data: {
             labels: labels,
@@ -829,81 +876,83 @@ function updateTatAnalysis(samplesList = filteredSamplesList) {
 }
 
 function groupTatData(samplesList, period) {
-    const activeSamples = samplesList.filter(s => s.tgl_terima_lab);
+    // Gunakan HANYA samplesList yang sudah difilter dari luar — tidak re-filter dropdown lagi
+    const activeSamples = samplesList.filter(s => s.tgl_terima_lab && s.actualDuration !== null);
+
     let groups = {};
-    
-    const monthSelect = document.getElementById('filterStatsMonth');
-    const yearSelect = document.getElementById('filterStatsYear');
-    const monthVal = monthSelect ? monthSelect.value : 'all';
-    const yearVal = yearSelect ? yearSelect.value : 'all';
-    const now = new Date();
-    const year = yearVal === 'all' ? now.getFullYear() : parseInt(yearVal);
-    const month = monthVal === 'all' ? now.getMonth() : parseInt(monthVal);
 
     if (period === 'daily') {
-        // Jika perhari: X axis adalah tanggal (1 s.d. 31)
-        const numDays = monthVal === 'all' ? 31 : new Date(year, month + 1, 0).getDate();
-        for (let day = 1; day <= numDays; day++) {
-            const label = String(day);
-            groups[label] = { label, totalDays: 0, count: 0 };
-        }
+        // Kelompokkan per tanggal aktual yang ADA di data (format: "DD Mmm YYYY")
+        // Ini memastikan semua data Juli 2026 (dan bulan lain) muncul apa adanya
+        activeSamples.forEach(s => {
+            const date = new Date(s.tgl_terima_lab);
+            if (isNaN(date)) return;
+            // Buat label unik per tanggal penuh agar tidak bentrok lintas bulan
+            const label = date.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: '2-digit' });
+            const sortKey = date.toISOString().split('T')[0]; // YYYY-MM-DD untuk sorting
+            if (!groups[sortKey]) {
+                groups[sortKey] = { label, sortKey, totalDays: 0, count: 0 };
+            }
+            groups[sortKey].totalDays += s.actualDuration;
+            groups[sortKey].count++;
+        });
 
-        activeSamples.forEach(s => {
-            const date = new Date(s.tgl_terima_lab);
-            if (date.getFullYear() === year) {
-                if (monthVal === 'all' || date.getMonth() === month) {
-                    const day = date.getDate();
-                    const label = String(day);
-                    if (groups[label] && s.actualDuration !== null) {
-                        groups[label].totalDays += s.actualDuration;
-                        groups[label].count++;
-                    }
-                }
-            }
-        });
+        // Urutkan berdasarkan tanggal
+        return Object.values(groups)
+            .sort((a, b) => a.sortKey.localeCompare(b.sortKey))
+            .map(g => ({
+                label: g.label,
+                averageDays: g.count > 0 ? parseFloat((g.totalDays / g.count).toFixed(1)) : 0
+            }));
+
     } else if (period === 'monthly') {
-        // Jika perbulan: X axis adalah Nama Bulan (Jan - Des)
-        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-        months.forEach((m) => {
-            const label = `${m} ${year}`;
-            groups[label] = { label, totalDays: 0, count: 0 };
-        });
-        
+        // Kelompokkan per bulan-tahun yang ADA di data
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
         activeSamples.forEach(s => {
             const date = new Date(s.tgl_terima_lab);
-            if (date.getFullYear() === year) {
-                const mName = months[date.getMonth()];
-                const label = `${mName} ${year}`;
-                if (groups[label] && s.actualDuration !== null) {
-                    groups[label].totalDays += s.actualDuration;
-                    groups[label].count++;
-                }
+            if (isNaN(date)) return;
+            const y = date.getFullYear();
+            const m = date.getMonth();
+            const sortKey = `${y}-${String(m + 1).padStart(2, '0')}`;
+            const label = `${monthNames[m]} ${y}`;
+            if (!groups[sortKey]) {
+                groups[sortKey] = { label, sortKey, totalDays: 0, count: 0 };
             }
+            groups[sortKey].totalDays += s.actualDuration;
+            groups[sortKey].count++;
         });
+
+        return Object.values(groups)
+            .sort((a, b) => a.sortKey.localeCompare(b.sortKey))
+            .map(g => ({
+                label: g.label,
+                averageDays: g.count > 0 ? parseFloat((g.totalDays / g.count).toFixed(1)) : 0
+            }));
+
     } else if (period === 'yearly') {
-        // Jika pertahun: X axis adalah Tahun (3 tahun terakhir)
-        for (let i = 2; i >= 0; i--) {
-            const label = String(year - i);
-            groups[label] = { label, totalDays: 0, count: 0 };
-        }
-        
+        // Kelompokkan per tahun yang ADA di data
         activeSamples.forEach(s => {
             const date = new Date(s.tgl_terima_lab);
-            const label = String(date.getFullYear());
-            if (groups[label] && s.actualDuration !== null) {
-                groups[label].totalDays += s.actualDuration;
-                groups[label].count++;
+            if (isNaN(date)) return;
+            const y = String(date.getFullYear());
+            if (!groups[y]) {
+                groups[y] = { label: y, sortKey: y, totalDays: 0, count: 0 };
             }
+            groups[y].totalDays += s.actualDuration;
+            groups[y].count++;
         });
+
+        return Object.values(groups)
+            .sort((a, b) => a.sortKey.localeCompare(b.sortKey))
+            .map(g => ({
+                label: g.label,
+                averageDays: g.count > 0 ? parseFloat((g.totalDays / g.count).toFixed(1)) : 0
+            }));
     }
-    
-    return Object.values(groups).map(g => {
-        return {
-            label: g.label,
-            averageDays: g.count > 0 ? parseFloat((g.totalDays / g.count).toFixed(1)) : 0
-        };
-    });
+
+    return [];
 }
+
 
 function getWeekNumber(d) {
     d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
@@ -920,6 +969,8 @@ function getWorkingDays(startDate, endDate) {
     end.setHours(0,0,0,0);
     
     if (start > end) return 0;
+    // Sampel diterima dan selesai pada hari yang sama dihitung 1 hari kerja
+    if (start.getTime() === end.getTime()) return 1;
     
     let count = 0;
     let curDate = new Date(start);
@@ -931,5 +982,6 @@ function getWorkingDays(startDate, endDate) {
             count++;
         }
     }
-    return count;
+    // Minimal 1 hari kerja jika ada rentang waktu
+    return Math.max(count, 1);
 }

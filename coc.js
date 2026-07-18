@@ -132,6 +132,22 @@ window.addEventListener('auth-ready', async (e) => {
             });
         }
 
+        // Filter Tanggal COC (#19)
+        const filterCocDateStart = document.getElementById('filterCocDateStart');
+        const filterCocDateEnd = document.getElementById('filterCocDateEnd');
+        if (filterCocDateStart) {
+            filterCocDateStart.addEventListener('change', () => {
+                const keyword = document.getElementById('searchKeyword')?.value.toLowerCase() || '';
+                fetchSavedCoc(keyword);
+            });
+        }
+        if (filterCocDateEnd) {
+            filterCocDateEnd.addEventListener('change', () => {
+                const keyword = document.getElementById('searchKeyword')?.value.toLowerCase() || '';
+                fetchSavedCoc(keyword);
+            });
+        }
+
         const btnPrevPage = document.getElementById('btnPrevPage');
         if (btnPrevPage) {
             btnPrevPage.addEventListener('click', () => {
@@ -1019,11 +1035,23 @@ async function fetchSavedCoc(keyword = '') {
         rawCocListData = data;
         
         let filtered = rawCocListData;
+        
+        // Filter teks (No. COC / Nama Perusahaan)
         if (keyword) {
             filtered = filtered.filter(item => 
                 (item.nomor_coc && item.nomor_coc.toLowerCase().includes(keyword)) ||
                 (item.company_name && item.company_name.toLowerCase().includes(keyword))
             );
+        }
+
+        // Filter Rentang Tanggal (#19) - berdasarkan sampling_date
+        const dateStart = document.getElementById('filterCocDateStart')?.value;
+        const dateEnd   = document.getElementById('filterCocDateEnd')?.value;
+        if (dateStart) {
+            filtered = filtered.filter(item => item.sampling_date && item.sampling_date >= dateStart);
+        }
+        if (dateEnd) {
+            filtered = filtered.filter(item => item.sampling_date && item.sampling_date <= dateEnd);
         }
 
         filteredCocList = filtered;
@@ -1035,6 +1063,17 @@ async function fetchSavedCoc(keyword = '') {
         console.error("Error loading saved COC:", err);
     }
 }
+
+// Reset filter tanggal COC (#19)
+window.resetCocDateFilter = function() {
+    const start = document.getElementById('filterCocDateStart');
+    const end   = document.getElementById('filterCocDateEnd');
+    if (start) start.value = '';
+    if (end)   end.value   = '';
+    const keyword = document.getElementById('searchKeyword')?.value.toLowerCase() || '';
+    fetchSavedCoc(keyword);
+};
+
 
 function renderCocTableRows() {
     const container = document.getElementById('listCocSaved');
@@ -1057,6 +1096,7 @@ function renderCocTableRows() {
         if (allowedToEdit) {
             actionButtons += `
                 <button class="btn-primary" onclick="loadCocToForm('${item.id}', false)" style="padding:5px 10px; font-size:0.7rem; background: #2563eb;">EDIT</button>
+                <button class="btn-primary" onclick="duplicateCoc('${item.id}')" style="padding:5px 10px; font-size:0.7rem; background: #7c3aed;" title="Duplikat seluruh COC ini ke form baru">📋 DUPLIKAT</button>
                 <button class="btn-primary" onclick="directPrint('${item.id}')" style="padding:5px 10px; font-size:0.7rem; background: #059669;">CETAK</button>
                 <button class="btn-primary" onclick="deleteCoc('${item.id}')" style="padding:5px 10px; font-size:0.7rem; background: #ef4444;">HAPUS</button>
             `;
@@ -1115,6 +1155,110 @@ function renderCocPaginationControls() {
 
     pageNumbersContainer.innerHTML = pagesHtml;
 }
+
+// --- DUPLIKAT COC PENUH (#17) ---
+// Menyalin seluruh data COC lama ke form baru dengan nomor COC baru otomatis.
+// User hanya perlu mengganti tanggal sampling dan nomor quotation.
+window.duplicateCoc = async function(id) {
+    if (!confirm('Duplikat COC ini ke form baru? Nomor COC baru akan digenerate otomatis. Anda hanya perlu mengubah tanggal & nomor quotation.')) return;
+
+    const { data, error } = await _supabase.from('coc_emisi').select('*, samples(*)').eq('id', id).single();
+    if (error || !data) {
+        alert('Gagal memuat data COC untuk diduplikat.');
+        return;
+    }
+
+    // 1. Switch ke tab form
+    switchCocMainTab('form');
+
+    // 2. Generate nomor COC baru
+    await generateCocNumber();
+
+    // 3. Isi header — KECUALI nomor COC (sudah di-generate baru) dan tanggal (dikosongkan)
+    document.getElementById('companyName').value   = data.company_name || '';
+    document.getElementById('companyAddress').value = data.company_address || '';
+    document.getElementById('contactPerson').value  = data.contact_person || '';
+    document.getElementById('phoneNumber').value    = data.phone_no || '';
+    document.getElementById('emailCoa').value       = data.email_coa || '';
+    document.getElementById('tatRequest').value     = data.tat_requested || 'Normal';
+    // Kosongkan tanggal & quotation agar user wajib isi ulang
+    document.getElementById('samplingDate').value   = '';
+    document.getElementById('qtNo').value           = '';
+
+    const officers = data.sampling_officer ? data.sampling_officer.split(', ') : [];
+    document.getElementById('officer1').value = officers[0] || '';
+    document.getElementById('officer2').value = officers[1] || '';
+    document.getElementById('officer3').value = officers[2] || '';
+
+    // Trigger auto-fill nomor sampel dari nomor COC baru
+    const nomorCocVal = document.getElementById('nomorCoc').value;
+    const sequenceOnly = nomorCocVal.slice(-4);
+
+    // 4. Isi baris titik uji (cerobong) dari data lama
+    const tbody = document.getElementById('cocBody');
+    tbody.innerHTML = '';
+
+    window.isLoadingSavedCoc = true;
+    for (const [index, item] of (data.samples || []).entries()) {
+        const row = document.createElement('tr');
+        const newSampleId = `${sequenceOnly}.${index + 1}`;
+        row.innerHTML = `
+            <td>${index + 1}</td>
+            <td><input type="text" class="form-control sample-id" value="${newSampleId}" readonly style="background:#f8fafc; font-weight:800; color:#2563eb;"></td>
+            <td><input type="text" class="form-control titik-uji" value="${item.description || ''}"></td>
+            <td>
+                <input type="text" class="form-control regulasi-search" list="listRegulasi" oninput="onRegulasiInput(this)" onkeypress="if(event.key === 'Enter') addRegulasiTag(this)" placeholder="Ketik &amp; Pilih...">
+                <div class="selected-regulasi-tags" style="display:flex; flex-wrap:wrap; gap:4px; margin-top:5px;">
+                    ${(item.regulations || []).map(reg => `<span class="reg-tag" data-val="${reg}" style="background:#eff6ff; color:#2563eb; padding:2px 8px; border-radius:5px; font-size:0.7rem; display:flex; align-items:center; gap:5px; border:1px solid #dbeafe;">${reg}<span onclick="const p=this.parentElement; const c=p.closest('td'); p.remove(); updateParametersByTags(c)" style="cursor:pointer; font-weight:bold;">&times;</span></span>`).join('')}
+                </div>
+            </td>
+            <td style="vertical-align:top;">
+                <div class="param-main-wrapper">
+                    <div class="select-all-area" style="margin-bottom:10px; border-bottom:1px solid #eee; padding-bottom:5px;">
+                        <label style="font-size:0.75rem; font-weight:800; color:#2563eb; cursor:pointer;"><input type="checkbox" onchange="toggleSelectAll(this)"> SELECT ALL</label>
+                    </div>
+                    <div class="param-container" style="display:flex; flex-direction:column; gap:6px;"></div>
+                </div>
+            </td>
+            <td class="no-print" style="text-align: center; vertical-align: middle;">
+                <button type="button" onclick="copyRow(this)" style="background:none; border:none; cursor:pointer; font-size: 1.1rem; margin-right: 8px;" title="Duplikat baris">📋</button>
+                <button type="button" onclick="removeRow(this)" style="background:none; border:none; cursor:pointer; font-size: 1.1rem;">❌</button>
+            </td>
+        `;
+        tbody.appendChild(row);
+
+        const tagContainer = row.querySelector('.selected-regulasi-tags');
+        await updateParametersByTags(tagContainer);
+
+        (item.parameters || []).forEach(p => {
+            const cb = row.querySelector(`.param-checkbox[value="${p.parameter}"]`);
+            if (cb) {
+                cb.checked = true;
+                renderMethodDropdown(cb);
+                setTimeout(() => {
+                    const sel = row.querySelector(`select[data-param="${p.parameter}"]`);
+                    if (sel) sel.value = p.method;
+                }, 150);
+            }
+        });
+    }
+    window.isLoadingSavedCoc = false;
+
+    // 5. Pastikan form dalam mode editable
+    setFormReadonly(false);
+    document.getElementById('cocFormContainer').dataset.readonly = 'false';
+
+    // Scroll ke atas form
+    document.querySelector('.content-body').scrollIntoView({ behavior: 'smooth' });
+
+    // Notifikasi
+    const banner = document.createElement('div');
+    banner.id = 'duplicateBanner';
+    banner.style.cssText = 'position:fixed; top:20px; right:20px; background:#7c3aed; color:white; padding:16px 24px; border-radius:16px; font-weight:800; font-size:0.85rem; z-index:9999; box-shadow:0 10px 30px rgba(124,58,237,0.3); display:flex; align-items:center; gap:10px;';
+    banner.innerHTML = '📋 COC berhasil diduplikat! Ubah <strong>Tanggal Sampling</strong> dan <strong>No. Quotation</strong> sebelum menyimpan.';
+    document.body.appendChild(banner);
+    setTimeout(() => banner.remove(), 5000);
+};
 
 async function directPrint(id) {
     const { data, error } = await _supabase.from('coc_emisi').select('*, samples(*)').eq('id', id).single();

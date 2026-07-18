@@ -373,11 +373,19 @@
     </div>
 
     <div class="data-container">
-        <div class="table-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px;">
+        <div class="table-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 15px;">
             <h3 style="font-size: 1.1rem; font-weight: 800; color: #0f172a;">📋 Log Sampel COC Emisi</h3>
             <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                <!-- Filter Rentang Tanggal Sampling (#19) -->
+                <div style="display: flex; align-items: center; gap: 6px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 8px 14px;">
+                    <span style="font-size: 0.72rem; font-weight: 800; color: #64748b; white-space: nowrap;">📅 Dari</span>
+                    <input type="date" id="filterDashDateStart" style="border: none; background: transparent; outline: none; font-size: 0.8rem; font-family: inherit; color: #1e293b;">
+                    <span style="font-size: 0.72rem; font-weight: 800; color: #64748b;">s/d</span>
+                    <input type="date" id="filterDashDateEnd" style="border: none; background: transparent; outline: none; font-size: 0.8rem; font-family: inherit; color: #1e293b;">
+                    <button id="btnResetDashDate" title="Reset filter tanggal" style="background: none; border: none; cursor: pointer; font-size: 0.9rem; color: #94a3b8; padding: 0; line-height: 1;">✕</button>
+                </div>
                 <input type="text" id="searchLog" placeholder="Cari No. COC, ID Sampel, Perusahaan, atau Status..." 
-                       style="padding: 10px 16px; border: 1px solid #e2e8f0; border-radius: 12px; width: 320px; font-size: 0.85rem; outline: none; transition: border-color 0.2s;">
+                       style="padding: 10px 16px; border: 1px solid #e2e8f0; border-radius: 12px; width: 280px; font-size: 0.85rem; outline: none; transition: border-color 0.2s;">
                 <button onclick="resetTableSort()" class="btn-outline" style="padding: 10px 16px; border-radius: 12px; font-weight: 700; cursor: pointer; font-size: 0.85rem; display: flex; align-items: center; gap: 5px; border: 1px solid #cbd5e1; background: white;" title="Reset Pengurutan ke Default">
                     🔄 Reset Sort
                 </button>

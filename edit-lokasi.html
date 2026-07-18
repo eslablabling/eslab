@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kelola Lokasi Cerobong | ES Lab LIMS</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <!-- Leaflet mini-preview -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+
+    <style>
+        :root {
+            --primary: #2563eb;
+            --bg-main: #f8fafc;
+            --bg-card: #ffffff;
+            --text-main: #1e293b;
+            --text-muted: #64748b;
+            --border-color: #e2e8f0;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background: var(--bg-main);
+            color: var(--text-main);
+            display: flex;
+            min-height: 100vh;
+        }
+        .sidebar {
+            width: 280px;
+            background: var(--bg-card);
+            border-right: 1px solid var(--border-color);
+            padding: 24px 16px;
+            position: sticky;
+            top: 0;
+            height: 100vh;
+            overflow-y: auto;
+            flex-shrink: 0;
+        }
+        .nav-item {
+            display: flex; align-items: center;
+            padding: 11px 16px; color: var(--text-muted);
+            text-decoration: none; font-weight: 600;
+            border-radius: 12px; margin-bottom: 4px; font-size: 0.85rem;
+        }
+        .nav-item.active, .nav-item:hover { background: #eff6ff; color: var(--primary); }
+
+        .main { flex: 1; padding: 40px; max-width: 1200px; margin: 0 auto; }
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            padding: 28px;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+            margin-bottom: 24px;
+        }
+        .card h3 {
+            font-size: 1rem;
+            font-weight: 800;
+            margin-bottom: 20px;
+            color: var(--text-main);
+        }
+
+        /* Form */
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+        .form-group { display: flex; flex-direction: column; gap: 6px; }
+        .form-group label {
+            font-size: 0.72rem;
+            font-weight: 800;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+        .form-control {
+            padding: 10px 14px;
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            font-family: inherit;
+            font-size: 0.87rem;
+            font-weight: 600;
+            color: var(--text-main);
+            outline: none;
+            transition: border-color 0.2s;
+            background: #fff;
+        }
+        .form-control:focus { border-color: var(--primary); }
+        .form-control:disabled { background: #f8fafc; color: var(--text-muted); }
+
+        .btn-primary {
+            padding: 12px 28px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-family: inherit;
+            font-size: 0.88rem;
+            font-weight: 800;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-primary:hover { background: #1d4ed8; transform: translateY(-1px); }
+        .btn-secondary {
+            padding: 12px 20px;
+            background: #f1f5f9;
+            color: var(--text-muted);
+            border: none;
+            border-radius: 12px;
+            font-family: inherit;
+            font-size: 0.88rem;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        /* Tabel */
+        table { width: 100%; border-collapse: collapse; }
+        th {
+            text-align: left;
+            padding: 12px 16px;
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            border-bottom: 2px solid #f1f5f9;
+        }
+        td { padding: 14px 16px; font-size: 0.85rem; border-bottom: 1px solid #f8fafc; }
+        tr:hover td { background: #f8fafc; }
+
+        /* Badge status koordinat */
+        .badge-has   { background:#dcfce7; color:#15803d; padding:3px 10px; border-radius:8px; font-size:0.7rem; font-weight:800; }
+        .badge-none  { background:#fef3c7; color:#a16207; padding:3px 10px; border-radius:8px; font-size:0.7rem; font-weight:800; }
+
+        /* Peta mini preview */
+        #miniMap { height: 220px; border-radius: 14px; overflow: hidden; border: 1px solid var(--border-color); }
+
+        /* Search bar */
+        .search-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+        .search-bar input {
+            padding: 10px 16px;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            font-family: inherit;
+            font-size: 0.85rem;
+            outline: none;
+            width: 300px;
+        }
+
+        /* Edit inline row */
+        .edit-row { background: #eff6ff !important; }
+        .btn-edit { padding: 5px 12px; font-size: 0.72rem; font-weight: 800; border-radius: 8px; cursor: pointer; border: none; }
+        .btn-edit-primary { background: #2563eb; color: white; }
+        .btn-edit-secondary { background: #f1f5f9; color: #64748b; }
+
+        /* Toast notification */
+        #toast {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: #1e293b;
+            color: white;
+            padding: 14px 24px;
+            border-radius: 14px;
+            font-weight: 800;
+            font-size: 0.85rem;
+            z-index: 9999;
+            display: none;
+            align-items: center;
+            gap: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        #toast.visible { display: flex; }
+    </style>
+</head>
+<body>
+
+    <aside class="sidebar">
+        <div style="margin-bottom: 30px; padding: 0 10px;">
+            <img src="eslab-logo.gif" alt="Logo" style="width: 150px;">
+        </div>
+        <nav id="dynamicSidebar"></nav>
+    </aside>
+
+    <main class="main">
+        <header style="margin-bottom: 28px;">
+            <a href="peta.html" style="font-size:0.8rem; font-weight:700; color:var(--text-muted); text-decoration:none; display:inline-flex; align-items:center; gap:6px; margin-bottom:10px;">← Kembali ke Peta</a>
+            <h1 style="font-size: 1.5rem; font-weight: 800; letter-spacing: -0.02em;">📍 Kelola Lokasi Cerobong</h1>
+            <p style="color:var(--text-muted); font-size:0.88rem; margin-top:4px;">Tambah atau ubah koordinat GPS untuk setiap COC/lokasi sampling.</p>
+        </header>
+
+        <!-- Form Edit Lokasi -->
+        <div class="card" id="editCard" style="display:none; border: 2px solid #bfdbfe; background: #f0f7ff;">
+            <h3>✏️ Edit Koordinat: <span id="editCocLabel" style="color:var(--primary);">—</span></h3>
+            <div class="form-grid" style="margin-bottom:20px;">
+                <div class="form-group">
+                    <label>📍 Latitude (Lintang)</label>
+                    <input type="number" step="0.000001" id="inputLat" class="form-control" placeholder="Contoh: -7.257472">
+                    <small style="font-size:0.7rem; color:var(--text-muted);">Negatif = Selatan (Jawa ≈ -7 s.d. -8)</small>
+                </div>
+                <div class="form-group">
+                    <label>📍 Longitude (Bujur)</label>
+                    <input type="number" step="0.000001" id="inputLon" class="form-control" placeholder="Contoh: 112.752090">
+                    <small style="font-size:0.7rem; color:var(--text-muted);">Indonesia ≈ 95 s.d. 141</small>
+                </div>
+                <div class="form-group">
+                    <label>🏙️ Nama Kota / Kabupaten</label>
+                    <input type="text" id="inputKota" class="form-control" placeholder="Contoh: Surabaya, Jawa Timur">
+                </div>
+                <div class="form-group">
+                    <label>🔍 Preview Peta (klik peta untuk update koordinat)</label>
+                    <div id="miniMap"></div>
+                </div>
+            </div>
+            <div style="display:flex; gap:12px; align-items:center;">
+                <button class="btn-primary" onclick="simpanLokasi()">💾 Simpan Koordinat</button>
+                <button class="btn-secondary" onclick="tutupEdit()">Batal</button>
+                <span style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">
+                    💡 Tip: Klik titik mana saja di peta mini untuk mengambil koordinatnya otomatis
+                </span>
+            </div>
+        </div>
+
+        <!-- Tabel COC -->
+        <div class="card">
+            <h3>📋 Daftar COC & Status Koordinat</h3>
+            <div class="search-bar">
+                <input type="text" id="searchCoc" placeholder="🔍 Cari No. COC atau Nama Perusahaan..." oninput="filterTabel()">
+                <span id="totalInfo" style="font-size:0.8rem; color:var(--text-muted); font-weight:700;"></span>
+            </div>
+            <div style="overflow-x:auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>No. COC</th>
+                            <th>Nama Perusahaan</th>
+                            <th>Tgl Sampling</th>
+                            <th>Kota</th>
+                            <th style="text-align:center;">Koordinat</th>
+                            <th style="text-align:center;">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody id="lokasiTableBody">
+                        <tr><td colspan="6" style="text-align:center; padding:40px; color:var(--text-muted);">Memuat data...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <!-- Toast -->
+    <div id="toast"></div>
+
+    <script src="config.js"></script>
+    <script src="auth.js?v=2"></script>
+    <script>
+        let allCoc = [];
+        let filteredCoc = [];
+        let miniMapInstance = null;
+        let miniMapMarker = null;
+        let currentEditId = null;
+
+        window.addEventListener('auth-ready', async () => {
+            await fetchAllCoc();
+
+            // Cek URL param ?id=...
+            const urlId = new URLSearchParams(window.location.search).get('id');
+            if (urlId) {
+                const found = allCoc.find(c => c.id === urlId);
+                if (found) bukaEdit(found);
+            }
+        });
+
+        async function fetchAllCoc() {
+            const { data, error } = await _supabase
+                .from('coc_emisi')
+                .select('id, nomor_coc, company_name, sampling_date, latitude, longitude, lokasi_kota')
+                .order('sampling_date', { ascending: false });
+
+            if (error) { console.error(error); return; }
+            allCoc = data || [];
+            filteredCoc = [...allCoc];
+            renderTabel();
+        }
+
+        function renderTabel() {
+            const body = document.getElementById('lokasiTableBody');
+            document.getElementById('totalInfo').innerText = `${filteredCoc.length} dari ${allCoc.length} COC`;
+
+            if (filteredCoc.length === 0) {
+                body.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:40px; color:var(--text-muted);">Tidak ada data ditemukan.</td></tr>`;
+                return;
+            }
+
+            body.innerHTML = filteredCoc.map(c => {
+                const tgl = c.sampling_date
+                    ? new Date(c.sampling_date).toLocaleDateString('id-ID', { day:'2-digit', month:'short', year:'numeric' })
+                    : '-';
+                const hasCoord = c.latitude && c.longitude;
+                const coordDisplay = hasCoord
+                    ? `<span class="badge-has">✅ ${parseFloat(c.latitude).toFixed(4)}, ${parseFloat(c.longitude).toFixed(4)}</span>`
+                    : `<span class="badge-none">⚠️ Belum diisi</span>`;
+
+                return `
+                    <tr id="row-${c.id}">
+                        <td style="font-weight:800; color:var(--primary);">${c.nomor_coc}</td>
+                        <td>${c.company_name || '-'}</td>
+                        <td>${tgl}</td>
+                        <td>${c.lokasi_kota || '-'}</td>
+                        <td style="text-align:center;">${coordDisplay}</td>
+                        <td style="text-align:center;">
+                            <button class="btn-edit btn-edit-primary" onclick="bukaEdit(${JSON.stringify(c).replace(/"/g, '&quot;')})">
+                                ✏️ Edit
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        window.filterTabel = function() {
+            const keyword = document.getElementById('searchCoc').value.toLowerCase().trim();
+            filteredCoc = keyword
+                ? allCoc.filter(c =>
+                    (c.nomor_coc || '').toLowerCase().includes(keyword) ||
+                    (c.company_name || '').toLowerCase().includes(keyword))
+                : [...allCoc];
+            renderTabel();
+        };
+
+        function bukaEdit(coc) {
+            currentEditId = coc.id;
+            document.getElementById('editCocLabel').innerText = `${coc.nomor_coc} — ${coc.company_name}`;
+            document.getElementById('inputLat').value  = coc.latitude  || '';
+            document.getElementById('inputLon').value  = coc.longitude || '';
+            document.getElementById('inputKota').value = coc.lokasi_kota || '';
+
+            const editCard = document.getElementById('editCard');
+            editCard.style.display = 'block';
+            editCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+            // Inisialisasi peta mini
+            setTimeout(() => initMiniMap(coc.latitude, coc.longitude), 100);
+        }
+
+        function tutupEdit() {
+            document.getElementById('editCard').style.display = 'none';
+            if (miniMapInstance) { miniMapInstance.remove(); miniMapInstance = null; miniMapMarker = null; }
+            currentEditId = null;
+        }
+
+        function initMiniMap(lat, lon) {
+            if (miniMapInstance) { miniMapInstance.remove(); }
+            const center = (lat && lon) ? [parseFloat(lat), parseFloat(lon)] : [-2.5, 117.0];
+            const zoom   = (lat && lon) ? 13 : 5;
+
+            miniMapInstance = L.map('miniMap', { center, zoom, zoomControl: false });
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap'
+            }).addTo(miniMapInstance);
+
+            if (lat && lon) {
+                miniMapMarker = L.marker([parseFloat(lat), parseFloat(lon)]).addTo(miniMapInstance);
+            }
+
+            // Klik peta → ambil koordinat
+            miniMapInstance.on('click', (e) => {
+                const { lat, lng } = e.latlng;
+                document.getElementById('inputLat').value = lat.toFixed(6);
+                document.getElementById('inputLon').value = lng.toFixed(6);
+                if (miniMapMarker) miniMapInstance.removeLayer(miniMapMarker);
+                miniMapMarker = L.marker([lat, lng]).addTo(miniMapInstance);
+            });
+        }
+
+        async function simpanLokasi() {
+            const lat  = parseFloat(document.getElementById('inputLat').value);
+            const lon  = parseFloat(document.getElementById('inputLon').value);
+            const kota = document.getElementById('inputKota').value.trim();
+
+            if (isNaN(lat) || isNaN(lon)) {
+                showToast('⚠️ Latitude dan Longitude harus diisi dengan angka!', '#ef4444');
+                return;
+            }
+            if (lat < -11 || lat > 6 || lon < 95 || lon > 142) {
+                if (!confirm('Koordinat di luar wilayah Indonesia. Tetap simpan?')) return;
+            }
+
+            const { error } = await _supabase
+                .from('coc_emisi')
+                .update({ latitude: lat, longitude: lon, lokasi_kota: kota || null })
+                .eq('id', currentEditId);
+
+            if (error) {
+                showToast('❌ Gagal menyimpan: ' + error.message, '#ef4444');
+                return;
+            }
+
+            // Update data lokal
+            const idx = allCoc.findIndex(c => c.id === currentEditId);
+            if (idx !== -1) {
+                allCoc[idx].latitude    = lat;
+                allCoc[idx].longitude   = lon;
+                allCoc[idx].lokasi_kota = kota || null;
+            }
+
+            showToast('✅ Koordinat berhasil disimpan!', '#16a34a');
+            tutupEdit();
+            filterTabel();
+        }
+
+        function showToast(msg, bg = '#1e293b') {
+            const toast = document.getElementById('toast');
+            toast.innerHTML = msg;
+            toast.style.background = bg;
+            toast.classList.add('visible');
+            setTimeout(() => toast.classList.remove('visible'), 3500);
+        }
+    </script>
+</body>
+</html>

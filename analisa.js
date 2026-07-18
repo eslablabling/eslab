@@ -853,6 +853,7 @@ async function bukaModalAnalisa(dbId, sampleId) {
         // Panggil pertama kali untuk menampilkan kalkulasi awal (jika data sudah ada)
         updateLiveCalculations(s);
 
+
         modal.style.display = 'block';
     } catch (err) {
         alert("Gagal memuat form: " + err.message);
@@ -962,14 +963,16 @@ document.getElementById('btnSimpanAnalisa').addEventListener('click', async () =
             ? `Mengubah hasil analisa gravimetri untuk sampel ${sampleId}`
             : `Menginput hasil analisa gravimetri untuk sampel ${sampleId}`;
 
+        const updatePayload = {
+            parameters: newParams,
+            status_lab: 'analyzed',
+            analyzed_at: finalDate,
+            rework_reason: null
+        };
+
         const { error } = await _supabase
             .from('samples')
-            .update({
-                parameters: newParams, 
-                status_lab: 'analyzed',
-                analyzed_at: finalDate,
-                rework_reason: null
-            })
+            .update(updatePayload)
             .eq('coc_id', dbId)
             .eq('sample_id', sampleId);
 
@@ -998,6 +1001,8 @@ document.getElementById('btnSimpanAnalisa').addEventListener('click', async () =
         alert("Gagal menyimpan penimbangan: " + err.message);
     }
 });
+
+
 
 const hitungTAT = (tglTerima) => {
     if (!tglTerima) return 0;
@@ -1167,6 +1172,7 @@ function isSampleExceedingBakuMutu(item) {
 
 function updateLiveCalculations(sampleObj) {
     const regsToUse = sampleObj.regulations || (sampleObj.regulation_name ? [sampleObj.regulation_name] : ['-']);
+    const isVerified = sampleObj.status_lab === 'verified';
     
     const o2Measured = getO2MeasuredValue(sampleObj.parameters);
 

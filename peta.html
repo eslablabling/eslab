@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Peta GIS Cerobong | ES Lab LIMS</title>
+    <meta name="description" content="Peta GIS Cerobong — sedang dalam perbaikan.">
+
+    <!-- Supabase & Fonts -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --primary: #2563eb;
+            --bg-main: #f8fafc;
+            --bg-card: #ffffff;
+            --text-main: #1e293b;
+            --text-muted: #64748b;
+            --border-color: #e2e8f0;
+            --sidebar-width: 280px;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background: var(--bg-main);
+            color: var(--text-main);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: var(--sidebar-width);
+            background: var(--bg-card);
+            border-right: 1px solid var(--border-color);
+            padding: 24px 16px;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow-y: auto;
+            flex-shrink: 0;
+            z-index: 10;
+        }
+
+        .nav-item {
+            display: flex; align-items: center;
+            padding: 11px 16px; color: var(--text-muted);
+            text-decoration: none; font-weight: 600;
+            border-radius: 12px; margin-bottom: 4px; font-size: 0.85rem;
+            transition: all 0.15s;
+        }
+        .nav-item.active, .nav-item:hover { background: #eff6ff; color: var(--primary); }
+
+        /* Main layout */
+        .main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Top bar */
+        .top-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 28px;
+            background: var(--bg-card);
+            border-bottom: 1px solid var(--border-color);
+            flex-shrink: 0;
+        }
+
+        /* Freeze overlay */
+        .freeze-container {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #f0f4ff 0%, #f8fafc 50%, #fff7ed 100%);
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Decorative background shapes */
+        .freeze-container::before {
+            content: '';
+            position: absolute;
+            width: 600px;
+            height: 600px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(37,99,235,0.05) 0%, transparent 70%);
+            top: -200px;
+            right: -100px;
+            pointer-events: none;
+        }
+        .freeze-container::after {
+            content: '';
+            position: absolute;
+            width: 400px;
+            height: 400px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(234,179,8,0.06) 0%, transparent 70%);
+            bottom: -150px;
+            left: -100px;
+            pointer-events: none;
+        }
+
+        .freeze-card {
+            background: white;
+            border-radius: 28px;
+            padding: 56px 60px;
+            text-align: center;
+            box-shadow: 0 24px 80px rgba(0,0,0,0.10), 0 2px 8px rgba(0,0,0,0.04);
+            max-width: 520px;
+            width: 90%;
+            position: relative;
+            z-index: 1;
+            border: 1.5px solid #e2e8f0;
+            animation: fadeInUp 0.5s ease-out;
+        }
+
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(24px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        .freeze-icon {
+            font-size: 4.5rem;
+            display: block;
+            margin-bottom: 20px;
+            animation: pulse 2.5s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50%       { transform: scale(1.08); }
+        }
+
+        .freeze-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            background: #fef9c3;
+            color: #a16207;
+            border: 1.5px solid #fde047;
+            border-radius: 20px;
+            padding: 5px 16px;
+            font-size: 0.72rem;
+            font-weight: 800;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            margin-bottom: 22px;
+        }
+
+        .freeze-badge .dot {
+            width: 8px; height: 8px;
+            background: #ca8a04;
+            border-radius: 50%;
+            animation: blink 1.2s ease-in-out infinite;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50%       { opacity: 0.2; }
+        }
+
+        .freeze-title {
+            font-size: 1.6rem;
+            font-weight: 800;
+            color: var(--text-main);
+            letter-spacing: -0.03em;
+            margin-bottom: 12px;
+        }
+
+        .freeze-desc {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            font-weight: 600;
+            line-height: 1.6;
+            margin-bottom: 30px;
+        }
+
+        .freeze-divider {
+            height: 1px;
+            background: #f1f5f9;
+            margin: 28px 0;
+        }
+
+        .freeze-info-list {
+            list-style: none;
+            text-align: left;
+            margin-bottom: 32px;
+        }
+        .freeze-info-list li {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            margin-bottom: 10px;
+        }
+        .freeze-info-list li .li-icon {
+            font-size: 1rem;
+            flex-shrink: 0;
+            margin-top: 1px;
+        }
+
+        .btn-back {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 14px;
+            padding: 13px 28px;
+            font-family: inherit;
+            font-size: 0.88rem;
+            font-weight: 800;
+            cursor: pointer;
+            text-decoration: none;
+            transition: all 0.2s;
+            box-shadow: 0 4px 20px rgba(37,99,235,0.25);
+        }
+        .btn-back:hover {
+            background: #1d4ed8;
+            transform: translateY(-1px);
+            box-shadow: 0 8px 28px rgba(37,99,235,0.35);
+        }
+
+        .countdown-text {
+            margin-top: 18px;
+            font-size: 0.75rem;
+            color: #94a3b8;
+            font-weight: 600;
+        }
+        .countdown-text span {
+            color: var(--primary);
+            font-weight: 800;
+        }
+    </style>
+</head>
+<body>
+
+    <aside class="sidebar">
+        <div style="margin-bottom: 30px; padding: 0 10px;">
+            <img src="eslab-logo.gif" alt="Logo" style="width: 150px;">
+        </div>
+        <nav id="dynamicSidebar"></nav>
+    </aside>
+
+    <div class="main">
+        <!-- Top Bar -->
+        <div class="top-bar">
+            <div>
+                <h2 style="font-size: 1.15rem; font-weight: 800; letter-spacing: -0.02em;">🗺️ Peta GIS Lokasi Cerobong</h2>
+                <p style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600; margin-top: 2px;">Sebaran lokasi cerobong industri & status kepatuhan emisi</p>
+            </div>
+        </div>
+
+        <!-- Freeze Content -->
+        <div class="freeze-container">
+            <div class="freeze-card">
+                <span class="freeze-icon">🚧</span>
+
+                <div class="freeze-badge">
+                    <div class="dot"></div>
+                    Fitur Dibekukan Sementara
+                </div>
+
+                <h1 class="freeze-title">Peta GIS Sedang Diperbaiki</h1>
+                <p class="freeze-desc">
+                    Fitur Peta GIS Cerobong untuk saat ini dinonaktifkan sementara karena masih terdapat beberapa bug yang perlu diperbaiki sebelum dapat digunakan.
+                </p>
+
+                <div class="freeze-divider"></div>
+
+                <ul class="freeze-info-list">
+                    <li>
+                        <span class="li-icon">🔧</span>
+                        <span>Tim developer sedang bekerja memperbaiki tampilan peta dan integrasi data koordinat cerobong.</span>
+                    </li>
+                    <li>
+                        <span class="li-icon">📋</span>
+                        <span>Data COC, sampling, dan analisa lab tetap berjalan normal — hanya fitur peta yang dibekukan.</span>
+                    </li>
+                    <li>
+                        <span class="li-icon">🔔</span>
+                        <span>Fitur ini akan diaktifkan kembali setelah semua bug diselesaikan dan pengujian selesai.</span>
+                    </li>
+                </ul>
+
+                <a href="dashboard.html" class="btn-back" id="btnKembali">
+                    ← Kembali ke Dashboard
+                </a>
+
+                <p class="countdown-text">
+                    Otomatis kembali ke dashboard dalam <span id="countdown">8</span> detik...
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="auth.js?v=2"></script>
+    <script>
+        // Countdown & auto-redirect
+        let sisa = 8;
+        const el = document.getElementById('countdown');
+        const timer = setInterval(() => {
+            sisa--;
+            if (el) el.textContent = sisa;
+            if (sisa <= 0) {
+                clearInterval(timer);
+                window.location.href = 'dashboard.html';
+            }
+        }, 1000);
+
+        // Cancel redirect if user clicks manually
+        const btnBack = document.getElementById('btnKembali');
+        if (btnBack) {
+            btnBack.addEventListener('click', () => clearInterval(timer));
+        }
+    </script>
+</body>
+</html>

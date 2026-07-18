@@ -1,4 +1,205 @@
 
+// ============================================================
+// #26 — DARK MODE PREMIUM
+// Injeksi CSS variabel dark mode ke halaman, toggle via sidebar
+// ============================================================
+function injectDarkModeStyles() {
+    if (document.getElementById('dark-mode-styles')) return; // Jangan inject dua kali
+    const style = document.createElement('style');
+    style.id = 'dark-mode-styles';
+    style.textContent = `
+        /* === DARK MODE GLOBAL === */
+        body.dark-mode {
+            background-color: #0f172a !important;
+            color: #e2e8f0 !important;
+        }
+        /* Sidebar */
+        body.dark-mode .sidebar {
+            background: #1e293b !important;
+            border-right-color: #334155 !important;
+            box-shadow: 4px 0 24px rgba(0,0,0,0.3) !important;
+        }
+        body.dark-mode .nav-item {
+            color: #94a3b8 !important;
+        }
+        body.dark-mode .nav-item:hover,
+        body.dark-mode .nav-item.active {
+            background: #1d4ed820 !important;
+            color: #60a5fa !important;
+        }
+        body.dark-mode .nav-label {
+            color: #475569 !important;
+        }
+        /* Top Bar */
+        body.dark-mode .top-bar,
+        body.dark-mode .main > .top-bar {
+            background: #0f172a !important;
+            border-bottom-color: #1e293b !important;
+        }
+        /* Cards, containers, coc-card, table-section, data-container */
+        body.dark-mode .coc-card,
+        body.dark-mode .data-container,
+        body.dark-mode .table-section,
+        body.dark-mode .stat-card,
+        body.dark-mode .menu-card,
+        body.dark-mode .chart-placeholder,
+        body.dark-mode .weather-card ~ div {
+            background: #1e293b !important;
+            border-color: #334155 !important;
+            color: #e2e8f0 !important;
+        }
+        /* Weather card tetap gradien, hanya sedikit gelap */
+        body.dark-mode .weather-card {
+            background: linear-gradient(135deg, #1e3a8a, #1d4ed8) !important;
+        }
+        /* Input & Select */
+        body.dark-mode input,
+        body.dark-mode select,
+        body.dark-mode textarea {
+            background: #0f172a !important;
+            color: #e2e8f0 !important;
+            border-color: #334155 !important;
+        }
+        body.dark-mode input::placeholder,
+        body.dark-mode textarea::placeholder {
+            color: #475569 !important;
+        }
+        /* Table */
+        body.dark-mode table th {
+            color: #64748b !important;
+            border-bottom-color: #1e293b !important;
+        }
+        body.dark-mode table td {
+            border-bottom-color: #1e293b !important;
+            color: #cbd5e1 !important;
+        }
+        body.dark-mode tbody tr:hover td,
+        body.dark-mode tbody tr:hover {
+            background-color: #1e293b !important;
+        }
+        /* Buttons */
+        body.dark-mode .page-btn {
+            background: #1e293b !important;
+            border-color: #334155 !important;
+            color: #94a3b8 !important;
+        }
+        body.dark-mode .page-btn:hover {
+            background: #334155 !important;
+            color: #e2e8f0 !important;
+        }
+        body.dark-mode .page-btn.active {
+            background: #2563eb !important;
+            color: white !important;
+        }
+        body.dark-mode .tab-btn {
+            background: #1e293b !important;
+            color: #94a3b8 !important;
+        }
+        body.dark-mode .tab-btn.active {
+            background: #2563eb !important;
+            color: white !important;
+        }
+        body.dark-mode .btn-primary {
+            background: #2563eb !important;
+        }
+        body.dark-mode .btn-add {
+            background: #1e293b !important;
+            color: #94a3b8 !important;
+            border-color: #334155 !important;
+        }
+        /* Modal */
+        body.dark-mode .modal-content {
+            background: #1e293b !important;
+            color: #e2e8f0 !important;
+        }
+        body.dark-mode .form-group {
+            background: #0f172a !important;
+            border-color: #334155 !important;
+        }
+        body.dark-mode .form-control {
+            background: #0f172a !important;
+            color: #e2e8f0 !important;
+            border-color: #334155 !important;
+        }
+        /* Badges & Tags */
+        body.dark-mode .tag-orange { background: #431407 !important; color: #fb923c !important; }
+        body.dark-mode .tag-blue   { background: #1e3a5f !important; color: #60a5fa !important; }
+        body.dark-mode .tag-green  { background: #14532d !important; color: #4ade80 !important; }
+        /* Scrollbar */
+        body.dark-mode ::-webkit-scrollbar-track { background: #1e293b; }
+        body.dark-mode ::-webkit-scrollbar-thumb { background: #334155; }
+        body.dark-mode ::-webkit-scrollbar-thumb:hover { background: #475569; }
+        /* Text colors */
+        body.dark-mode h1, body.dark-mode h2, body.dark-mode h3, body.dark-mode h4 {
+            color: #f1f5f9 !important;
+        }
+        body.dark-mode p { color: #94a3b8 !important; }
+        body.dark-mode .welcome-text h2 { color: #f1f5f9 !important; }
+        body.dark-mode .welcome-text p  { color: #64748b !important; }
+        /* Dark mode toggle button */
+        #darkModeToggleBtn {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            width: 100%;
+            padding: 10px 16px;
+            background: none;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: #64748b;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            transition: all 0.2s;
+            margin-top: 8px;
+        }
+        #darkModeToggleBtn:hover {
+            background: #f1f5f9;
+            color: #1e293b;
+        }
+        body.dark-mode #darkModeToggleBtn {
+            border-color: #334155 !important;
+            color: #94a3b8 !important;
+            background: none !important;
+        }
+        body.dark-mode #darkModeToggleBtn:hover {
+            background: #1e293b !important;
+            color: #e2e8f0 !important;
+        }
+        /* Transition halus saat toggle */
+        body, .sidebar, .coc-card, .data-container, .stat-card,
+        .table-section, input, select, textarea, table th, table td {
+            transition: background-color 0.25s ease, color 0.2s ease, border-color 0.2s ease;
+        }
+    `;
+    document.head.appendChild(style);
+}
+
+function applyDarkMode() {
+    const isDark = localStorage.getItem('eslab_dark_mode') === 'true';
+    if (isDark) {
+        document.body.classList.add('dark-mode');
+    } else {
+        document.body.classList.remove('dark-mode');
+    }
+    // Update ikon tombol jika sudah dirender
+    const btn = document.getElementById('darkModeToggleBtn');
+    if (btn) btn.innerHTML = isDark ? '☀️ Mode Terang' : '🌙 Mode Gelap';
+}
+
+window.toggleDarkMode = function() {
+    const isDark = document.body.classList.toggle('dark-mode');
+    localStorage.setItem('eslab_dark_mode', isDark);
+    const btn = document.getElementById('darkModeToggleBtn');
+    if (btn) {
+        btn.innerHTML = isDark ? '☀️ Mode Terang' : '🌙 Mode Gelap';
+        // Animasi kecil
+        btn.style.transform = 'scale(0.95)';
+        setTimeout(() => { btn.style.transform = ''; }, 150);
+    }
+};
+
 function renderSidebar(role) {
             const navContainer = document.getElementById('dynamicSidebar');
             if (!navContainer) return;
@@ -73,6 +274,13 @@ function renderSidebar(role) {
                     </a>
                 `;
             });
+
+            // Tambahkan tombol Dark Mode di paling bawah sidebar (#26)
+            sidebarHTML += `
+                <button id="darkModeToggleBtn" onclick="toggleDarkMode()">
+                    🌙 Mode Gelap
+                </button>
+            `;
 
             // Tambahkan tombol logout di paling bawah sidebar agar mudah diakses
             sidebarHTML += `
@@ -194,6 +402,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Jalankan Prosedur
     await checkAuth();
+
+    // #26 Dark Mode: inject CSS global dan terapkan preferensi tersimpan
+    injectDarkModeStyles();
+    // Terapkan setelah DOM siap (sedikit delay agar sidebar sudah dirender)
+    setTimeout(applyDarkMode, 50);
 });
 
 // Tambahkan di auth.js
