@@ -323,8 +323,11 @@ function renderTableRows() {
             }
         }
 
+        const exceeds = isSampleExceedingBakuMutu(item);
+        const rowClass = exceeds ? 'class="blinking-alert"' : '';
+
         return `
-            <tr>
+            <tr ${rowClass}>
                 <td style="font-weight: 800; color: var(--primary);">${item.sample_id}</td>
                 <td>
                     <div style="font-weight: 700;">${item.company}</div>
@@ -629,6 +632,7 @@ async function bukaModalAnalisa(dbId, sampleId) {
                                 <input ${disabledAttr} type="number" step="0.0001" placeholder="Akhir 2" class="grav-input" data-key="s_a_akhir_2" value="${p.grav_data?.s_a_akhir_2 || ''}">
                             </div>
                         </div>
+                        <div id="grav-live-preview-${originalIndex}" style="margin-top: 15px; padding: 12px; background: #fff; border: 1.5px solid #0284c7; border-radius: 12px; font-size: 0.8rem; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02); color: #1e293b;"></div>
                     </div>
                 `;
             } else if (isGravimetriLama) {
@@ -672,6 +676,7 @@ async function bukaModalAnalisa(dbId, sampleId) {
                                 </div>
                             </div>
                         </div>
+                        <div id="grav-live-preview-${originalIndex}" style="margin-top: 15px; padding: 12px; background: #fff; border: 1.5px solid #475569; border-radius: 12px; font-size: 0.8rem; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02); color: #1e293b;"></div>
                     </div>
                 `;
             }
@@ -685,6 +690,16 @@ async function bukaModalAnalisa(dbId, sampleId) {
                 `<div style="color: #ef4444; font-weight: bold; font-size: 0.8rem; text-align: center; width: 100%;">🔒 Data ini sudah diverifikasi dan dikunci.</div>` : 
                 `<button onclick="simpanDataAnalisa()" class="btn-primary">Simpan Hasil</button>`;
         }
+
+        // Register event listener untuk real-time calculation
+        inputContainer.querySelectorAll('input').forEach(input => {
+            input.addEventListener('input', () => {
+                updateLiveCalculations(s);
+            });
+        });
+        
+        // Panggil pertama kali untuk menampilkan kalkulasi awal (jika data sudah ada)
+        updateLiveCalculations(s);
 
         modal.style.display = 'block';
     } catch (err) {
@@ -893,3 +908,237 @@ function syncDatePickerToText(val) {
     }
 }
 window.syncDatePickerToText = syncDatePickerToText;
+
+// ========================================================================
+// FUNGSI UTILITY BARU UNTUK KALKULASI PARAMETER & BERSINAR BERSAMA
+// ========================================================================
+
+function getConversionMgm3(parameter, ppmValue) {
+    if (ppmValue === undefined || ppmValue === null || ppmValue === '') return 0;
+    
+    let val = Number.parseFloat(ppmValue);
+    if (Number.isNaN(val)) val = 0;
+
+    const p = parameter.toUpperCase();
+    let bm = 0;
+
+    if (p.includes('SO2')) bm = 64.06;
+    else if (p.includes('NO2')) bm = 46.01;
+    else if (p.includes('NOX')) bm = 46.01;
+    else if (p.includes('CO') && !p.includes('CO2')) bm = 28;
+    else if (p.includes('NO')) bm = 30.01;
+
+    return bm > 0 ? (val * bm) / 24.45 : val;
+}
+
+function isSampleExceedingBakuMutu(item) {
+    const currentReg = item.regulations?.[0] || item.regulation_name || '-';
+    
+    const o2Param = item.parameters.find(sp => {
+        const spName = (sp.parameter || '').toLowerCase().trim();
+        return spName === 'o2' || spName === 'oksigen' || spName === 'oksigen (o2)' || spName === 'oxygen';
+    });
+    let o2Measured = null;
+    if (o2Param) {
+        const rawO2Val = o2Param.result || o2Param.konsentrasi_1 || '0';
+        o2Measured = parseFloat(rawO2Val);
+        if (isNaN(o2Measured)) o2Measured = null;
+    }
+
+    for (let p of item.parameters) {
+        const pName = p.parameter ? p.parameter.replace(/\s+/g, ' ').trim().toLowerCase() : '';
+        const isGasPolutan = (
+            pName.includes('sulfur') || pName.includes('so2') || 
+            pName.includes('nitrogen') || pName.includes('nox') || 
+            pName.includes('no2') || pName.includes(' no') || 
+            pName.includes('carbon mon') || pName.includes(' co')
+        ) && !pName.includes('co2');
+
+        let valToFormat;
+        if (isGasPolutan) {
+            const rawPpm = (p.konsentrasi_1 !== undefined && p.konsentrasi_1 !== null) ? p.konsentrasi_1 : '0';
+            valToFormat = getConversionMgm3(p.parameter, rawPpm);
+        } else if (pName.includes('opacity') || pName.includes('opasitas')) {
+            valToFormat = item.opasitas_avg || '0';
+        } else {
+            valToFormat = p.result || p.hasil_mg_nm3 || p.konsentrasi_1 || '0';
+        }
+
+        const rawVal = parseFloat(valToFormat) || 0;
+        if (rawVal <= 0) continue;
+
+        const limitStr = getRegulatoryLimit(p.parameter, currentReg);
+        const limitVal = parseFloat(limitStr);
+        if (isNaN(limitVal)) continue;
+
+        const refO2 = getO2Reference(p.parameter, currentReg);
+        let finalVal = rawVal;
+        if (refO2 !== null && o2Measured !== null && o2Measured > 0 && o2Measured < 21) {
+            const factor = (21 - refO2) / (21 - o2Measured);
+            finalVal = rawVal * factor;
+        }
+
+        if (finalVal > limitVal) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function updateLiveCalculations(sampleObj) {
+    const currentReg = sampleObj.regulation_name || '-';
+    
+    const o2Param = sampleObj.parameters.find(sp => {
+        const spName = (sp.parameter || '').toLowerCase().trim();
+        return spName === 'o2' || spName === 'oksigen' || spName === 'oksigen (o2)' || spName === 'oxygen';
+    });
+    let o2Measured = null;
+    if (o2Param) {
+        const rawO2Val = o2Param.result || o2Param.konsentrasi_1 || '0';
+        o2Measured = parseFloat(rawO2Val);
+        if (isNaN(o2Measured)) o2Measured = null;
+    }
+
+    const gravSections = document.querySelectorAll('#parameterInputs > div');
+    gravSections.forEach(section => {
+        const idxInput = section.querySelector('.original-idx');
+        if (!idxInput) return;
+        const idx = idxInput.value;
+        const p = sampleObj.parameters[idx];
+        const previewDiv = document.getElementById(`grav-live-preview-${idx}`);
+        if (!previewDiv) return;
+
+        const gravData = {};
+        section.querySelectorAll('.grav-input').forEach(input => {
+            gravData[input.dataset.key] = input.value;
+        });
+
+        const qcData = {};
+        section.querySelectorAll('.qc-input').forEach(input => {
+            qcData[input.dataset.key] = input.value;
+        });
+
+        const method = p.method || '';
+        const isSNI2021 = method.includes('7117-21:2021');
+
+        const s_fAwal = hitungAvg(gravData.s_f_awal_1, gravData.s_f_awal_2);
+        const s_fAkhir = hitungAvg(gravData.s_f_akhir_1, gravData.s_f_akhir_2);
+        const s_fNet = s_fAkhir - s_fAwal;
+
+        const b_fAwal = hitungAvg(qcData.b_f_awal_1, qcData.b_f_awal_2);
+        const b_fAkhir = hitungAvg(qcData.b_f_akhir_1, qcData.b_f_akhir_2);
+        const b_fNet = b_fAkhir - b_fAwal;
+
+        const netFilter = s_fNet - b_fNet;
+        let totalNetGram = netFilter;
+
+        let detailsHtml = `
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 6px; border-bottom: 1px dashed #cbd5e1; padding-bottom: 6px;">
+                <div>Filter Sampel (Net): <strong>${s_fNet.toFixed(4)} g</strong></div>
+                <div>Filter Blanko (Net): <strong>${b_fNet.toFixed(4)} g</strong></div>
+            </div>
+        `;
+
+        if (isSNI2021) {
+            const s_aAwal = hitungAvg(gravData.s_a_awal_1, gravData.s_a_awal_2);
+            const s_aAkhir = hitungAvg(gravData.s_a_akhir_1, gravData.s_a_akhir_2);
+            const s_aNet = s_aAkhir - s_aAwal;
+
+            const b_aAwal = hitungAvg(qcData.b_a_awal_1, qcData.b_a_awal_2);
+            const b_aAkhir = hitungAvg(qcData.b_a_akhir_1, qcData.b_a_akhir_2);
+            const b_aNet = b_aAkhir - b_aAwal;
+
+            const netAceton = s_aNet - b_aNet;
+            totalNetGram += netAceton;
+
+            detailsHtml += `
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 6px; border-bottom: 1px dashed #cbd5e1; padding-bottom: 6px;">
+                    <div>Aseton Sampel (Net): <strong>${s_aNet.toFixed(4)} g</strong></div>
+                    <div>Aseton Blanko (Net): <strong>${b_aNet.toFixed(4)} g</strong></div>
+                </div>
+            `;
+        } else {
+            const s_cAwal = hitungAvg(gravData.s_c_awal_1, gravData.s_c_awal_2);
+            const s_cAkhir = hitungAvg(gravData.s_c_akhir_1, gravData.s_c_akhir_2);
+            const s_cNet = s_cAkhir - s_cAwal;
+
+            const b_cAwal = hitungAvg(qcData.b_c_awal_1, qcData.b_c_awal_2);
+            const b_cAkhir = hitungAvg(qcData.b_c_akhir_1, qcData.b_c_akhir_2);
+            const b_cNet = b_cAkhir - b_cAwal;
+
+            const netCawan = s_cNet - b_cNet;
+            totalNetGram += netCawan;
+
+            detailsHtml += `
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 6px; border-bottom: 1px dashed #cbd5e1; padding-bottom: 6px;">
+                    <div>Cawan Sampel (Net): <strong>${s_cNet.toFixed(4)} g</strong></div>
+                    <div>Cawan Blanko (Net): <strong>${b_cNet.toFixed(4)} g</strong></div>
+                </div>
+            `;
+        }
+
+        const totalNetMg = totalNetGram * 1000;
+        const vDgm = parseFloat(p.volume_meter || 0);
+        const hasilKonsentrasi = vDgm > 0 ? (totalNetMg / vDgm) : 0;
+
+        let resultsHtml = `
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <span>Total Partikulat Bersih:</span>
+                <strong>${totalNetMg.toFixed(2)} mg</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <span>Hasil Terukur:</span>
+                <strong>${hasilKonsentrasi.toFixed(2)} mg/Nm³</strong>
+            </div>
+        `;
+
+        const refO2 = getO2Reference(p.parameter, currentReg);
+        let finalVal = hasilKonsentrasi;
+        if (refO2 !== null) {
+            if (o2Measured !== null && o2Measured > 0 && o2Measured < 21) {
+                const factor = (21 - refO2) / (21 - o2Measured);
+                finalVal = hasilKonsentrasi * factor;
+                resultsHtml += `
+                    <div style="display: flex; justify-content: space-between; align-items: center; color: #0284c7; font-weight: 700; margin-bottom: 4px;">
+                        <span>Koreksi (${refO2}% O₂):</span>
+                        <span>${finalVal.toFixed(2)} mg/Nm³</span>
+                    </div>
+                `;
+            } else {
+                resultsHtml += `
+                    <div style="font-size: 0.7rem; color: #f59e0b; font-style: italic; margin-bottom: 4px;">
+                        Menunggu data O₂ lapangan (${o2Measured !== null ? o2Measured + '%' : 'belum ada'}) untuk koreksi ${refO2}%
+                    </div>
+                `;
+            }
+        }
+
+        const limitStr = getRegulatoryLimit(p.parameter, currentReg);
+        const limitVal = parseFloat(limitStr);
+        let alertHtml = '';
+        
+        if (!isNaN(limitVal)) {
+            const isExceeded = finalVal > limitVal;
+            resultsHtml += `
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px; padding-top: 4px; border-top: 1px dashed #cbd5e1;">
+                    <span>Baku Mutu:</span>
+                    <strong>${limitStr} mg/Nm³</strong>
+                </div>
+            `;
+            if (isExceeded) {
+                alertHtml = `
+                    <div style="margin-top: 8px; padding: 6px 10px; background: #fee2e2; border: 1px solid #fecdd3; border-radius: 8px; color: #ef4444; font-weight: bold; text-align: center; text-transform: uppercase; box-shadow: 0 4px 6px rgba(239,68,68,0.1);">
+                        ⚠️ MELEBIHI BAKU MUTU!
+                    </div>
+                `;
+                section.style.borderColor = '#fca5a5';
+                section.style.background = '#fef2f2';
+            } else {
+                section.style.borderColor = '#bae6fd';
+                section.style.background = isVerified ? '#f8fafc' : '#f0f9ff';
+            }
+        }
+
+        previewDiv.innerHTML = detailsHtml + resultsHtml + alertHtml;
+    });
+}

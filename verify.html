@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verifikasi Sertifikat COA | ESLab LIMS</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #2563eb;
+            --success: #10b981;
+            --error: #ef4444;
+            --bg-main: #f8fafc;
+            --bg-card: #ffffff;
+            --text-main: #1e293b;
+            --text-muted: #64748b;
+            --border-color: #e2e8f0;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        body { 
+            font-family: 'Plus Jakarta Sans', sans-serif; 
+            background-color: var(--bg-main); 
+            color: var(--text-main); 
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            position: relative;
+        }
+
+        /* Ambient background glow */
+        .bg-glow {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            z-index: -1;
+            background: 
+                radial-gradient(at 0% 0%, rgba(37, 99, 235, 0.05) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(16, 185, 129, 0.05) 0px, transparent 50%);
+        }
+
+        .container {
+            width: 100%;
+            max-width: 700px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 28px;
+            box-shadow: 0 20px 40px -15px rgba(0,0,0,0.05);
+            padding: 40px;
+            text-align: center;
+        }
+
+        .logo-container {
+            margin-bottom: 25px;
+        }
+        .logo-container img {
+            max-width: 160px;
+            height: auto;
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 24px;
+            border-radius: 50px;
+            font-weight: 800;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            margin-bottom: 30px;
+            letter-spacing: 0.05em;
+        }
+        
+        .status-badge.valid {
+            background: #dcfce7;
+            color: #15803d;
+            border: 1px solid #bbf7d0;
+        }
+
+        .status-badge.invalid {
+            background: #fee2e2;
+            color: #b91c1c;
+            border: 1px solid #fecdd3;
+        }
+
+        .status-badge.loading {
+            background: #f1f5f9;
+            color: #475569;
+            border: 1px solid #e2e8f0;
+        }
+
+        h2 {
+            font-size: 1.5rem;
+            font-weight: 800;
+            margin-bottom: 10px;
+            letter-spacing: -0.02em;
+        }
+
+        .subtitle {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            margin-bottom: 30px;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 15px;
+            text-align: left;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            padding: 24px;
+            border-radius: 20px;
+            margin-bottom: 30px;
+        }
+
+        .info-item {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .info-label {
+            font-size: 0.7rem;
+            font-weight: 800;
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+
+        .info-value {
+            font-weight: 700;
+            font-size: 0.95rem;
+            color: var(--text-main);
+        }
+
+        /* Detail sample list */
+        .samples-section {
+            text-align: left;
+            margin-top: 30px;
+        }
+
+        .samples-title {
+            font-size: 1rem;
+            font-weight: 800;
+            margin-bottom: 15px;
+            color: var(--text-main);
+            border-bottom: 2px solid #f1f5f9;
+            padding-bottom: 8px;
+        }
+
+        .sample-card {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 15px;
+        }
+
+        .sample-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .sample-id {
+            font-weight: 800;
+            color: var(--primary);
+            font-size: 0.95rem;
+        }
+
+        .sample-desc {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+
+        .param-badge-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 10px;
+        }
+
+        .param-badge {
+            font-size: 0.7rem;
+            background: #f1f5f9;
+            color: #475569;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-weight: 700;
+            border: 1px solid #e2e8f0;
+        }
+
+        .footer {
+            margin-top: 40px;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-glow"></div>
+    
+    <div class="container">
+        <div class="logo-container">
+            <img src="eslab-logo.gif" alt="ESLab Logo" id="logoImg" onerror="this.src='logo_eslab.jpg'">
+        </div>
+
+        <div id="loadingState">
+            <div class="status-badge loading">🔍 Memverifikasi...</div>
+            <h2>Sedang memverifikasi data</h2>
+            <p class="subtitle">Harap tunggu, menghubungkan ke server database ESLab LIMS...</p>
+        </div>
+
+        <div id="validState" style="display: none;">
+            <div class="status-badge valid">✅ Sertifikat Valid</div>
+            <h2>Verifikasi Berhasil</h2>
+            <p class="subtitle">Sertifikat ini terdaftar resmi pada database laboratorium PT Envirotama Solusindo.</p>
+
+            <div class="info-grid">
+                <div class="info-item">
+                    <span class="info-label">Nama Perusahaan</span>
+                    <span class="info-value" id="valCompany">-</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">No. Quotation / Job Number</span>
+                    <span class="info-value" id="valQtNo">-</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Tanggal Sampling</span>
+                    <span class="info-value" id="valSamplingDate">-</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Tanggal Verifikasi Laporan</span>
+                    <span class="info-value" id="valVerifiedDate">-</span>
+                </div>
+            </div>
+
+            <div class="samples-section">
+                <h3 class="samples-title">Titik Sampel Terverifikasi</h3>
+                <div id="samplesListContainer">
+                    <!-- Dinamis via JS -->
+                </div>
+            </div>
+        </div>
+
+        <div id="invalidState" style="display: none;">
+            <div class="status-badge invalid">❌ Sertifikat Tidak Valid</div>
+            <h2 id="invalidTitle">Verifikasi Gagal</h2>
+            <p class="subtitle" id="invalidMessage">Nomor sertifikat tidak cocok dengan data kami atau dokumen telah diubah.</p>
+            <div style="background: #fef2f2; border: 1px solid #fee2e2; padding: 20px; border-radius: 16px; color: var(--error); font-size: 0.85rem; font-weight: 600; text-align: left;">
+                ⚠️ Perhatian: Pastikan QR Code yang Anda pindai berasal dari sertifikat asli cetakan ESLab. Jika Anda yakin dokumen ini asli, hubungi bagian administrasi laboratorium kami.
+            </div>
+        </div>
+
+        <div class="footer">
+            PT Envirotama Solusindo &copy; 2026. Hak Cipta Dilindungi Undang-Undang.
+        </div>
+    </div>
+
+    <script src="config.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const docId = urlParams.get('id');
+
+            const loading = document.getElementById('loadingState');
+            const valid = document.getElementById('validState');
+            const invalid = document.getElementById('invalidState');
+
+            if (!docId) {
+                loading.style.display = 'none';
+                invalid.style.display = 'block';
+                document.getElementById('invalidTitle').innerText = 'ID Sertifikat Tidak Ditemukan';
+                document.getElementById('invalidMessage').innerText = 'Tautan verifikasi tidak memiliki ID yang sah.';
+                return;
+            }
+
+            try {
+                // Panggil RPC verify_coa
+                const { data, error } = await _supabase.rpc('verify_coa', { target_coc_id: docId });
+
+                if (error) throw error;
+
+                if (!data || data.success === false) {
+                    loading.style.display = 'none';
+                    invalid.style.display = 'block';
+                    if (data && data.message) {
+                        document.getElementById('invalidMessage').innerText = data.message;
+                    }
+                    return;
+                }
+
+                // Render valid state
+                document.getElementById('valCompany').innerText = data.company_name;
+                document.getElementById('valQtNo').innerText = data.qt_no || '-';
+                document.getElementById('valSamplingDate').innerText = data.sampling_date ? new Date(data.sampling_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '-';
+                document.getElementById('valVerifiedDate').innerText = data.verified_at ? new Date(data.verified_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }) + ' WIB' : '-';
+
+                const listContainer = document.getElementById('samplesListContainer');
+                listContainer.innerHTML = '';
+
+                const samples = data.samples || [];
+                if (samples.length === 0) {
+                    listContainer.innerHTML = '<p style="color: var(--text-muted); font-size: 0.85rem; font-style: italic;">Tidak ada titik sampel yang terverifikasi.</p>';
+                } else {
+                    samples.forEach(s => {
+                        const card = document.createElement('div');
+                        card.className = 'sample-card';
+                        
+                        const titleLine = document.createElement('div');
+                        titleLine.className = 'sample-header';
+                        titleLine.innerHTML = `
+                            <span class="sample-id">${s.sample_id}</span>
+                            <span class="sample-desc">${s.nama_cerobong || s.description || '-'}</span>
+                        `;
+                        card.appendChild(titleLine);
+
+                        const badgeContainer = document.createElement('div');
+                        badgeContainer.className = 'param-badge-container';
+                        
+                        const params = s.parameters || [];
+                        const activeParams = params.filter(p => p.show_in_coa !== false);
+
+                        if (activeParams.length === 0) {
+                            badgeContainer.innerHTML = '<span style="font-size: 0.75rem; color: var(--text-muted);">Tidak ada parameter publik</span>';
+                        } else {
+                            activeParams.forEach(p => {
+                                const badge = document.createElement('span');
+                                badge.className = 'param-badge';
+                                badge.innerText = p.parameter;
+                                badgeContainer.appendChild(badge);
+                            });
+                        }
+                        card.appendChild(badgeContainer);
+                        listContainer.appendChild(card);
+                    });
+                }
+
+                loading.style.display = 'none';
+                valid.style.display = 'block';
+
+            } catch (err) {
+                console.error("Gagal melakukan verifikasi:", err);
+                loading.style.display = 'none';
+                invalid.style.display = 'block';
+                document.getElementById('invalidMessage').innerText = 'Koneksi gagal atau database tidak merespons: ' + err.message;
+            }
+        });
+    </script>
+</body>
+</html>

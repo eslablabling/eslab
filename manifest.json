@@ -1,0 +1,16 @@
+{
+  "name": "ESLab LIMS",
+  "short_name": "ESLab LIMS",
+  "description": "Laboratory Information Management System - PT Envirotama Solusindo",
+  "start_url": "./dashboard.html",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#2563eb",
+  "icons": [
+    {
+      "src": "logo_eslab.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg"
+    }
+  ]
+}

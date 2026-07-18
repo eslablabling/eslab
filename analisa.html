@@ -195,6 +195,20 @@
             opacity: 0.5;
             cursor: not-allowed;
         }
+
+        @keyframes warning-flash {
+            0% { background-color: rgba(254, 226, 226, 0.7); }
+            50% { background-color: rgba(254, 243, 199, 0.7); }
+            100% { background-color: rgba(254, 226, 226, 0.7); }
+        }
+        .blinking-alert td {
+            animation: warning-flash 2.5s infinite ease-in-out;
+            border-bottom: 1.5px solid #ef4444 !important;
+            color: #b91c1c !important;
+        }
+        .blinking-alert td:first-child {
+            border-left: 4px solid #ef4444 !important;
+        }
     </style>
 </head>
 <body>

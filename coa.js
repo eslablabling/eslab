@@ -546,6 +546,10 @@ function formatDateEnglish(dateInput) {
 function renderCoA(data) {
     const area = document.getElementById('coaRenderArea');
     
+    // QR Code Verification Link & URL
+    const verificationLink = window.location.origin + window.location.pathname.replace('coa.html', 'verify.html') + '?id=' + encodeURIComponent(data.id);
+    const qrCodeUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=' + encodeURIComponent(verificationLink);
+
     // Parsing data sampel
     const samples = data.samples || [];
 
@@ -705,10 +709,19 @@ function renderCoA(data) {
                 </table>
             </div>
 
-            <div style="margin-top: 30px; margin-left: auto; text-align: right; padding-right: 20px; width: fit-content;">
-                <p style="font-size: 0.85rem;">Cikarang, ${reportDateStr}</p>
-                <p style="font-size: 0.85rem;">Approved by,</p><br><br>
-                <p style="font-size: 0.85rem;"><strong>Fadhel Verdino</strong></p>
+            <div style="margin-top: 40px; display: flex; justify-content: space-between; align-items: flex-end; width: 100%;">
+                <div style="display: flex; align-items: center; gap: 12px; text-align: left;">
+                    <img src="${qrCodeUrl}" alt="QR Code Verification" style="width: 75px; height: 75px; border: 1px solid #cbd5e1; padding: 2px; background: white;" />
+                    <div style="font-size: 0.7rem; color: #475569;">
+                        <p style="font-weight: bold; color: #0f172a; margin-bottom: 2px;">Scan to Verify</p>
+                        <p style="margin: 0; line-height: 1.2;">Verify authenticity of this<br>certificate at ESLab online.</p>
+                    </div>
+                </div>
+                <div style="text-align: right; padding-right: 20px;">
+                    <p style="font-size: 0.85rem;">Cikarang, ${reportDateStr}</p>
+                    <p style="font-size: 0.85rem;">Approved by,</p><br><br>
+                    <p style="font-size: 0.85rem;"><strong>Fadhel Verdino</strong></p>
+                </div>
             </div>
         </div>
     `;
@@ -856,10 +869,19 @@ function renderCoA(data) {
                 <p>Note: ** Keputusan Menteri Negara Lingkungan Hidup Nomor 13 Tahun 1995 (Lampiran VB)</p>
             </div>
 
-            <div style="text-align: right; margin-top: 40px; font-size: 0.85rem;">
-                <p>Cikarang, ${new Date().toLocaleDateString('en-US', {month: 'long', day: 'numeric', year: 'numeric'})}</p>
-                <p>Approved by,</p><br><br>
-                <p><strong>Fadhel Verdino</strong><br>Environment Lab Manager</p>
+            <div style="margin-top: 30px; display: flex; justify-content: space-between; align-items: flex-end; width: 100%;">
+                <div style="display: flex; align-items: center; gap: 12px; text-align: left;">
+                    <img src="${qrCodeUrl}" alt="QR Code Verification" style="width: 70px; height: 70px; border: 1px solid #cbd5e1; padding: 2px; background: white;" />
+                    <div style="font-size: 0.65rem; color: #475569;">
+                        <p style="font-weight: bold; color: #0f172a; margin-bottom: 1px;">Scan to Verify</p>
+                        <p style="margin: 0; line-height: 1.2;">Original certificate available online.</p>
+                    </div>
+                </div>
+                <div style="text-align: right;">
+                    <p style="font-size: 0.85rem;">Cikarang, ${new Date().toLocaleDateString('en-US', {month: 'long', day: 'numeric', year: 'numeric'})}</p>
+                    <p style="font-size: 0.85rem;">Approved by,</p><br><br>
+                    <p style="font-size: 0.85rem;"><strong>Fadhel Verdino</strong><br>Environment Lab Manager</p>
+                </div>
             </div>
         </div>
         `;
