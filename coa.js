@@ -719,8 +719,8 @@ function renderCoA(data) {
                 </div>
                 <div style="text-align: right; padding-right: 20px;">
                     <p style="font-size: 0.85rem;">Cikarang, ${reportDateStr}</p>
-                    <p style="font-size: 0.85rem;">Approved by,</p><br><br>
-                    <p style="font-size: 0.85rem;"><strong>Fadhel Verdino</strong></p>
+                    <p style="font-size: 0.85rem; margin: 0;">Approved by,</p>
+                    <p style="font-size: 0.85rem; margin: 70px 0 0 0;"><strong>Fadhel Verdino</strong></p>
                 </div>
             </div>
         </div>
@@ -731,16 +731,9 @@ function renderCoA(data) {
         const isAllowedToToggle = ['admin_master', 'manager', 'admin_ts'].includes(userRole);
         const showHeader = isAllowedToToggle ? `<th class="no-print" style="width: 40px; text-align: center;">Tampilkan</th>` : '';
 
-        const o2Param = sample.parameters.find(sp => {
-            const spName = (sp.parameter || '').toLowerCase().trim();
-            return spName === 'o2' || spName === 'oksigen' || spName === 'oksigen (o2)' || spName === 'oxygen';
-        });
-        let o2Measured = null;
-        if (o2Param) {
-            const rawO2Val = o2Param.result || o2Param.konsentrasi_1 || '0';
-            o2Measured = parseFloat(rawO2Val);
-            if (isNaN(o2Measured)) o2Measured = null;
-        }
+        const o2Measured = getO2MeasuredValue(sample.parameters);
+        let hasO2Correction = false;
+        let correctedO2RefVal = null;
 
         htmlContent += `
         <div class="coa-page" style="padding: 20px; margin-top: 20px;">
@@ -804,11 +797,13 @@ function renderCoA(data) {
                     }
 
                     // Eksekusi LOQ: Merubah angka 0 menjadi < LOQ
+                    let isCurrentParamCorrected = false;
                     let finalDisplayResult = formatResultWithLOQ(p.parameter, valToFormat);
+                    let calculatedVal = parseFloat(valToFormat) || 0;
 
                     // --- OKSIGEN CORRECTION LOGIC ---
-                    const currentReg = sample.regulations?.[0] || '-';
-                    const refO2 = getO2Reference(p.parameter, currentReg);
+                    const regsToUse = sample.regulations || (sample.regulation_name ? [sample.regulation_name] : ['-']);
+                    const refO2 = getO2Reference(p.parameter, regsToUse);
                     
                     if (refO2 !== null && o2Measured !== null && o2Measured > 0 && o2Measured < 21) {
                         const rawNum = parseFloat(valToFormat) || 0;
@@ -816,9 +811,12 @@ function renderCoA(data) {
                             const factor = (21 - refO2) / (21 - o2Measured);
                             const correctedVal = rawNum * factor;
                             const formattedCorrected = formatResultWithLOQ(p.parameter, correctedVal.toFixed(2));
-                            const formattedRaw = formatResultWithLOQ(p.parameter, rawNum.toFixed(2));
                             
-                            finalDisplayResult = `${formattedCorrected}<br><span style="font-size: 0.65rem; color: #64748b; font-weight: normal; display: block; margin-top: 2px;">(Terukur: ${formattedRaw}, Koreksi ${refO2}% O₂)</span>`;
+                            finalDisplayResult = `${formattedCorrected}`;
+                            calculatedVal = correctedVal;
+                            isCurrentParamCorrected = true;
+                            hasO2Correction = true;
+                            correctedO2RefVal = refO2;
                         }
                     }
 
@@ -831,7 +829,10 @@ function renderCoA(data) {
                     else displayUnit = p.unit || '-';
 
                     // 4. Regulasi & Limit
-                    const autoLimit = getRegulatoryLimit(p.parameter, currentReg);
+                    const autoLimit = getRegulatoryLimit(p.parameter, regsToUse);
+                    const limitVal = parseFloat(autoLimit);
+                    const exceedsLimit = !isNaN(limitVal) && calculatedVal > limitVal;
+                    const resultStyle = exceedsLimit ? 'font-weight:bold;' : 'font-weight:normal;';
 
                     const isChecked = p.show_in_coa !== false;
                     if (!isAllowedToToggle && !isChecked) {
@@ -850,12 +851,15 @@ function renderCoA(data) {
                         </td>
                     ` : '';
 
+                    const symbolContent = (p.is_accredited ? '' : '*') + (isCurrentParamCorrected ? '^' : '');
+                    const symbolHtml = symbolContent ? `<sup>${symbolContent}</sup>` : '';
+
                     return `
                         <tr class="${uncheckedClass}">
                             ${showCheckboxCell}
                             <td class="serial-col" style="text-align:center; border: 1px solid #000;"></td>
-                            <td style="padding: 6px 8px; border: 1px solid #000; white-space: nowrap;">${p.parameter}${p.is_accredited ? '' : '*'}</td>
-                            <td style="text-align:center; font-weight:bold; border: 1px solid #000;">${finalDisplayResult}</td>
+                            <td style="padding: 6px 8px; border: 1px solid #000; white-space: nowrap;">${p.parameter}${symbolHtml}</td>
+                            <td style="text-align:center; ${resultStyle} border: 1px solid #000;">${finalDisplayResult}</td>
                             <td style="text-align:center; border: 1px solid #000;">${autoLimit}</td>
                             <td style="text-align:center; border: 1px solid #000;">${displayUnit}</td>
                             <td style="font-size: 0.7rem; padding: 5px; border: 1px solid #000;">${p.method || '-'}</td>
@@ -865,8 +869,16 @@ function renderCoA(data) {
                 </tbody>
             </table>
 
-            <div style="margin-top: 20px; font-size: 0.7rem;">
-                <p>Note: ** Keputusan Menteri Negara Lingkungan Hidup Nomor 13 Tahun 1995 (Lampiran VB)</p>
+            <div style="margin-top: 20px; font-size: 0.7rem; line-height: 1.4; text-align: left;">
+                <p style="font-weight: bold; margin: 0 0 2px 0;">Note:</p>
+                ${!sample.parameters.every(p => p.is_accredited) ? '<p style="margin: 0;">* Non-accredited parameter</p>' : ''}
+                <p style="margin: 0;">** ${(() => {
+                    const regs = (sample.regulations || (sample.regulation_name ? [sample.regulation_name] : []))
+                        .map(r => r ? r.trim() : '')
+                        .filter(r => r !== '' && r !== '-');
+                    return regs.length > 0 ? regs.join(', ') : '-';
+                })()}</p>
+                ${hasO2Correction && correctedO2RefVal !== null ? `<p style="margin: 0;">^ Corrected to ${correctedO2RefVal}% Oxygen</p>` : ''}
             </div>
 
             <div style="margin-top: 30px; display: flex; justify-content: space-between; align-items: flex-end; width: 100%;">
@@ -879,8 +891,8 @@ function renderCoA(data) {
                 </div>
                 <div style="text-align: right;">
                     <p style="font-size: 0.85rem;">Cikarang, ${new Date().toLocaleDateString('en-US', {month: 'long', day: 'numeric', year: 'numeric'})}</p>
-                    <p style="font-size: 0.85rem;">Approved by,</p><br><br>
-                    <p style="font-size: 0.85rem;"><strong>Fadhel Verdino</strong><br>Environment Lab Manager</p>
+                    <p style="font-size: 0.85rem; margin: 0;">Approved by,</p>
+                    <p style="font-size: 0.85rem; margin: 70px 0 0 0;"><strong>Fadhel Verdino</strong><br>Environment Lab Manager</p>
                 </div>
             </div>
         </div>
@@ -899,21 +911,14 @@ function exportSingleCoA(docInfo, verifiedSamples) {
     const excelRows = [];
 
     verifiedSamples.forEach(sample => {
-        const regulation = sample?.regulation_name ?? docInfo?.regulation ?? '';
+        const regsToUse = sample?.regulations || (sample?.regulation_name ? [sample.regulation_name] : (docInfo?.regulation ? [docInfo.regulation] : ['-']));
 
         // --- PROSES PENGURUTAN (SORTING) ---
         const sortedParameters = sortParametersForCoa(sample.parameters);
 
-        const o2Param = sample.parameters.find(sp => {
-            const spName = (sp.parameter || '').toLowerCase().trim();
-            return spName === 'o2' || spName === 'oksigen' || spName === 'oksigen (o2)' || spName === 'oxygen';
-        });
-        let o2Measured = null;
-        if (o2Param) {
-            const rawO2Val = o2Param.result || o2Param.konsentrasi_1 || '0';
-            o2Measured = parseFloat(rawO2Val);
-            if (isNaN(o2Measured)) o2Measured = null;
-        }
+        const o2Measured = getO2MeasuredValue(sample.parameters);
+        let hasO2Correction = false;
+        let correctedO2RefVal = null;
 
         // Gunakan hasil sort (sortedParameters) untuk diproses ke baris Excel, saring yang disembunyikan
         const visibleParams = sortedParameters.filter(p => p.show_in_coa !== false);
@@ -951,20 +956,24 @@ function exportSingleCoA(docInfo, verifiedSamples) {
             let finalDisplayResult = formatResultWithLOQ(pOriginal, processedValue);
 
             // --- OKSIGEN CORRECTION LOGIC ---
-            const refO2 = getO2Reference(pOriginal, regulation);
+            const refO2 = getO2Reference(pOriginal, regsToUse);
+            let isCurrentParamCorrected = false;
+
             if (refO2 !== null && o2Measured !== null && o2Measured > 0 && o2Measured < 21) {
                 const rawNum = parseFloat(processedValue) || 0;
                 if (rawNum > 0) {
                     const factor = (21 - refO2) / (21 - o2Measured);
                     const correctedVal = rawNum * factor;
                     const formattedCorrected = formatResultWithLOQ(pOriginal, correctedVal.toFixed(2));
-                    const formattedRaw = formatResultWithLOQ(pOriginal, rawNum.toFixed(2));
                     
-                    finalDisplayResult = `${formattedCorrected} (Terukur: ${formattedRaw}, Koreksi ${refO2}% O2)`;
+                    finalDisplayResult = `${formattedCorrected}`;
+                    isCurrentParamCorrected = true;
+                    hasO2Correction = true;
+                    correctedO2RefVal = refO2;
                 }
             }
 
-            const limit = getRegulatoryLimit(pOriginal, regulation);
+            const limit = getRegulatoryLimit(pOriginal, regsToUse);
 
             // 4. Penentuan Satuan
             let displayUnit;
@@ -974,10 +983,13 @@ function exportSingleCoA(docInfo, verifiedSamples) {
             else if (pName.includes('co2') || pName.includes('o2') || isOpacity || pName.includes('water vapor')) displayUnit = '%';
             else displayUnit = p.unit || '-';
 
+            const symbols = (p.is_accredited ? '' : '*') + (isCurrentParamCorrected ? '^' : '');
+            const excelParamName = pOriginal + symbols;
+
             // 5. Masukkan ke Baris Excel
             excelRows.push({
                 "No.": idx + 1,
-                "Testing Parameter": pOriginal,
+                "Testing Parameter": excelParamName,
                 "Sample Result": finalDisplayResult, 
                 "Regulatory Limit": limit,
                 "Unit": displayUnit,
@@ -1014,48 +1026,70 @@ function exportSingleCoA(docInfo, verifiedSamples) {
     
     XLSX.writeFile(workbook, fileName);
 }
+
+function getO2MeasuredValue(parameters) {
+    if (!parameters || !Array.isArray(parameters)) return null;
+    const o2Param = parameters.find(sp => /Oxygen|Oksigen|\bO2\b/i.test(sp.parameter || ''));
+    if (!o2Param) return null;
+    const r1 = parseFloat(o2Param.konsentrasi_1) || 0;
+    const r2 = parseFloat(o2Param.konsentrasi_2) || 0;
+    const r3 = parseFloat(o2Param.konsentrasi_3) || 0;
+    const avg = (r1 + r2 + r3) / 3;
+    if (avg > 0) return avg;
+    const resVal = parseFloat(o2Param.result);
+    return isNaN(resVal) ? null : resVal;
+}
 // Data master dari query INSERT Anda
 // Pastikan properti menggunakan 'metode' agar konsisten dengan logika pencarian
 let masterEmisi = []
-
-function getO2Reference(paramName, regulationName) {
-    if (!paramName || !regulationName || masterEmisi.length === 0) return null;
-
-    const cleanParam = paramName.trim().toLowerCase();
-    const cleanReg = (Array.isArray(regulationName) ? regulationName[0] : regulationName).trim().toLowerCase();
-
-    const match = masterEmisi.find(m => {
-        const masterParam = m.parameter ? m.parameter.toLowerCase().trim() : '';
-        const masterReg = m.regulasi ? m.regulasi.toLowerCase().trim() : '';
-        return masterParam === cleanParam && masterReg === cleanReg;
-    });
-
-    if (match && match.koreksi_o2 !== null && match.koreksi_o2 !== undefined) {
-        return parseFloat(match.koreksi_o2);
-    }
-    return null;
-}
 
 function getRegulatoryLimit(paramName, regulationName) {
     if (!paramName || !regulationName || masterEmisi.length === 0) return '-';
 
     const cleanParam = paramName.trim().toLowerCase();
-    // Ambil regulasi pertama jika input berupa array, lalu bersihkan
-    const cleanReg = (Array.isArray(regulationName) ? regulationName[0] : regulationName).trim().toLowerCase();
+    const regs = (Array.isArray(regulationName) ? regulationName : [regulationName])
+        .map(r => r ? r.trim().toLowerCase() : '')
+        .filter(r => r !== '' && r !== '-');
 
-    const match = masterEmisi.find(m => {
-        const masterParam = m.parameter ? m.parameter.toLowerCase().trim() : '';
-        const masterReg = m.regulasi ? m.regulasi.toLowerCase().trim() : '';
+    if (regs.length === 0) return '-';
+
+    for (const r of regs) {
+        const match = masterEmisi.find(m => {
+            const masterParam = m.parameter ? m.parameter.toLowerCase().trim() : '';
+            const masterReg = m.regulasi ? m.regulasi.toLowerCase().trim() : '';
+            return masterParam === cleanParam && masterReg === r;
+        });
         
-        // Cocokkan parameter DAN regulasi
-        return masterParam === cleanParam && masterReg === cleanReg;
-    });
-    
-    if (match && (match.baku_mutu !== null && match.baku_mutu !== undefined)) {
-        return match.baku_mutu.toString(); 
+        if (match && match.baku_mutu !== null && match.baku_mutu !== undefined) {
+            return match.baku_mutu.toString(); 
+        }
     }
-    
     return '-';
+}
+
+function getO2Reference(paramName, regulationName) {
+    if (!paramName || !regulationName || masterEmisi.length === 0) return null;
+
+    const cleanParam = paramName.trim().toLowerCase();
+    const regs = (Array.isArray(regulationName) ? regulationName : [regulationName])
+        .map(r => r ? r.trim().toLowerCase() : '')
+        .filter(r => r !== '' && r !== '-');
+
+    if (regs.length === 0) return null;
+
+    for (const r of regs) {
+        const match = masterEmisi.find(m => {
+            const masterParam = m.parameter ? m.parameter.toLowerCase().trim() : '';
+            const masterReg = m.regulasi ? m.regulasi.toLowerCase().trim() : '';
+            return masterParam === cleanParam && masterReg === r;
+        });
+        
+        if (match && match.koreksi_o2 !== null && match.koreksi_o2 !== undefined && match.koreksi_o2 !== '') {
+            const ref = parseFloat(match.koreksi_o2);
+            if (!isNaN(ref)) return ref;
+        }
+    }
+    return null;
 }
 
 // Tambahkan ini di bagian bawah kode atau sebelum DOMContentLoaded
