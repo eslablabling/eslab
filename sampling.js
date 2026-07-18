@@ -129,44 +129,11 @@ window.goToPage = function(pageNumber) {
 
 // 1. Ambil data dari Supabase
 async function fetchSamplingData(keyword = '') {
-    const isOnline = navigator.onLine;
-    let data = [];
+    let query = _supabase.from('coc_emisi').select('*, samples(*)').order('created_at', { ascending: false });
+    if (keyword) query = query.or(`nomor_coc.ilike.%${keyword}%,company_name.ilike.%${keyword}%`);
 
-    if (isOnline) {
-        try {
-            let query = _supabase.from('coc_emisi').select('*, samples(*)').order('created_at', { ascending: false });
-            if (keyword) query = query.or(`nomor_coc.ilike.%${keyword}%,company_name.ilike.%${keyword}%`);
-
-            const { data: fetchedData, error } = await query;
-            if (error) throw error;
-            data = fetchedData || [];
-            
-            // Cache data in localStorage
-            localStorage.setItem('eslab_sampling_cache', JSON.stringify(data));
-        } catch (err) {
-            console.error("Gagal menarik data dari server, menggunakan cache lokal:", err);
-            const cached = localStorage.getItem('eslab_sampling_cache');
-            if (cached) data = JSON.parse(cached);
-        }
-    } else {
-        console.warn("Sedang offline, memuat data dari cache lokal.");
-        const cached = localStorage.getItem('eslab_sampling_cache');
-        if (cached) data = JSON.parse(cached);
-    }
-
-    // Gabungkan perubahan lokal yang belum disinkronkan agar status ter-update di UI
-    const unsynced = JSON.parse(localStorage.getItem('eslab_unsynced_sampling') || '{}');
-    data = data.map(item => {
-        if (unsynced[item.id]) {
-            return {
-                ...item,
-                samples: unsynced[item.id].samples,
-                status_sampling: unsynced[item.id].status_sampling,
-                is_local_unsynced: true
-            };
-        }
-        return item;
-    });
+    const { data, error } = await query;
+    if (error) return console.error("Fetch Error:", error);
 
     // Saring data berdasarkan tab aktif secara lokal
     const filteredData = data.filter(item => {
@@ -213,10 +180,7 @@ function renderTableRows() {
         let statusLabel = item.status_sampling || 'Pending';
         let badgeStyle = "";
 
-        if (item.is_local_unsynced) {
-            statusLabel = "⏳ Offline Sync";
-            badgeStyle = "background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 700;";
-        } else if (isVerified) {
+        if (isVerified) {
             statusLabel = "🔒 Verified";
             badgeStyle = "background: #eff6ff; color: #1d4ed8; border: 1px solid #dbeafe; padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 700;";
         } else if (isSelesai) {
@@ -1345,58 +1309,30 @@ async function saveAllSamplingData() {
     const allDone = samplesDataArray.length > 0 && samplesDataArray.every(s => s.status === 'Done');
     const globalStatus = allDone ? 'Selesai' : 'In Progress';
 
-    const isOnline = navigator.onLine;
+    try {
+        const { error: samplesError } = await _supabase.from('samples').upsert(
+            samplesDataArray.map(s => {
+                const { coc_emisi, ...cleanSample } = s;
+                return cleanSample;
+            })
+        );
+        if (samplesError) throw samplesError;
 
-    if (isOnline) {
-        try {
-            const { error: samplesError } = await _supabase.from('samples').upsert(
-                samplesDataArray.map(s => {
-                    const { coc_emisi, ...cleanSample } = s;
-                    return cleanSample;
-                })
-            );
-            if (samplesError) throw samplesError;
+        const { error: cocError } = await _supabase.from('coc_emisi').update({ 
+            status_sampling: globalStatus,
+            updated_at: new Date().toISOString()
+        }).eq('id', currentCocId);
 
-            const { error: cocError } = await _supabase.from('coc_emisi').update({ 
-                status_sampling: globalStatus,
-                updated_at: new Date().toISOString()
-            }).eq('id', currentCocId);
+        if (cocError) throw cocError;
 
-            if (cocError) throw cocError;
-
-            // Hapus dari antrean lokal jika ada
-            const unsynced = JSON.parse(localStorage.getItem('eslab_unsynced_sampling') || '{}');
-            if (unsynced[currentCocId]) {
-                delete unsynced[currentCocId];
-                localStorage.setItem('eslab_unsynced_sampling', JSON.stringify(unsynced));
-            }
-
-            alert("Data sampling berhasil diperbarui!");
-            closeSamplingModal();
-            fetchSamplingData();
-        } catch (e) {
-            console.error("Gagal simpan online, mengalihkan ke penyimpanan offline:", e);
-            saveOfflineAndClose(globalStatus);
-        }
-    } else {
-        saveOfflineAndClose(globalStatus);
+        alert("Data sampling berhasil diperbarui!");
+        closeSamplingModal();
+        fetchSamplingData();
+    } catch (e) {
+        alert("Gagal Simpan: " + e.message);
     }
     btn.disabled = false;
     btn.innerText = "💾 Simpan Data Sampling";
-}
-
-function saveOfflineAndClose(globalStatus) {
-    const unsynced = JSON.parse(localStorage.getItem('eslab_unsynced_sampling') || '{}');
-    unsynced[currentCocId] = {
-        samples: samplesDataArray,
-        status_sampling: globalStatus,
-        timestamp: new Date().toISOString()
-    };
-    localStorage.setItem('eslab_unsynced_sampling', JSON.stringify(unsynced));
-
-    alert("Koneksi terputus. Data perubahan sampling disimpan secara lokal di perangkat Anda. Sistem akan mensinkronisasikan ke database saat Anda kembali online.");
-    closeSamplingModal();
-    fetchSamplingData();
 }
 
 function closeSamplingModal() {
@@ -1666,57 +1602,3 @@ window.switchSample = function(idx, readOnly = false) {
     currentSampleIdx = idx;
     renderSamplingForm(readOnly);
 };
-
-// ========================================================================
-// LOGIKA SINKRONISASI OFFLINE & EVENT LISTENERS
-// ========================================================================
-
-async function syncOfflineSampling() {
-    const unsynced = JSON.parse(localStorage.getItem('eslab_unsynced_sampling') || '{}');
-    const keys = Object.keys(unsynced);
-    
-    if (keys.length === 0) return;
-    
-    console.log("Mendeteksi koneksi online. Memulai sinkronisasi data offline...");
-    
-    for (let cocId of keys) {
-        const item = unsynced[cocId];
-        try {
-            const { error: samplesError } = await _supabase.from('samples').upsert(
-                item.samples.map(s => {
-                    const { coc_emisi, ...cleanSample } = s;
-                    return cleanSample;
-                })
-            );
-            if (samplesError) throw samplesError;
-
-            const { error: cocError } = await _supabase.from('coc_emisi').update({ 
-                status_sampling: item.status_sampling,
-                updated_at: new Date().toISOString()
-            }).eq('id', cocId);
-
-            if (cocError) throw cocError;
-
-            // Hapus dari antrean lokal
-            delete unsynced[cocId];
-            console.log(`Sinkronisasi COC ID ${cocId} berhasil!`);
-        } catch (err) {
-            console.error(`Gagal mensinkronisasikan COC ID ${cocId}:`, err);
-        }
-    }
-    
-    localStorage.setItem('eslab_unsynced_sampling', JSON.stringify(unsynced));
-    fetchSamplingData();
-}
-
-// Daftarkan listener online untuk sinkronisasi otomatis
-window.addEventListener('online', () => {
-    syncOfflineSampling();
-});
-
-// Panggil sinkronisasi pertama kali saat halaman dimuat jika online
-window.addEventListener('load', () => {
-    if (navigator.onLine) {
-        syncOfflineSampling();
-    }
-});
