@@ -110,15 +110,6 @@ window.addEventListener('auth-ready', async (e) => {
         });
     }
 
-    // 5. Setup Event Listeners (Logout & Tambah Baris)
-        document.addEventListener('click', async (e) => {
-            if (e.target && e.target.id === 'btnLogout') {
-                if (confirm("Keluar dari sistem?")) {
-                    await _supabase.auth.signOut();
-                    window.location.href = 'index.html';
-                }
-            }
-        });
 
     // Tambahkan di dalam document.addEventListener('DOMContentLoaded', ...)
         document.getElementById('nomorCoc').addEventListener('input', (e) => {

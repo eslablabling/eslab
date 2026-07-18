@@ -745,13 +745,21 @@ function renderSamplingForm(readOnly = false) {
                     <div><label class="input-label">Koordinat</label><input type="text" class="inp-field" ${disabledAttr} value="${s.koordinat || ''}" oninput="updateLocalData(${idx}, 'koordinat', this.value)"></div>
                     <div><label class="input-label">Tgl Sampling</label><input type="date" class="inp-field" ${disabledAttr} value="${s.tgl_sampling || ''}" oninput="updateLocalData(${idx}, 'tgl_sampling', this.value)"></div>
                 </div>
-                <div style="background:#f8fafc; padding:15px; border-radius:10px; margin-top:15px; display:grid; grid-template-columns:repeat(4,1fr); gap:10px; border: 1px solid #e2e8f0;">
-                    <div><label class="input-label">Ambien (°C)</label><input type="number" step="0.1" class="inp-field" ${disabledAttr} value="${s.temp_ambien || ''}" oninput="updateLocalData(${idx}, 'temp_ambien', this.value)"></div>
-                    <div><label class="input-label">Lembab (%)</label><input type="number" step="0.1" class="inp-field" ${disabledAttr} value="${s.kelembaban || ''}" oninput="updateLocalData(${idx}, 'kelembaban', this.value)"></div>
-                    <div><label class="input-label">Kec. Angin (m/s)</label><input type="number" step="0.1" class="inp-field" ${disabledAttr} value="${s.kec_angin || ''}" oninput="updateLocalData(${idx}, 'kec_angin', this.value)"></div>
+                <div style="margin-top:20px; display:flex; justify-content:space-between; align-items:center;">
+                    <h5 style="font-size:0.75rem; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:0.5px;">🌦️ Kondisi Meteorologi</h5>
+                    ${!readOnly ? `
+                        <button type="button" id="btnAmbilCuaca-${idx}" class="btn-input" style="padding: 6px 12px; font-size: 0.7rem; display: flex; align-items: center; gap: 6px;" onclick="ambilDataCuaca(${idx})">
+                            ⛅ Ambil Data Cuaca
+                        </button>
+                    ` : ''}
+                </div>
+                <div style="background:#f8fafc; padding:15px; border-radius:10px; margin-top:8px; display:grid; grid-template-columns:repeat(4,1fr); gap:10px; border: 1px solid #e2e8f0;">
+                    <div><label class="input-label">Ambien (°C)</label><input type="number" step="0.1" class="inp-field" id="temp-ambien-${idx}" ${disabledAttr} value="${s.temp_ambien || ''}" oninput="updateLocalData(${idx}, 'temp_ambien', this.value)"></div>
+                    <div><label class="input-label">Lembab (%)</label><input type="number" step="0.1" class="inp-field" id="kelembaban-${idx}" ${disabledAttr} value="${s.kelembaban || ''}" oninput="updateLocalData(${idx}, 'kelembaban', this.value)"></div>
+                    <div><label class="input-label">Kec. Angin (m/s)</label><input type="number" step="0.1" class="inp-field" id="kec-angin-${idx}" ${disabledAttr} value="${s.kec_angin || ''}" oninput="updateLocalData(${idx}, 'kec_angin', this.value)"></div>
                     <div>
                         <label class="input-label">Cuaca</label>
-                        <select class="inp-field" ${disabledAttr} onchange="updateLocalData(${idx}, 'catatan_cuaca', this.value)">
+                        <select class="inp-field" id="catatan-cuaca-${idx}" ${disabledAttr} onchange="updateLocalData(${idx}, 'catatan_cuaca', this.value)">
                             <option value="" ${!s.catatan_cuaca ? 'selected' : ''}>- Pilih Cuaca -</option>
                             <option value="Cerah" ${s.catatan_cuaca === 'Cerah' ? 'selected' : ''}>Cerah</option>
                             <option value="Cerah Berawan" ${s.catatan_cuaca === 'Cerah Berawan' ? 'selected' : ''}>Cerah Berawan</option>
@@ -1795,3 +1803,98 @@ window.handleBahanBakarChange = function(idx, val) {
         updateLocalData(idx, 'bahan_bakar', val);
     }
 };
+
+async function ambilDataCuaca(idx) {
+    const btn = document.getElementById(`btnAmbilCuaca-${idx}`);
+    if (!btn) return;
+    
+    // Simpan teks asli
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = `⏳ Mengakses GPS...`;
+
+    // 1. Dapatkan Geolocation GPS
+    if (!navigator.geolocation) {
+        alert("Browser Anda tidak mendukung layanan Geolocation.");
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+        return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+        async (position) => {
+            const lat = position.coords.latitude;
+            const lon = position.coords.longitude;
+            
+            btn.innerHTML = `⏳ Mengunduh Cuaca...`;
+            
+            try {
+                // 2. Fetch API Open-Meteo
+                const response = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code&wind_speed_unit=ms`);
+                if (!response.ok) throw new Error("Gagal mengambil data cuaca.");
+                
+                const data = await response.json();
+                const current = data.current;
+                
+                if (!current) throw new Error("Data cuaca tidak lengkap.");
+                
+                const tempVal = parseFloat(current.temperature_2m.toFixed(1));
+                const humidVal = parseFloat(current.relative_humidity_2m.toFixed(1));
+                const windVal = parseFloat(current.wind_speed_10m.toFixed(1));
+                const weatherCode = current.weather_code;
+                
+                // Petakan weather code ke opsi: "Cerah", "Cerah Berawan", "Berawan", "Hujan"
+                let cuacaVal = "Cerah Berawan"; // default
+                if (weatherCode === 0) {
+                    cuacaVal = "Cerah";
+                } else if (weatherCode === 1 || weatherCode === 2 || weatherCode === 3) {
+                    cuacaVal = "Cerah Berawan";
+                } else if (weatherCode >= 45 && weatherCode <= 48) {
+                    cuacaVal = "Berawan";
+                } else if (weatherCode >= 51 && weatherCode <= 99) {
+                    cuacaVal = "Hujan";
+                }
+                
+                // 3. Update State Lokal (sehingga saat disimpan ikut terkirim ke DB)
+                updateLocalData(idx, 'temp_ambien', tempVal);
+                updateLocalData(idx, 'kelembaban', humidVal);
+                updateLocalData(idx, 'kec_angin', windVal);
+                updateLocalData(idx, 'catatan_cuaca', cuacaVal);
+                
+                // 4. Update Input Fields di DOM secara langsung
+                const inputTemp = document.getElementById(`temp-ambien-${idx}`);
+                const inputHumid = document.getElementById(`kelembaban-${idx}`);
+                const inputWind = document.getElementById(`kec-angin-${idx}`);
+                const selectCuaca = document.getElementById(`catatan-cuaca-${idx}`);
+                
+                if (inputTemp) inputTemp.value = tempVal;
+                if (inputHumid) inputHumid.value = humidVal;
+                if (inputWind) inputWind.value = windVal;
+                if (selectCuaca) selectCuaca.value = cuacaVal;
+                
+                alert(`✅ Cuaca berhasil diperbarui!\n📍 Lokasi: ${lat.toFixed(4)}, ${lon.toFixed(4)}\n🌡️ Suhu: ${tempVal}°C\n💧 Kelembaban: ${humidVal}%\n💨 Angin: ${windVal} m/s\n☁️ Cuaca: ${cuacaVal}`);
+                
+            } catch (err) {
+                alert("Kesalahan Cuaca: " + err.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        },
+        (error) => {
+            let errorMsg = "Gagal mendapatkan lokasi.";
+            if (error.code === error.PERMISSION_DENIED) {
+                errorMsg = "Akses lokasi ditolak oleh pengguna.";
+            } else if (error.code === error.POSITION_UNAVAILABLE) {
+                errorMsg = "Informasi lokasi tidak tersedia.";
+            } else if (error.code === error.TIMEOUT) {
+                errorMsg = "Waktu permintaan lokasi habis.";
+            }
+            alert("Kesalahan Geolocation: " + errorMsg);
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+        },
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+    );
+}
+window.ambilDataCuaca = ambilDataCuaca;

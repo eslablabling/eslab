@@ -250,13 +250,14 @@
                     <tr>
                         <th>ID Sampel</th>
                         <th>Perusahaan / Lokasi</th>
-                        <th>Parameter & Status</th>
+                        <th>Parameter & Hasil Uji</th>
+                        <th>Status & Batas Waktu (TAT)</th>
                         <th style="text-align: right;">Aksi</th>
                     </tr>
                 </thead>
                 <tbody id="analisaTableBody">
                     <tr>
-                        <td colspan="4" style="text-align: center; padding: 50px; color: var(--text-muted);">
+                        <td colspan="5" style="text-align: center; padding: 50px; color: var(--text-muted);">
                             Menghubungkan ke database laboratorium...
                         </td>
                     </tr>
@@ -287,11 +288,41 @@
                 <button onclick="tutupModalAnalisa()" style="background: #f1f5f9; border: none; width: 32px; height: 32px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 1rem; color: var(--text-muted);">✕</button>
             </div>
 
+            <!-- Warning Rework -->
+            <div id="reworkWarningContainer" style="display: none; background: #fff1f2; border: 1px solid #ffe4e6; padding: 15px; border-radius: 16px; margin-top: 15px; margin-bottom: 15px; color: #b91c1c; font-size: 0.8rem; font-weight: 600;">
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
+                    <span style="font-size: 1.1rem;">⚠️</span>
+                    <strong style="text-transform: uppercase; letter-spacing: 0.5px; color: #b91c1c;">Instruksi Perbaikan Analisa (Rework)</strong>
+                </div>
+                <p id="reworkWarningText" style="color: #e11d48; line-height: 1.4; padding-left: 22px; font-weight: 600;"></p>
+            </div>
+
             <div class="grid-form" id="parameterInputs">
                 </div>
 
             <button class="btn-save" id="btnSimpanAnalisa">💾 Simpan Hasil Analisa</button>
             <button id="btnBatal" onclick="tutupModalAnalisa()" style="background:none; border:none; color:var(--text-muted); cursor:pointer; width:100%; margin-top:20px; font-weight: 700; font-size: 0.9rem;">Tutup & Batal</button>
+        </div>
+    </div>
+
+    <!-- Modal Alasan Penolakan (Rework) -->
+    <div id="modalRework" class="modal">
+        <div class="modal-content" style="max-width: 450px; margin: 10% auto; padding: 25px; border-radius: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h3 style="font-weight: 800; font-size: 1.1rem; color: #ef4444;">⚠️ Alasan Penolakan Analisa</h3>
+                <button onclick="tutupModalRework()" style="background: #f1f5f9; border: none; width: 28px; height: 28px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 0.9rem; color: var(--text-muted);">✕</button>
+            </div>
+            <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 15px; text-align: left; font-weight: 600;">
+                Berikan instruksi perbaikan penimbangan/analisis untuk sampel <strong id="reworkSampleId" style="color: var(--text-main);"></strong>. Catatan ini akan langsung tampil pada form pengisian analis.
+            </p>
+            <div class="form-group" style="padding: 0; border: none; background: none; margin-bottom: 20px;">
+                <textarea id="reworkReasonInput" rows="4" placeholder="Contoh: Berat akhir filter tidak masuk akal, silakan timbang ulang..." 
+                          style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 12px; font-family: inherit; font-size: 0.85rem; font-weight: 600; outline: none; resize: none;"></textarea>
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <button onclick="tutupModalRework()" style="flex: 1; padding: 12px; border: 1px solid var(--border-color); background: white; border-radius: 12px; font-weight: 700; font-size: 0.85rem; cursor: pointer; color: var(--text-muted);">Batal</button>
+                <button id="btnSubmitRework" style="flex: 1; padding: 12px; background: #ef4444; border: none; color: white; border-radius: 12px; font-weight: 700; font-size: 0.85rem; cursor: pointer; box-shadow: 0 4px 10px rgba(239, 68, 68, 0.2);">Unverifikasi</button>
+            </div>
         </div>
     </div>
 

@@ -344,6 +344,60 @@ function renderTableRows() {
         const exceeds = isSampleExceedingBakuMutu(item);
         const rowClass = exceeds ? 'class="blinking-alert"' : '';
 
+        // Calculate TAT countdown badge
+        let tatBadgeHtml = "";
+        if (item.tgl_terima_lab) {
+            const priority = (item.coc_emisi?.tat_requested || "NORMAL").toUpperCase();
+            const isUrgent = priority === 'URGENT';
+            const targetDays = isUrgent ? 5 : 14;
+            const start = new Date(item.tgl_terima_lab);
+            
+            // Tanggal target deadline
+            const tglDeadline = addWorkingDays(start, targetDays);
+            const tglDeadlineStr = tglDeadline.toLocaleDateString('id-ID', { day: '2-digit', month: 'short' });
+            
+            const isCompleted = item.status_lab === 'verified';
+            const end = isCompleted && item.verified_at ? new Date(item.verified_at) : new Date();
+            
+            const workingDaysElapsed = getWorkingDays(start, end);
+            const sisaHariKerja = targetDays - workingDaysElapsed;
+            
+            let badgeStyle = "background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1;"; // default slate
+            let textTeks = "";
+            
+            if (isCompleted) {
+                badgeStyle = "background: #f0fdf4; color: #166534; border: 1.5px solid #bbf7d0; font-weight: 800; font-size: 0.65rem;";
+                textTeks = `Selesai (${workingDaysElapsed} HK)`;
+            } else {
+                if (sisaHariKerja < 0) {
+                    badgeStyle = "background: #fef2f2; color: #b91c1c; border: 1.5px solid #fecdd3; font-weight: 800; font-size: 0.65rem;";
+                    textTeks = `Terlambat ${Math.abs(sisaHariKerja)} HK`;
+                } else if (sisaHariKerja <= 2) {
+                    badgeStyle = "background: #fffbeb; color: #b45309; border: 1.5px solid #fde68a; font-weight: 800; font-size: 0.65rem;";
+                    textTeks = `${sisaHariKerja} HK Lagi`;
+                } else if (sisaHariKerja <= 5) {
+                    badgeStyle = "background: #eff6ff; color: #1d4ed8; border: 1.5px solid #bfdbfe; font-weight: 800; font-size: 0.65rem;";
+                    textTeks = `${sisaHariKerja} HK Lagi`;
+                } else {
+                    badgeStyle = "background: #f0fdf4; color: #166534; border: 1.5px solid #bbf7d0; font-weight: 800; font-size: 0.65rem;";
+                    textTeks = `${sisaHariKerja} HK Lagi`;
+                }
+            }
+            
+            tatBadgeHtml = `
+                <div style="margin-top: 6px; display: flex; flex-direction: column; gap: 4px; align-items: flex-start;">
+                    <span class="badge" style="${badgeStyle}">
+                        ${textTeks}
+                    </span>
+                    <span style="font-size: 0.65rem; color: #64748b; font-weight: 600;">
+                        Target: <strong>${tglDeadlineStr}</strong> (${priority})
+                    </span>
+                </div>
+            `;
+        } else {
+            tatBadgeHtml = `<span style="font-size: 0.75rem; color: #94a3b8; font-style: italic;">Belum Diterima di Lab</span>`;
+        }
+
         return `
             <tr ${rowClass}>
                 <td style="font-weight: 800; color: var(--primary);">${item.sample_id}</td>
@@ -366,6 +420,7 @@ function renderTableRows() {
                             📅 Analisa: <span style="color: #0f172a;">${tglAnalisaDisplay}</span>
                         </div>
                     ` : ''}
+                    ${tatBadgeHtml}
                 </td>
                 <td style="text-align: right; white-space: nowrap;">
                     ${!isVerified ? `
@@ -515,9 +570,46 @@ async function fetchAntreanAnalisa(keyword = '') {
     }
 }
 
-async function unverifikasiHasil(dbId, sampleId) {
-    // Gunakan konfirmasi untuk mencegah ketidaksengajaan
-    if (!confirm(`Buka kembali kunci data untuk ${sampleId}? Status akan kembali ke 'Belum Selesai'.`)) return;
+let currentReworkSample = { dbId: null, sampleId: null };
+
+function unverifikasiHasil(dbId, sampleId) {
+    bukaModalRework(dbId, sampleId);
+}
+window.unverifikasiHasil = unverifikasiHasil;
+
+function bukaModalRework(dbId, sampleId) {
+    currentReworkSample = { dbId, sampleId };
+    const modal = document.getElementById('modalRework');
+    const label = document.getElementById('reworkSampleId');
+    const input = document.getElementById('reworkReasonInput');
+    
+    if (label) label.innerText = sampleId;
+    if (input) input.value = '';
+    if (modal) modal.style.display = 'block';
+}
+window.bukaModalRework = bukaModalRework;
+
+function tutupModalRework() {
+    const modal = document.getElementById('modalRework');
+    if (modal) modal.style.display = 'none';
+}
+window.tutupModalRework = tutupModalRework;
+
+async function submitRework() {
+    const { dbId, sampleId } = currentReworkSample;
+    const reasonInput = document.getElementById('reworkReasonInput');
+    const reason = reasonInput ? reasonInput.value.trim() : '';
+
+    if (!reason) {
+        alert("Alasan penolakan harus diisi!");
+        return;
+    }
+
+    const btnSubmit = document.getElementById('btnSubmitRework');
+    if (btnSubmit) {
+        btnSubmit.disabled = true;
+        btnSubmit.innerText = "Memproses...";
+    }
 
     try {
         const { error } = await _supabase
@@ -526,6 +618,7 @@ async function unverifikasiHasil(dbId, sampleId) {
                 status_lab: 'received', 
                 is_verified: false,
                 verified_at: null,
+                rework_reason: reason,
                 updated_at: new Date().toISOString()
             })
             .eq('coc_id', dbId)
@@ -533,13 +626,42 @@ async function unverifikasiHasil(dbId, sampleId) {
 
         if (error) throw error;
 
-        alert("Kunci data berhasil dibuka!");
+        // Log audit
+        const { data: { session } } = await _supabase.auth.getSession();
+        if (session) {
+            await _supabase.from('audit_logs').insert([{
+                user_id: session.user.id,
+                username: session.user.email,
+                action_type: 'REWORK_ANALYSIS',
+                table_name: 'samples',
+                description: `Melakukan penolakan (unverifikasi) sampel ${sampleId} dengan alasan: ${reason}`,
+                new_data: { rework_reason: reason }
+            }]);
+        }
+
+        alert("Kunci data berhasil dibuka dan instruksi rework telah dikirim!");
+        tutupModalRework();
         fetchAntreanAnalisa(); // Refresh tabel
 
     } catch (err) {
-        alert("Gagal membuka kunci: " + err.message);
+        alert("Gagal memproses unverifikasi: " + err.message);
+    } finally {
+        if (btnSubmit) {
+            btnSubmit.disabled = false;
+            btnSubmit.innerText = "Unverifikasi";
+        }
     }
 }
+window.submitRework = submitRework;
+
+// Register event listener for submit button
+document.addEventListener('DOMContentLoaded', () => {
+    const btnSubmitRework = document.getElementById('btnSubmitRework');
+    if (btnSubmitRework) {
+        btnSubmitRework.addEventListener('click', submitRework);
+    }
+});
+
 
 async function bukaModalAnalisa(dbId, sampleId) {
     currentEditSample = { dbId, sampleId };
@@ -557,6 +679,18 @@ async function bukaModalAnalisa(dbId, sampleId) {
 
         const isVerified = s.status_lab === 'verified';
         const disabledAttr = isVerified ? 'disabled' : '';
+
+        // Rework warning check
+        const warningContainer = document.getElementById('reworkWarningContainer');
+        const warningText = document.getElementById('reworkWarningText');
+        if (warningContainer && warningText) {
+            if (s.rework_reason) {
+                warningText.innerText = s.rework_reason;
+                warningContainer.style.display = 'block';
+            } else {
+                warningContainer.style.display = 'none';
+            }
+        }
 
         document.getElementById('modalTitle').innerText = `Analisa Gravimetri: ${sampleId}`;
         
@@ -833,7 +967,8 @@ document.getElementById('btnSimpanAnalisa').addEventListener('click', async () =
             .update({
                 parameters: newParams, 
                 status_lab: 'analyzed',
-                analyzed_at: finalDate
+                analyzed_at: finalDate,
+                rework_reason: null
             })
             .eq('coc_id', dbId)
             .eq('sample_id', sampleId);
@@ -916,6 +1051,42 @@ function tutupModalAnalisa() {
     document.getElementById('modalAnalisa').style.display = 'none';
 }
 window.tutupModalAnalisa = tutupModalAnalisa;
+
+function getWorkingDays(startDate, endDate) {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    start.setHours(0,0,0,0);
+    end.setHours(0,0,0,0);
+    
+    if (start > end) return 0;
+    
+    let count = 0;
+    let curDate = new Date(start);
+    
+    while (curDate < end) {
+        curDate.setDate(curDate.getDate() + 1);
+        const dayOfWeek = curDate.getDay();
+        if (dayOfWeek !== 0 && dayOfWeek !== 6) { // Exclude Sat & Sun
+            count++;
+        }
+    }
+    return count;
+}
+window.getWorkingDays = getWorkingDays;
+
+function addWorkingDays(startDate, days) {
+    const result = new Date(startDate);
+    let addedDays = 0;
+    while (addedDays < days) {
+        result.setDate(result.getDate() + 1);
+        const dayOfWeek = result.getDay();
+        if (dayOfWeek !== 0 && dayOfWeek !== 6) { // Exclude Sat & Sun
+            addedDays++;
+        }
+    }
+    return result;
+}
+window.addWorkingDays = addWorkingDays;
 
 function syncDatePickerToText(val) {
     if (val) {
