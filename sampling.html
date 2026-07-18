@@ -6,6 +6,27 @@
     <title>Sampling Lapangan | PT Envirotama Solusindo</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        // Otomatis bersihkan Service Worker dan Cache PWA lama jika masih tertinggal di browser
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(registrations => {
+                if (registrations.length > 0) {
+                    for (let registration of registrations) {
+                        registration.unregister();
+                    }
+                    if ('caches' in window) {
+                        caches.keys().then(names => {
+                            for (let name of names) {
+                                caches.delete(name);
+                            }
+                            console.log("Service Worker & Cache cleared. Reloading page...");
+                            window.location.reload();
+                        });
+                    }
+                }
+            });
+        }
+    </script>
     <style>
         /* --- COPY THEME DARI DASHBOARD --- */
         * { box-sizing: border-box; margin: 0; padding: 0; }
