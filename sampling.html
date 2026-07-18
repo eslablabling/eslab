@@ -7,6 +7,10 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;600;700;800&display=swap" rel="stylesheet">
     <script>
+        // Bersihkan localStorage sisa-sisa antrean PWA offline agar tidak terjadi error sync null
+        localStorage.removeItem('eslab_unsynced_sampling');
+        localStorage.removeItem('eslab_sampling_cache');
+
         // Otomatis bersihkan Service Worker dan Cache PWA lama jika masih tertinggal di browser
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.getRegistrations().then(registrations => {
