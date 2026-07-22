@@ -7,6 +7,7 @@ let currentFilterTab = 'belum_diterima';
 let currentPage = 1;
 const pageSize = 10;
 let filteredSamplesList = [];
+let sortState = { col: 'sample_id', dir: 'asc' };
 
 window.addEventListener('auth-ready', async (e) => {
     const { role } = e.detail;
@@ -332,8 +333,7 @@ async function fetchDataPenerimaan(keyword = '') {
         filteredSamplesList = allSamples;
         currentPage = 1;
 
-        renderTableRows();
-        renderPaginationControls();
+        applyPenerimaanSortAndRender();
 
     } catch (err) {
         console.error(err);
@@ -530,4 +530,63 @@ function syncPenerimaanDatePicker(val) {
     }
 }
 window.syncPenerimaanDatePicker = syncPenerimaanDatePicker;
+
+function applyPenerimaanSortAndRender() {
+    if (sortState.col && sortState.col !== 'none') {
+        filteredSamplesList.sort((a, b) => {
+            let valA = a[sortState.col];
+            let valB = b[sortState.col];
+
+            if (sortState.col === 'company') {
+                valA = a.company || '';
+                valB = b.company || '';
+            } else if (sortState.col === 'status_lab') {
+                valA = a.status_lab || '';
+                valB = b.status_lab || '';
+            } else {
+                valA = a.sample_id || '';
+                valB = b.sample_id || '';
+            }
+
+            const cmp = valA.localeCompare(valB, undefined, { numeric: true, sensitivity: 'base' });
+            return sortState.dir === 'asc' ? cmp : -cmp;
+        });
+    }
+
+    const headers = {
+        sample_id: document.getElementById('hdrSampleId'),
+        company: document.getElementById('hdrInfo'),
+        status_lab: document.getElementById('hdrStatus')
+    };
+
+    Object.keys(headers).forEach(key => {
+        const el = headers[key];
+        if (el) {
+            let label = el.innerText.replace(/[▲▼⇅]/g, '').trim();
+            if (sortState.col === key) {
+                el.innerText = label + (sortState.dir === 'asc' ? ' ▲' : ' ▼');
+            } else {
+                el.innerText = label + ' ⇅';
+            }
+        }
+    });
+
+    renderTableRows();
+    renderPaginationControls();
+}
+
+window.handlePenerimaanSort = function(colName) {
+    if (sortState.col === colName) {
+        if (sortState.dir === 'asc') {
+            sortState.dir = 'desc';
+        } else {
+            sortState.col = 'sample_id';
+            sortState.dir = 'asc';
+        }
+    } else {
+        sortState.col = colName;
+        sortState.dir = 'asc';
+    }
+    applyPenerimaanSortAndRender();
+};
 

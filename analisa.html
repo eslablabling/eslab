@@ -6,6 +6,7 @@
     <title>Log Analisa Lab | PT Envirotama Solusindo</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
     
     <style>
@@ -234,9 +235,14 @@
         </header>
 
         <section class="table-section">
-            <div class="table-header">
-                <h3 style="font-size: 1.1rem; font-weight: 800;">Antrean Analisa</h3>
-                <input type="text" id="searchAnalisa" placeholder="Cari ID Sampel atau Perusahaan...">
+            <div class="table-header" style="display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;">
+                <h3 style="font-size: 1.1rem; font-weight: 800; margin: 0;">Antrean Analisa</h3>
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                    <input type="text" id="searchAnalisa" placeholder="Cari ID Sampel atau Perusahaan..." style="margin-bottom: 0;">
+                    <button class="page-btn" style="background: #16a34a; color: white; border-color: #16a34a; font-weight: 700;" onclick="exportAnalisaExcel()">📥 Export Excel</button>
+                    <button class="page-btn" style="background: #0891b2; color: white; border-color: #0891b2; font-weight: 700;" onclick="document.getElementById('importFileAnalisa').click()">📤 Import Excel</button>
+                    <input type="file" id="importFileAnalisa" style="display: none;" accept=".xlsx, .xls" onchange="importAnalisaExcel(event)">
+                </div>
             </div>
 
             <!-- Tab Filter Status Analisa -->
@@ -248,10 +254,10 @@
             <table>
                 <thead>
                     <tr>
-                        <th>ID Sampel</th>
-                        <th>Perusahaan / Lokasi</th>
+                        <th onclick="handleAnalisaSort('sample_id')" style="cursor: pointer; user-select: none;" id="hdrSampleId">ID Sampel ⇅</th>
+                        <th onclick="handleAnalisaSort('company')" style="cursor: pointer; user-select: none;" id="hdrInfo">Perusahaan / Lokasi ⇅</th>
                         <th>Parameter & Hasil Uji</th>
-                        <th>Status & Batas Waktu (TAT)</th>
+                        <th onclick="handleAnalisaSort('status_lab')" style="cursor: pointer; user-select: none;" id="hdrStatus">Status & Batas Waktu (TAT) ⇅</th>
                         <th style="text-align: right;">Aksi</th>
                     </tr>
                 </thead>

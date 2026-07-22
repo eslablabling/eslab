@@ -158,11 +158,7 @@ async function fetchActiveLogs() {
             let statusLabel = "SAMPLING";
             let statusClass = "tag-orange";
 
-            if (!coc.status_sampling || coc.status_sampling.trim().toLowerCase() !== 'verified') {
-                // COC belum diverifikasi sampling-nya → masih tahap SAMPLING
-                statusLabel = "SAMPLING";
-                statusClass = "tag-orange";
-            } else if (s.status_lab === 'verified' || s.is_verified === true) {
+            if (s.status_lab === 'verified' || s.is_verified === true) {
                 // Lab sudah verifikasi → FINISH
                 statusLabel = "FINISH";
                 statusClass = "tag-green";
@@ -170,6 +166,10 @@ async function fetchActiveLogs() {
                 // Sampel sudah diterima/dianalisa tapi belum diverifikasi → ANALISA
                 statusLabel = "ANALISA";
                 statusClass = "tag-blue";
+            } else {
+                // COC belum diverifikasi atau belum diterima lab → masih tahap SAMPLING
+                statusLabel = "SAMPLING";
+                statusClass = "tag-orange";
             }
 
             activeSamples.push({

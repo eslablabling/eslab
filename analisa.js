@@ -94,6 +94,7 @@ let currentFilterTab = 'belum_selesai';
 let currentPage = 1;
 const pageSize = 10;
 let filteredSamplesList = [];
+let sortState = { col: 'sample_id', dir: 'asc' };
 
 window.addEventListener('auth-ready', async (e) => {
     const { role } = e.detail;
@@ -559,8 +560,7 @@ async function fetchAntreanAnalisa(keyword = '') {
         filteredSamplesList = antreanSamples;
         currentPage = 1;
 
-        renderTableRows();
-        renderPaginationControls();
+        applyAnalisaSortAndRender();
 
     } catch (err) {
         console.error(err);
@@ -1319,3 +1319,322 @@ function updateLiveCalculations(sampleObj) {
         previewDiv.innerHTML = detailsHtml + resultsHtml + alertHtml;
     });
 }
+
+function applyAnalisaSortAndRender() {
+    if (sortState.col && sortState.col !== 'none') {
+        filteredSamplesList.sort((a, b) => {
+            let valA = a[sortState.col];
+            let valB = b[sortState.col];
+
+            if (sortState.col === 'company') {
+                valA = a.company || '';
+                valB = b.company || '';
+            } else if (sortState.col === 'status_lab') {
+                valA = a.status_lab || '';
+                valB = b.status_lab || '';
+            } else {
+                valA = a.sample_id || '';
+                valB = b.sample_id || '';
+            }
+
+            const cmp = valA.localeCompare(valB, undefined, { numeric: true, sensitivity: 'base' });
+            return sortState.dir === 'asc' ? cmp : -cmp;
+        });
+    }
+
+    const headers = {
+        sample_id: document.getElementById('hdrSampleId'),
+        company: document.getElementById('hdrInfo'),
+        status_lab: document.getElementById('hdrStatus')
+    };
+
+    Object.keys(headers).forEach(key => {
+        const el = headers[key];
+        if (el) {
+            let label = el.innerText.replace(/[▲▼⇅]/g, '').trim();
+            if (sortState.col === key) {
+                el.innerText = label + (sortState.dir === 'asc' ? ' ▲' : ' ▼');
+            } else {
+                el.innerText = label + ' ⇅';
+            }
+        }
+    });
+
+    renderTableRows();
+    renderPaginationControls();
+}
+
+window.handleAnalisaSort = function(colName) {
+    if (sortState.col === colName) {
+        if (sortState.dir === 'asc') {
+            sortState.dir = 'desc';
+        } else {
+            sortState.col = 'sample_id';
+            sortState.dir = 'asc';
+        }
+    } else {
+        sortState.col = colName;
+        sortState.dir = 'asc';
+    }
+    applyAnalisaSortAndRender();
+};
+
+window.exportAnalisaExcel = function() {
+    const exportData = [];
+    filteredSamplesList.forEach(s => {
+        if (!s.needLab) return;
+        
+        const pPart = s.parameters.find(p => p.parameter.toLowerCase().includes('particulate'));
+        if (!pPart) return;
+        
+        const grav = pPart.grav_data || {};
+        const qc = pPart.qc_data || {};
+        const method = pPart.method || pPart.metode || '';
+        const isSNI2021 = method.includes('7117-21:2021');
+        
+        const row = {
+            'DB ID (DO NOT MODIFY)': s.db_id,
+            'Sample ID': s.sample_id,
+            'Company': s.company,
+            'Parameter': pPart.parameter,
+            'Method': method,
+            'Tanggal Analisa (YYYY-MM-DD)': s.analyzed_at ? s.analyzed_at.split('T')[0] : new Date().toISOString().split('T')[0],
+            'Volume Gas Meter (m3)': pPart.volume_meter || '',
+            
+            // QC Blanko Filter
+            'b_f_awal_1': qc.b_f_awal_1 || '',
+            'b_f_awal_2': qc.b_f_awal_2 || '',
+            'b_f_akhir_1': qc.b_f_akhir_1 || '',
+            'b_f_akhir_2': qc.b_f_akhir_2 || '',
+            
+            // Sampel Filter
+            's_f_awal_1': grav.s_f_awal_1 || '',
+            's_f_awal_2': grav.s_f_awal_2 || '',
+            's_f_akhir_1': grav.s_f_akhir_1 || '',
+            's_f_akhir_2': grav.s_f_akhir_2 || '',
+        };
+        
+        if (isSNI2021) {
+            row['b_a_awal_1'] = qc.b_a_awal_1 || '';
+            row['b_a_awal_2'] = qc.b_a_awal_2 || '';
+            row['b_a_akhir_1'] = qc.b_a_akhir_1 || '';
+            row['b_a_akhir_2'] = qc.b_a_akhir_2 || '';
+            
+            row['s_a_awal_1'] = grav.s_a_awal_1 || '';
+            row['s_a_awal_2'] = grav.s_a_awal_2 || '';
+            row['s_a_akhir_1'] = grav.s_a_akhir_1 || '';
+            row['s_a_akhir_2'] = grav.s_a_akhir_2 || '';
+        } else {
+            row['b_c_awal_1'] = qc.b_c_awal_1 || '';
+            row['b_c_awal_2'] = qc.b_c_awal_2 || '';
+            row['b_c_akhir_1'] = qc.b_c_akhir_1 || '';
+            row['b_c_akhir_2'] = qc.b_c_akhir_2 || '';
+            
+            row['s_c_awal_1'] = grav.s_c_awal_1 || '';
+            row['s_c_awal_2'] = grav.s_c_awal_2 || '';
+            row['s_c_akhir_1'] = grav.s_c_akhir_1 || '';
+            row['s_c_akhir_2'] = grav.s_c_akhir_2 || '';
+        }
+        
+        exportData.push(row);
+    });
+    
+    if (exportData.length === 0) {
+        alert("Tidak ada antrean analisa yang memiliki parameter Partikulat untuk di-export.");
+        return;
+    }
+    
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Antrean_Analisa");
+    
+    XLSX.writeFile(workbook, `Antrean_Analisa_Partikulat_${new Date().toISOString().split('T')[0]}.xlsx`);
+};
+
+window.importAnalisaExcel = async function(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = async function(e) {
+        try {
+            const dataArray = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(dataArray, { type: 'array' });
+            const sheetName = workbook.SheetNames[0];
+            const sheet = workbook.Sheets[sheetName];
+            const jsonData = XLSX.utils.sheet_to_json(sheet);
+            
+            if (jsonData.length === 0) {
+                alert("File Excel kosong!");
+                return;
+            }
+            
+            let successCount = 0;
+            let errorCount = 0;
+            const { data: { session } } = await _supabase.auth.getSession();
+            
+            for (const row of jsonData) {
+                const dbId = row['DB ID (DO NOT MODIFY)'];
+                const sampleId = row['Sample ID'];
+                const tglAnalisaRaw = row['Tanggal Analisa (YYYY-MM-DD)'];
+                const volDgmRaw = row['Volume Gas Meter (m3)'];
+                
+                if (!dbId || !sampleId) {
+                    errorCount++;
+                    continue;
+                }
+                
+                const { data: s, error: fetchErr } = await _supabase
+                    .from('samples')
+                    .select('*')
+                    .eq('coc_id', dbId)
+                    .eq('sample_id', sampleId)
+                    .single();
+                    
+                if (fetchErr || !s) {
+                    console.error(`Gagal menemukan sampel ${sampleId}:`, fetchErr);
+                    errorCount++;
+                    continue;
+                }
+                
+                const newParams = [...(s.parameters || [])];
+                const pIdx = newParams.findIndex(p => p.parameter.toLowerCase().includes('particulate'));
+                if (pIdx === -1) {
+                    errorCount++;
+                    continue;
+                }
+                
+                const method = newParams[pIdx].method || newParams[pIdx].metode || '';
+                const isSNI2021 = method.includes('7117-21:2021');
+                
+                const volDgm = parseFloat(volDgmRaw) || 0;
+                newParams[pIdx].volume_meter = volDgm;
+                
+                const qcData = {};
+                const gravData = {};
+                
+                const keys = [
+                    'b_f_awal_1', 'b_f_awal_2', 'b_f_akhir_1', 'b_f_akhir_2',
+                    's_f_awal_1', 's_f_awal_2', 's_f_akhir_1', 's_f_akhir_2',
+                    'b_a_awal_1', 'b_a_awal_2', 'b_a_akhir_1', 'b_a_akhir_2',
+                    's_a_awal_1', 's_a_awal_2', 's_a_akhir_1', 's_a_akhir_2',
+                    'b_c_awal_1', 'b_c_awal_2', 'b_c_akhir_1', 'b_c_akhir_2',
+                    's_c_awal_1', 's_c_awal_2', 's_c_akhir_1', 's_c_akhir_2'
+                ];
+                
+                keys.forEach(k => {
+                    const rawVal = row[k];
+                    const val = (rawVal !== undefined && rawVal !== null) ? String(rawVal).trim() : '';
+                    if (k.startsWith('b_')) {
+                        qcData[k] = val;
+                    } else {
+                        gravData[k] = val;
+                    }
+                });
+                
+                const s_fAwal = hitungAvg(gravData.s_f_awal_1, gravData.s_f_awal_2);
+                const s_fAkhir = hitungAvg(gravData.s_f_akhir_1, gravData.s_f_akhir_2);
+                const s_fNet = s_fAkhir - s_fAwal;
+
+                const b_fAwal = hitungAvg(qcData.b_f_awal_1, qcData.b_f_awal_2);
+                const b_fAkhir = hitungAvg(qcData.b_f_akhir_1, qcData.b_f_akhir_2);
+                const b_fNet = b_fAkhir - b_fAwal;
+
+                const netFilter = s_fNet - b_fNet;
+                let totalNetGram = netFilter;
+
+                if (isSNI2021) {
+                    const s_aAwal = hitungAvg(gravData.s_a_awal_1, gravData.s_a_awal_2);
+                    const s_aAkhir = hitungAvg(gravData.s_a_akhir_1, gravData.s_a_akhir_2);
+                    const s_aNet = s_aAkhir - s_aAwal;
+
+                    const b_aAwal = hitungAvg(qcData.b_a_awal_1, qcData.b_a_awal_2);
+                    const b_aAkhir = hitungAvg(qcData.b_a_akhir_1, qcData.b_a_akhir_2);
+                    const b_aNet = b_aAkhir - b_aAwal;
+
+                    const netAceton = s_aNet - b_aNet;
+                    totalNetGram += netAceton;
+                } else {
+                    const s_cAwal = hitungAvg(gravData.s_c_awal_1, gravData.s_c_awal_2);
+                    const s_cAkhir = hitungAvg(gravData.s_c_akhir_1, gravData.s_c_akhir_2);
+                    const s_cNet = s_cAkhir - s_cAwal;
+
+                    const b_cAwal = hitungAvg(qcData.b_c_awal_1, qcData.b_c_awal_2);
+                    const b_cAkhir = hitungAvg(qcData.b_c_akhir_1, qcData.b_c_akhir_2);
+                    const b_cNet = b_cAkhir - b_cAwal;
+
+                    const netCawan = s_cNet - b_cNet;
+                    totalNetGram += netCawan;
+                }
+
+                const totalNetMg = totalNetGram * 1000;
+                const hasilKonsentrasi = volDgm > 0 ? (totalNetMg / volDgm).toFixed(2) : 0;
+                
+                newParams[pIdx].grav_data = gravData;
+                newParams[pIdx].qc_data = qcData;
+                newParams[pIdx].result = hasilKonsentrasi;
+                
+                let finalDate = s.analyzed_at || new Date().toISOString();
+                if (tglAnalisaRaw) {
+                    const parsedD = new Date(tglAnalisaRaw);
+                    if (!isNaN(parsedD.getTime())) {
+                        finalDate = parsedD.toISOString();
+                    } else {
+                        const strDate = String(tglAnalisaRaw).trim();
+                        const parts = strDate.split('/');
+                        if (parts.length === 3) {
+                            const dateObj = new Date(`${parts[2]}-${parts[1]}-${parts[0]}T12:00:00`);
+                            if (!isNaN(dateObj.getTime())) {
+                                finalDate = dateObj.toISOString();
+                            }
+                        }
+                    }
+                }
+                
+                const originalStatus = s.status_lab;
+                const { error: updateErr } = await _supabase
+                    .from('samples')
+                    .update({
+                        parameters: newParams,
+                        status_lab: 'analyzed',
+                        analyzed_at: finalDate,
+                        rework_reason: null
+                    })
+                    .eq('coc_id', dbId)
+                    .eq('sample_id', sampleId);
+                    
+                if (updateErr) {
+                    console.error(`Gagal memperbarui sampel ${sampleId}:`, updateErr);
+                    errorCount++;
+                } else {
+                    successCount++;
+                    if (session) {
+                        const actionType = originalStatus === 'analyzed' || originalStatus === 'verified' ? 'EDIT_ANALYSIS' : 'INPUT_ANALYSIS';
+                        const desc = originalStatus === 'analyzed' || originalStatus === 'verified'
+                            ? `Mengubah hasil analisa gravimetri (via Excel) untuk sampel ${sampleId}`
+                            : `Menginput hasil analisa gravimetri (via Excel) untuk sampel ${sampleId}`;
+                            
+                        await _supabase.from('audit_logs').insert([{
+                            user_id: session.user.id,
+                            username: session.user.email,
+                            action_type: actionType,
+                            table_name: 'coc_emisi',
+                            description: desc,
+                            old_data: { sample_id: sampleId, status_lab: originalStatus },
+                            new_data: { sample_id: sampleId, parameters: newParams, status_lab: 'analyzed' }
+                        }]);
+                    }
+                }
+            }
+            
+            alert(`Proses import selesai!\nSukses: ${successCount} sampel\nGagal: ${errorCount} sampel`);
+            fetchAntreanAnalisa();
+            
+        } catch (err) {
+            console.error(err);
+            alert("Gagal memproses file Excel: " + err.message);
+        }
+    };
+    reader.readAsArrayBuffer(file);
+    event.target.value = '';
+};

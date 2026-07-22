@@ -336,6 +336,16 @@ async function openSamplingModal(id, readOnly = false) {
     currentCocId = id;
     samplesDataArray = data.samples || [];
     
+    // Urutkan samplesDataArray: yang belum lengkap (status !== 'Done') didahulukan, lalu diurutkan dari ID terkecil
+    samplesDataArray.sort((a, b) => {
+        const aComplete = a.status === 'Done';
+        const bComplete = b.status === 'Done';
+        if (aComplete !== bComplete) {
+            return aComplete ? 1 : -1;
+        }
+        return (a.sample_id || '').localeCompare(b.sample_id || '', undefined, { numeric: true, sensitivity: 'base' });
+    });
+    
     // Auto-inject missing Nitrogen Monoxide (NO) and Nitrogen Dioxide (NO2) if Nitrogen Oxide (NOx) is present
     samplesDataArray.forEach(s => {
         if (s.parameters) {
@@ -464,7 +474,7 @@ function renderTabNavigation(readOnly = false) {
             const isParticulate = name.includes('PARTICULATE');
 
             if (isTech && (p.konsentrasi_1 === undefined || p.konsentrasi_1 === '')) return true;
-            if (isParticulate && (!p.no_filter || p.volume_meter === undefined || p.volume_meter === '')) return true;
+            if (isParticulate && (!(p.no_filter || s.sample_id) || p.volume_meter === undefined || p.volume_meter === '')) return true;
             return false;
         });
     });
@@ -1156,7 +1166,23 @@ function renderSamplingForm(readOnly = false) {
                 </div>`;
             }
     }).join('');
+    // Simpan scrollLeft dari panel pemilih titik sampel sebelum di-render ulang agar posisinya tidak kembali ke awal
+    const selectorBar = document.querySelector('.sample-selector-bar');
+    const innerSelectorBar = selectorBar ? selectorBar.querySelector('div') : null;
+    const scrollLeftBar = selectorBar ? selectorBar.scrollLeft : 0;
+    const scrollLeftInner = innerSelectorBar ? innerSelectorBar.scrollLeft : 0;
+
     container.innerHTML = warningBannerHtml + sampleSelectorHtml + cardsHtml;
+
+    // Kembalikan scrollLeft setelah render selesai
+    const newSelectorBar = document.querySelector('.sample-selector-bar');
+    const newInnerSelectorBar = newSelectorBar ? newSelectorBar.querySelector('div') : null;
+    if (newSelectorBar) {
+        newSelectorBar.scrollLeft = scrollLeftBar;
+    }
+    if (newInnerSelectorBar) {
+        newInnerSelectorBar.scrollLeft = scrollLeftInner;
+    }
 }
 
 function updateParamFieldWithCalc(sampleIdx, paramIdx, key, val, paramName) {
@@ -1788,7 +1814,14 @@ window.unverifikasiSampling = unverifikasiSampling;
 window.openSamplingModal = openSamplingModal;
 window.switchSample = function(idx, readOnly = false) {
     currentSampleIdx = idx;
+    renderTabNavigation(readOnly);
     renderSamplingForm(readOnly);
+    
+    // Reset scroll modal ke awal (ke paling atas) ketika pindah titik sampel
+    const modalContent = document.querySelector('#modalSamplingInput .modal-content');
+    if (modalContent) {
+        modalContent.scrollTop = 0;
+    }
 };
 
 window.handleBahanBakarChange = function(idx, val) {
