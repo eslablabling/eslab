@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kelola Users | ESLab LIMS</title>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        /* --- RESET & BASE --- */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #f8fafc;
+            color: #1e293b;
+            display: flex;
+            min-height: 100vh;
+        }
+
+        :root {
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --success: #22c55e;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --purple: #7c3aed;
+        }
+
+        /* --- SIDEBAR --- */
+        .sidebar {
+            width: 260px;
+            min-width: 260px;
+            background: #ffffff;
+            border-right: 1px solid #e2e8f0;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            position: sticky;
+            top: 0;
+            height: 100vh;
+            overflow-y: auto;
+        }
+        .brand {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 30px;
+            padding: 10px;
+            height: 70px;
+            overflow: hidden;
+        }
+        .brand img { max-width: 100%; max-height: 50px; object-fit: contain; }
+
+        .nav-label {
+            font-size: 0.65rem;
+            font-weight: 800;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin: 20px 0 10px 10px;
+        }
+        .nav-item {
+            display: flex;
+            align-items: center;
+            padding: 10px 16px;
+            color: #64748b;
+            text-decoration: none;
+            font-weight: 500;
+            border-radius: 12px;
+            margin-bottom: 4px;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+        }
+        .nav-item:hover, .nav-item.active {
+            background: #eff6ff;
+            color: var(--primary);
+        }
+        .nav-item span { margin-right: 10px; }
+
+        /* --- MAIN --- */
+        .main { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow-y: auto; }
+
+        .top-bar {
+            background: #f8fafc;
+            padding: 20px 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #e2e8f0;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .welcome-text h2 { font-size: 1.2rem; font-weight: 800; color: #0f172a; }
+        .welcome-text p { font-size: 0.8rem; color: #64748b; }
+
+        .user-info { display: flex; align-items: center; gap: 12px; }
+        .user-avatar {
+            width: 36px; height: 36px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--purple), var(--primary));
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 800; color: white; font-size: 0.8rem;
+        }
+
+        .content-body { padding: 30px 40px; display: flex; flex-direction: column; gap: 24px; }
+
+        /* --- STAT CARDS --- */
+        .stat-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+        }
+        .stat-card {
+            background: white;
+            border-radius: 20px;
+            border: 1px solid #e2e8f0;
+            padding: 20px 24px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .stat-card:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0,0,0,0.07); }
+        .stat-icon {
+            width: 48px; height: 48px;
+            border-radius: 14px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.4rem;
+            flex-shrink: 0;
+        }
+        .stat-value { font-size: 1.6rem; font-weight: 800; color: #0f172a; line-height: 1; }
+        .stat-label { font-size: 0.72rem; color: #64748b; font-weight: 600; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+
+        /* --- CARD --- */
+        .card {
+            background: white;
+            border-radius: 20px;
+            border: 1px solid #e2e8f0;
+            padding: 24px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+        }
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .card-title {
+            font-size: 1rem;
+            font-weight: 800;
+            color: #0f172a;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* --- FILTER BAR --- */
+        .filter-bar {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .filter-bar input, .filter-bar select {
+            padding: 9px 14px;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            font-size: 0.82rem;
+            font-family: inherit;
+            font-weight: 500;
+            color: #334155;
+            background: #f8fafc;
+            outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .filter-bar input:focus, .filter-bar select:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(37,99,235,0.08);
+            background: white;
+        }
+        .filter-bar input { min-width: 220px; }
+
+        /* --- BUTTONS --- */
+        .btn {
+            padding: 10px 18px;
+            border-radius: 10px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 0.82rem;
+            border: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-family: inherit;
+        }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-primary:hover { background: var(--primary-hover); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(37,99,235,0.3); }
+        .btn-secondary { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
+        .btn-secondary:hover { background: #e2e8f0; }
+        .btn-danger { background: var(--danger); color: white; }
+        .btn-danger:hover { background: #dc2626; }
+        .btn-warning { background: var(--warning); color: white; }
+        .btn-warning:hover { background: #d97706; }
+        .btn-success { background: #059669; color: white; }
+        .btn-success:hover { background: #047857; }
+        .btn-purple { background: var(--purple); color: white; }
+        .btn-purple:hover { background: #6d28d9; }
+
+        /* --- TABLE --- */
+        .table-responsive { overflow-x: auto; border-radius: 14px; border: 1px solid #e2e8f0; }
+        table { width: 100%; border-collapse: collapse; background: white; }
+        th {
+            padding: 13px 16px;
+            color: #94a3b8;
+            font-size: 0.68rem;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            border-bottom: 2px solid #f1f5f9;
+            text-align: left;
+            font-weight: 800;
+            white-space: nowrap;
+        }
+        td {
+            padding: 14px 16px;
+            font-size: 0.84rem;
+            border-bottom: 1px solid #f8fafc;
+            vertical-align: middle;
+            color: #334155;
+        }
+        tbody tr:hover td { background: #f8fafc; }
+        tbody tr:last-child td { border-bottom: none; }
+
+        /* --- AVATAR INITIALS --- */
+        .user-initial {
+            width: 36px; height: 36px;
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 800; font-size: 0.75rem; color: white;
+            flex-shrink: 0;
+        }
+        .avatar-admin_master { background: linear-gradient(135deg, #7c3aed, #a855f7); }
+        .avatar-manager      { background: linear-gradient(135deg, #2563eb, #3b82f6); }
+        .avatar-admin_ts     { background: linear-gradient(135deg, #059669, #10b981); }
+        .avatar-sampling     { background: linear-gradient(135deg, #d97706, #f59e0b); }
+        .avatar-analis       { background: linear-gradient(135deg, #0891b2, #06b6d4); }
+
+        /* --- BADGES --- */
+        .role-badge {
+            display: inline-flex; align-items: center;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 0.65rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            white-space: nowrap;
+        }
+        .badge-admin_master { background: #ede9fe; color: #6d28d9; }
+        .badge-manager      { background: #eff6ff; color: #1d4ed8; }
+        .badge-admin_ts     { background: #ecfdf5; color: #047857; }
+        .badge-sampling     { background: #fffbeb; color: #92400e; }
+        .badge-analis       { background: #ecfeff; color: #0e7490; }
+
+        .status-badge {
+            display: inline-flex; align-items: center; gap: 5px;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 0.68rem;
+            font-weight: 700;
+        }
+        .status-active   { background: #dcfce7; color: #15803d; }
+        .status-inactive { background: #fee2e2; color: #b91c1c; opacity: 0.8; }
+
+        /* --- PASSWORD CELL --- */
+        .pwd-hidden {
+            font-family: monospace;
+            font-size: 1rem;
+            letter-spacing: 2px;
+            color: #94a3b8;
+        }
+        .pwd-revealed {
+            font-family: monospace;
+            font-weight: 800;
+            color: #0f766e;
+            background: #f0fdfa;
+            padding: 4px 10px;
+            border-radius: 6px;
+            border: 1px dashed #99f6e4;
+            display: inline-block;
+            font-size: 0.82rem;
+        }
+        .pwd-restricted {
+            color: #94a3b8;
+            font-size: 0.78rem;
+            font-style: italic;
+        }
+
+        /* --- ACTION BUTTONS --- */
+        .action-group { display: flex; align-items: center; gap: 4px; }
+        .icon-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 6px 7px;
+            font-size: 1rem;
+            border-radius: 8px;
+            transition: background 0.15s;
+            line-height: 1;
+        }
+        .icon-btn:hover { background: #f1f5f9; }
+        .icon-btn.danger:hover { background: #fee2e2; }
+        .icon-btn.success:hover { background: #dcfce7; }
+        .icon-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+        .icon-btn:disabled:hover { background: none; }
+
+        /* --- PAGINATION --- */
+        .pagination { display: flex; align-items: center; justify-content: space-between; margin-top: 20px; flex-wrap: wrap; gap: 12px; }
+        .page-info { font-size: 0.8rem; color: #64748b; font-weight: 600; }
+        .page-btns { display: flex; gap: 4px; }
+        .page-btn {
+            padding: 7px 12px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            background: white;
+            font-size: 0.8rem;
+            font-weight: 700;
+            cursor: pointer;
+            color: #475569;
+            transition: all 0.15s;
+            font-family: inherit;
+        }
+        .page-btn:hover { background: #eff6ff; border-color: var(--primary); color: var(--primary); }
+        .page-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
+        .page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        /* --- EMPTY STATE --- */
+        .empty-state {
+            padding: 60px 20px;
+            text-align: center;
+        }
+        .empty-state .empty-icon { font-size: 3rem; margin-bottom: 12px; opacity: 0.4; }
+        .empty-state p { color: #64748b; font-size: 0.88rem; }
+
+        /* --- MODALS --- */
+        .modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.45);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .modal.open { display: flex; }
+        .modal-content {
+            background: white;
+            border-radius: 24px;
+            width: 100%;
+            max-width: 500px;
+            padding: 32px;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 24px 48px -12px rgba(0,0,0,0.15);
+            position: relative;
+            animation: modalIn 0.2s ease;
+        }
+        .modal-content.modal-sm { max-width: 420px; }
+        @keyframes modalIn {
+            from { opacity: 0; transform: translateY(16px) scale(0.97); }
+            to   { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .modal-close {
+            position: absolute; top: 20px; right: 20px;
+            cursor: pointer; font-size: 1.2rem; color: #94a3b8;
+            transition: color 0.15s;
+            background: none; border: none; font-family: inherit;
+        }
+        .modal-close:hover { color: #334155; }
+        .modal-title {
+            font-size: 1.05rem; font-weight: 800; color: #0f172a;
+            margin-bottom: 24px;
+            display: flex; align-items: center; gap: 8px;
+        }
+
+        /* --- FORM GROUPS --- */
+        .form-group { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+        .form-group label {
+            font-size: 0.72rem; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.04em;
+        }
+        .form-control {
+            width: 100%; padding: 11px 14px;
+            border: 1px solid #e2e8f0; border-radius: 10px;
+            outline: none; font-size: 0.85rem;
+            font-family: inherit; font-weight: 500;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            background: #f8fafc; color: #1e293b;
+        }
+        .form-control:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(37,99,235,0.08);
+            background: white;
+        }
+        .form-control:disabled { opacity: 0.55; cursor: not-allowed; }
+        .form-hint { font-size: 0.68rem; color: #94a3b8; font-weight: 500; }
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+
+        /* Password input with toggle */
+        .pwd-input-wrap { position: relative; }
+        .pwd-input-wrap .form-control { padding-right: 42px; }
+        .pwd-toggle {
+            position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+            background: none; border: none; cursor: pointer;
+            font-size: 1rem; color: #94a3b8; padding: 0;
+            transition: color 0.15s;
+        }
+        .pwd-toggle:hover { color: #334155; }
+
+        /* Modal footer */
+        .modal-footer { display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px; }
+
+        /* Confirm danger box */
+        .confirm-box {
+            background: #fff1f2; border: 1px solid #fecdd3;
+            border-radius: 12px; padding: 16px; margin-bottom: 20px;
+        }
+        .confirm-box p { font-size: 0.84rem; color: #9f1239; font-weight: 600; line-height: 1.5; }
+
+        /* Divider */
+        .divider { border: none; border-top: 1px solid #f1f5f9; margin: 20px 0; }
+
+        /* Radio group */
+        .radio-group { display: flex; flex-direction: column; gap: 10px; }
+        .radio-item {
+            display: flex; align-items: flex-start; gap: 10px;
+            padding: 12px 14px; border-radius: 10px; border: 1px solid #e2e8f0;
+            cursor: pointer; transition: all 0.15s;
+        }
+        .radio-item:hover { border-color: var(--primary); background: #f8faff; }
+        .radio-item input[type="radio"] { margin-top: 2px; accent-color: var(--primary); }
+        .radio-item .radio-label { font-size: 0.85rem; font-weight: 700; color: #334155; }
+        .radio-item .radio-desc { font-size: 0.72rem; color: #64748b; margin-top: 2px; }
+
+        /* Toast notification */
+        #toast {
+            position: fixed; bottom: 30px; right: 30px; z-index: 9999;
+            background: #0f172a; color: white;
+            padding: 14px 20px; border-radius: 14px;
+            font-size: 0.84rem; font-weight: 600;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+            display: none; align-items: center; gap: 10px;
+            max-width: 340px; animation: toastIn 0.25s ease;
+        }
+        @keyframes toastIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        #toast.show { display: flex; }
+        #toast.success { background: #059669; }
+        #toast.error   { background: #dc2626; }
+        #toast.warning { background: #d97706; }
+    </style>
+</head>
+<body>
+
+    <!-- SIDEBAR -->
+    <nav class="sidebar">
+        <div class="brand">
+            <img src="eslab-logo.gif" alt="ESLab Logo" onerror="this.onerror=null;this.src='logo_eslab.jpg'">
+        </div>
+        <div id="dynamicSidebar" style="display:flex;flex-direction:column;flex:1;">
+            <!-- Rendered by auth.js -->
+        </div>
+    </nav>
+
+    <!-- MAIN -->
+    <main class="main">
+        <!-- TOP BAR -->
+        <header class="top-bar">
+            <div class="welcome-text">
+                <h2>👤 Kelola Users</h2>
+                <p>Manajemen akun staff internal — tambah, edit, nonaktifkan, & reset password</p>
+            </div>
+            <div class="user-info">
+                <div style="text-align:right;">
+                    <div id="userFullName" style="font-weight:700;font-size:0.85rem;color:#0f172a;">Memuat...</div>
+                    <div id="userRoleDisplay" style="font-size:0.7rem;color:#64748b;text-transform:uppercase;font-weight:800;margin-top:2px;">Memuat...</div>
+                </div>
+                <div class="user-avatar" id="userInitials">—</div>
+            </div>
+        </header>
+
+        <!-- CONTENT -->
+        <div class="content-body">
+
+            <!-- STAT CARDS -->
+            <div class="stat-grid" id="statGrid">
+                <div class="stat-card">
+                    <div class="stat-icon" style="background:#eff6ff;">👤</div>
+                    <div>
+                        <div class="stat-value" id="statTotal">—</div>
+                        <div class="stat-label">Total Users</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon" style="background:#dcfce7;">✅</div>
+                    <div>
+                        <div class="stat-value" id="statActive">—</div>
+                        <div class="stat-label">Akun Aktif</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon" style="background:#fee2e2;">🔴</div>
+                    <div>
+                        <div class="stat-value" id="statInactive">—</div>
+                        <div class="stat-label">Nonaktif</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon" style="background:#ede9fe;">🛡️</div>
+                    <div>
+                        <div class="stat-value" id="statAdmin">—</div>
+                        <div class="stat-label">Admin Master</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TABEL USERS -->
+            <section class="card">
+                <div class="card-header">
+                    <div class="card-title">📋 Daftar Staff Internal</div>
+                    <button class="btn btn-primary" id="btnTambahUser" onclick="openAddModal()">
+                        ➕ Tambah User Baru
+                    </button>
+                </div>
+
+                <!-- FILTER BAR -->
+                <div class="filter-bar" style="margin-bottom:20px;">
+                    <input type="text" id="searchInput" placeholder="🔍 Cari nama atau username..." oninput="applyFilters()">
+                    <select id="filterRole" onchange="applyFilters()">
+                        <option value="">Semua Role</option>
+                        <option value="admin_master">Admin Master</option>
+                        <option value="manager">Manager</option>
+                        <option value="admin_ts">Admin TS</option>
+                        <option value="sampling">Sampling</option>
+                        <option value="analis">Analis</option>
+                    </select>
+                    <select id="filterStatus" onchange="applyFilters()">
+                        <option value="">Semua Status</option>
+                        <option value="active">Aktif</option>
+                        <option value="inactive">Nonaktif</option>
+                    </select>
+                    <button class="btn btn-secondary" onclick="fetchUsers()" title="Refresh data">🔄 Refresh</button>
+                </div>
+
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width:48px;text-align:center;">No</th>
+                                <th>Nama / Username</th>
+                                <th>Role</th>
+                                <th>Status</th>
+                                <th>Password</th>
+                                <th>Terakhir Reset</th>
+                                <th>HP</th>
+                                <th style="width:160px;text-align:center;">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="usersTableBody">
+                            <tr>
+                                <td colspan="8" style="text-align:center;padding:40px;color:#94a3b8;">
+                                    ⏳ Memuat data...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- PAGINATION -->
+                <div class="pagination" id="paginationArea" style="display:none;">
+                    <div class="page-info" id="pageInfo"></div>
+                    <div class="page-btns" id="pageBtns"></div>
+                </div>
+            </section>
+
+        </div>
+    </main>
+
+    <!-- ======================================================= -->
+    <!-- MODAL 1: TAMBAH USER -->
+    <!-- ======================================================= -->
+    <div class="modal" id="modalAdd">
+        <div class="modal-content">
+            <button class="modal-close" onclick="closeModal('modalAdd')">✕</button>
+            <div class="modal-title">➕ Tambah User Baru</div>
+            <form id="formAdd" onsubmit="handleUserAdd(event)">
+                <div class="form-grid">
+                    <div class="form-group" style="grid-column:1/-1;">
+                        <label for="addFullName">Nama Lengkap *</label>
+                        <input type="text" id="addFullName" class="form-control" placeholder="Contoh: Budi Santoso" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="addUsername">Username *</label>
+                        <input type="text" id="addUsername" class="form-control" placeholder="Contoh: budi.santoso" required>
+                        <span class="form-hint">Huruf kecil, tanpa spasi. Login: username@lab.id</span>
+                    </div>
+                    <div class="form-group">
+                        <label for="addRole">Role *</label>
+                        <select id="addRole" class="form-control" required>
+                            <option value="">— Pilih Role —</option>
+                            <option value="admin_master">Admin Master</option>
+                            <option value="manager">Manager</option>
+                            <option value="admin_ts">Admin TS</option>
+                            <option value="sampling">Sampling</option>
+                            <option value="analis">Analis</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="addPassword">Password *</label>
+                        <div class="pwd-input-wrap">
+                            <input type="text" id="addPassword" class="form-control" placeholder="Kosongkan untuk auto-generate">
+                        </div>
+                        <span class="form-hint">Biarkan kosong → sistem generate otomatis</span>
+                    </div>
+                    <div class="form-group">
+                        <label for="addPhone">No. HP</label>
+                        <input type="text" id="addPhone" class="form-control" placeholder="Contoh: 0812xxxxxxx">
+                    </div>
+                    <div class="form-group" style="grid-column:1/-1;">
+                        <label for="addNotes">Catatan</label>
+                        <textarea id="addNotes" class="form-control" rows="2" placeholder="Catatan opsional untuk user ini..."></textarea>
+                    </div>
+                </div>
+
+                <!-- Preview info box -->
+                <div id="addPreviewBox" style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:12px;padding:14px;font-size:0.8rem;color:#0369a1;display:none;margin-bottom:4px;">
+                    <strong>📧 Email login:</strong> <span id="addEmailPreview">—</span>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('modalAdd')">Batal</button>
+                    <button type="submit" class="btn btn-primary" id="btnSubmitAdd">✅ Tambah User</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ======================================================= -->
+    <!-- MODAL 2: EDIT USER -->
+    <!-- ======================================================= -->
+    <div class="modal" id="modalEdit">
+        <div class="modal-content">
+            <button class="modal-close" onclick="closeModal('modalEdit')">✕</button>
+            <div class="modal-title">✏️ Edit Data User</div>
+            <form id="formEdit" onsubmit="handleUserUpdate(event)">
+                <input type="hidden" id="editUserId">
+                <div class="form-grid">
+                    <div class="form-group" style="grid-column:1/-1;">
+                        <label for="editFullName">Nama Lengkap *</label>
+                        <input type="text" id="editFullName" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Username (Email Login)</label>
+                        <input type="text" id="editUsernameDisplay" class="form-control" disabled>
+                        <span class="form-hint">Username tidak dapat diubah</span>
+                    </div>
+                    <div class="form-group">
+                        <label for="editRole">Role *</label>
+                        <select id="editRole" class="form-control" required>
+                            <option value="admin_master">Admin Master</option>
+                            <option value="manager">Manager</option>
+                            <option value="admin_ts">Admin TS</option>
+                            <option value="sampling">Sampling</option>
+                            <option value="analis">Analis</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="editPhone">No. HP</label>
+                        <input type="text" id="editPhone" class="form-control" placeholder="0812xxxxxxx">
+                    </div>
+                    <div class="form-group" style="grid-column:1/-1;">
+                        <label for="editNotes">Catatan</label>
+                        <textarea id="editNotes" class="form-control" rows="2"></textarea>
+                    </div>
+                    <div class="form-group" style="grid-column:1/-1; display:flex; align-items:center; gap:10px;">
+                        <label style="text-transform:none;font-size:0.85rem;font-weight:700;color:#334155;margin:0;cursor:pointer;" for="editIsActive">
+                            <input type="checkbox" id="editIsActive" style="margin-right:6px;accent-color:var(--primary);">
+                            Akun Aktif
+                        </label>
+                        <span class="form-hint" id="editActiveHint"></span>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('modalEdit')">Batal</button>
+                    <button type="submit" class="btn btn-primary">💾 Simpan Perubahan</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ======================================================= -->
+    <!-- MODAL 3: RESET PASSWORD -->
+    <!-- ======================================================= -->
+    <div class="modal" id="modalReset">
+        <div class="modal-content modal-sm">
+            <button class="modal-close" onclick="closeModal('modalReset')">✕</button>
+            <div class="modal-title">🔑 Reset Password</div>
+            <input type="hidden" id="resetUserId">
+
+            <p style="font-size:0.85rem;color:#64748b;margin-bottom:20px;">
+                Reset password untuk: <strong id="resetUserName" style="color:#0f172a;"></strong>
+            </p>
+
+            <div class="radio-group" id="resetModeGroup">
+                <label class="radio-item" for="modeAuto">
+                    <input type="radio" name="resetMode" id="modeAuto" value="auto" checked onchange="toggleResetMode()">
+                    <div>
+                        <div class="radio-label">🎲 Generate Otomatis</div>
+                        <div class="radio-desc">Sistem akan membuat password acak yang kuat</div>
+                    </div>
+                </label>
+                <label class="radio-item" for="modeManual">
+                    <input type="radio" name="resetMode" id="modeManual" value="manual" onchange="toggleResetMode()">
+                    <div>
+                        <div class="radio-label">✍️ Input Manual</div>
+                        <div class="radio-desc">Admin menentukan password baru secara langsung</div>
+                    </div>
+                </label>
+            </div>
+
+            <div id="manualPwdWrap" style="margin-top:16px;display:none;">
+                <div class="form-group">
+                    <label for="resetNewPwd">Password Baru</label>
+                    <div class="pwd-input-wrap">
+                        <input type="text" id="resetNewPwd" class="form-control" placeholder="Minimal 6 karakter">
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('modalReset')">Batal</button>
+                <button type="button" class="btn btn-warning" onclick="handlePasswordReset()">🔑 Reset Password</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ======================================================= -->
+    <!-- MODAL 4: KONFIRMASI HAPUS -->
+    <!-- ======================================================= -->
+    <div class="modal" id="modalDelete">
+        <div class="modal-content modal-sm">
+            <button class="modal-close" onclick="closeModal('modalDelete')">✕</button>
+            <div class="modal-title">🗑️ Hapus User</div>
+            <input type="hidden" id="deleteUserId">
+
+            <div class="confirm-box">
+                <p>⚠️ Tindakan ini <strong>tidak dapat dibatalkan</strong>. User akan dihapus dari sistem dan tidak bisa login kembali.</p>
+            </div>
+
+            <div class="form-group">
+                <label>Nama User yang Dihapus</label>
+                <input type="text" id="deleteUserName" class="form-control" disabled>
+            </div>
+            <div class="form-group">
+                <label for="deleteConfirmInput">Ketik username untuk konfirmasi *</label>
+                <input type="text" id="deleteConfirmInput" class="form-control" placeholder="Ketik username di sini...">
+                <span class="form-hint" id="deleteUsernameHint"></span>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('modalDelete')">Batal</button>
+                <button type="button" class="btn btn-danger" onclick="handleUserDelete()">🗑️ Hapus Permanen</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- TOAST -->
+    <div id="toast"></div>
+
+    <!-- SCRIPTS -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="config.js"></script>
+    <script src="auth.js"></script>
+    <script src="kelola-users.js"></script>
+</body>
+</html>

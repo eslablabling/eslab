@@ -208,6 +208,7 @@ function renderSidebar(role) {
                 admin_master: [
                     { title: "Master Data", icon: "🗂️", link: "master-data.html", cat: "Main" },
                     { title: "Kelola Klien", icon: "👥", link: "kelola-klien.html", cat: "Main" },
+                    { title: "Kelola Users", icon: "🛡️", link: "kelola-users.html", cat: "Main" },
                     { title: "COC Digital", icon: "📑", link: "coc.html", cat: "Menu Kerja" },
                     { title: "Hub Komunikasi", icon: "💬", link: "komunikasi.html", cat: "Menu Kerja" },
                     { title: "Monitoring Sampling", icon: "📍", link: "sampling.html", cat: "Menu Kerja" },
