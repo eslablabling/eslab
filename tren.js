@@ -38,12 +38,19 @@ window.addEventListener('auth-ready', async (e) => {
 
     // E. Setup UI Event Listeners
     const companySelect = document.getElementById('companySelect');
+    const chimneySelect = document.getElementById('chimneySelect');
     const parameterSelect = document.getElementById('parameterSelect');
     const btnExportExcel = document.getElementById('btnExportExcel');
 
     if (companySelect) {
         companySelect.addEventListener('change', (e) => {
             handleCompanyChange(e.target.value);
+        });
+    }
+
+    if (chimneySelect) {
+        chimneySelect.addEventListener('change', (e) => {
+            handleChimneyChange(e.target.value);
         });
     }
 
@@ -130,13 +137,15 @@ function populateCompanies() {
 // 6. Handler Perubahan Perusahaan
 function handleCompanyChange(companyName) {
     const parameterSelect = document.getElementById('parameterSelect');
-    if (!parameterSelect) return;
+    const chimneySelect = document.getElementById('chimneySelect');
+    if (!parameterSelect || !chimneySelect) return;
 
     // Filter sampel milik perusahaan tersebut
     companySamplesList = allSamplesList.filter(s => s.company_name === companyName);
 
-    // Cari seluruh parameter unik yang pernah diuji untuk perusahaan ini
+    // Cari seluruh parameter & cerobong unik yang pernah diuji untuk perusahaan ini
     const params = new Set();
+    const chimneys = new Set();
     companySamplesList.forEach(s => {
         if (Array.isArray(s.parameters)) {
             s.parameters.forEach(p => {
@@ -144,6 +153,9 @@ function handleCompanyChange(companyName) {
                     params.add(p.parameter.trim());
                 }
             });
+        }
+        if (s.description && s.description !== '-') {
+            chimneys.add(s.description.trim());
         }
     });
 
@@ -156,40 +168,60 @@ function handleCompanyChange(companyName) {
         parameterSelect.appendChild(opt);
     });
 
+    // Populate dropdown cerobong
+    chimneySelect.innerHTML = '<option value="" disabled selected>Pilih cerobong...</option>';
+    Array.from(chimneys).sort().forEach(ch => {
+        const opt = document.createElement('option');
+        opt.value = ch;
+        opt.textContent = ch;
+        chimneySelect.appendChild(opt);
+    });
+
     parameterSelect.disabled = false;
+    chimneySelect.disabled = false;
     
     // Reset Chart & Tabel
     if (trendChartInstance) {
         trendChartInstance.destroy();
         trendChartInstance = null;
     }
-    document.getElementById('chartSubLabel').innerText = "Silakan pilih parameter analisa untuk menggambar grafik tren.";
+    document.getElementById('chartSubLabel').innerText = "Silakan pilih cerobong dan parameter analisa untuk menggambar grafik tren.";
     document.getElementById('detailsTableBody').innerHTML = `
         <tr>
             <td colspan="8" style="text-align: center; color: #64748b; padding: 40px; font-weight: 600;">
-                Silakan pilih parameter analisa terlebih dahulu.
+                Silakan pilih cerobong dan parameter analisa terlebih dahulu.
             </td>
         </tr>
     `;
     document.getElementById('btnExportExcel').disabled = true;
 }
 
-// 7. Handler Perubahan Parameter
+// 7. Handler Perubahan Parameter & Cerobong
 function handleParameterChange(parameterName) {
-    // Saring sampel yang mengandung parameter terpilih & urutkan secara kronologis (tanggal terlama ke terbaru)
+    updateChartAndTable();
+}
+
+function handleChimneyChange(chimneyName) {
+    updateChartAndTable();
+}
+
+function updateChartAndTable() {
+    const parameterName = document.getElementById('parameterSelect').value;
+    const chimneyName = document.getElementById('chimneySelect').value;
+    if (!parameterName || !chimneyName) return;
+
+    // Filter sampel milik perusahaan tersebut yang sesuai dengan cerobong dan mengandung parameter terpilih
     const activeSamples = companySamplesList.filter(s => {
-        return s.parameters.some(p => p.parameter === parameterName);
-    }).sort((a, b) => {
-        const dateA = a.sampling_date ? new Date(a.sampling_date) : new Date(0);
-        const dateB = b.sampling_date ? new Date(b.sampling_date) : new Date(0);
-        return dateA - dateB;
+        const matchesChimney = (s.description || 'General') === chimneyName;
+        const hasParam = s.parameters.some(p => p.parameter === parameterName);
+        return matchesChimney && hasParam;
     });
 
     if (activeSamples.length === 0) {
         document.getElementById('detailsTableBody').innerHTML = `
             <tr>
                 <td colspan="8" style="text-align: center; color: #64748b; padding: 40px; font-weight: 600;">
-                    Tidak ada data pengukuran untuk parameter ini.
+                    Tidak ada data pengukuran untuk parameter dan cerobong ini.
                 </td>
             </tr>
         `;
@@ -201,120 +233,94 @@ function handleParameterChange(parameterName) {
         return;
     }
 
-    // Persiapkan data grafik per Point Source (Description)
-    // Sumbu X: Tanggal sampling unik yang terurut secara kronologis
-    const uniqueDates = [...new Set(activeSamples.map(s => {
-        return s.sampling_date ? new Date(s.sampling_date).toLocaleDateString('id-ID') : '-';
-    }))].sort((a, b) => {
-        const parseDate = (dStr) => {
-            if (dStr === '-') return new Date(0);
-            const [d, m, y] = dStr.split('/');
-            return new Date(`${y}-${m}-${d}`);
-        };
-        return parseDate(a) - parseDate(b);
+    // Persiapkan data grafik
+    const dataPoints = [];
+    activeSamples.forEach(s => {
+        const p = s.parameters.find(param => param.parameter === parameterName);
+        if (p) {
+            const pName = parameterName.replace(/\s+/g, ' ').trim().toLowerCase();
+            const isGasPolutan = (
+                pName.includes('sulfur') || pName.includes('so2') || 
+                pName.includes('nitrogen') || pName.includes('nox') || 
+                pName.includes('no2') || pName.includes(' no') || 
+                pName.includes('carbon mon') || pName.includes(' co')
+            ) && !pName.includes('co2');
+
+            let rawValue = '0';
+            let valToFormat;
+
+            if (isGasPolutan) {
+                rawValue = (p.konsentrasi_1 !== undefined && p.konsentrasi_1 !== null) ? p.konsentrasi_1 : '0';
+                valToFormat = getConversionMgm3(p.parameter, rawValue);
+            } else if (pName.includes('opacity') || pName.includes('opasitas')) {
+                valToFormat = s.opasitas_avg || p.result || p.konsentrasi_1 || '0';
+            } else {
+                valToFormat = p.result || p.hasil_mg_nm3 || p.konsentrasi_1 || '0';
+            }
+
+            const finalDisplayResult = formatResultWithLOQ(p.parameter, valToFormat);
+            const numericValue = parseNumericValue(finalDisplayResult);
+
+            dataPoints.push({
+                sample_id: s.sample_id,
+                val: numericValue,
+                raw: s
+            });
+        }
     });
 
-    const pointSources = [...new Set(activeSamples.map(s => s.description || 'General'))].sort();
-    
+    // Urutkan dataPoints berdasarkan sample_id secara alfanumerik (kecil ke besar)
+    dataPoints.sort((a, b) => a.sample_id.localeCompare(b.sample_id, undefined, { numeric: true, sensitivity: 'base' }));
+
+    const labels = dataPoints.map(dp => dp.sample_id);
+    const values = dataPoints.map(dp => dp.val);
+
     let displayUnit = '-';
     let displayLimit = '-';
-    const tableRows = [];
+    if (dataPoints.length > 0) {
+        const firstSample = dataPoints[0].raw;
+        const firstP = firstSample.parameters.find(param => param.parameter === parameterName);
+        if (firstP) {
+            const pName = parameterName.replace(/\s+/g, ' ').trim().toLowerCase();
+            const isGasPolutan = (
+                pName.includes('sulfur') || pName.includes('so2') || 
+                pName.includes('nitrogen') || pName.includes('nox') || 
+                pName.includes('no2') || pName.includes(' no') || 
+                pName.includes('carbon mon') || pName.includes(' co')
+            ) && !pName.includes('co2');
 
-    // Tentukan Unit & Limit dari sampel pertama sebagai referensi
-    const firstSample = activeSamples[0];
-    const firstP = firstSample.parameters.find(param => param.parameter === parameterName);
-    if (firstP) {
-        const pName = parameterName.replace(/\s+/g, ' ').trim().toLowerCase();
-        const isGasPolutan = (
-            pName.includes('sulfur') || pName.includes('so2') || 
-            pName.includes('nitrogen') || pName.includes('nox') || 
-            pName.includes('no2') || pName.includes(' no') || 
-            pName.includes('carbon mon') || pName.includes(' co')
-        ) && !pName.includes('co2');
+            if (pName.includes('velocity')) displayUnit = 'm/s';
+            else if (pName.includes('volumetric flow')) displayUnit = 'm³/s';
+            else if (isGasPolutan || pName.includes('particulate') || pName.includes('partikulat')) displayUnit = 'mg/Nm³';
+            else if (pName.includes('co2') || pName.includes('o2') || pName.includes('opacity') || pName.includes('opasitas') || pName.includes('isokinetic') || pName.includes('water vapor')) displayUnit = '%';
+            else displayUnit = firstP.unit || '-';
 
-        if (pName.includes('velocity')) displayUnit = 'm/s';
-        else if (pName.includes('volumetric flow')) displayUnit = 'm³/s';
-        else if (isGasPolutan || pName.includes('particulate') || pName.includes('partikulat')) displayUnit = 'mg/Nm³';
-        else if (pName.includes('co2') || pName.includes('o2') || pName.includes('opacity') || pName.includes('opasitas') || pName.includes('isokinetic') || pName.includes('water vapor')) displayUnit = '%';
-        else displayUnit = firstP.unit || '-';
-
-        const currentReg = firstSample.regulations?.[0] || '-';
-        displayLimit = getRegulatoryLimit(parameterName, currentReg);
+            const currentReg = firstSample.regulations?.[0] || '-';
+            displayLimit = getRegulatoryLimit(parameterName, currentReg);
+        }
     }
 
-    const colors = [
-        '#2563eb', // Royal Blue
-        '#16a34a', // Emerald Green
-        '#ea580c', // Orange
-        '#d946ef', // Fuchsia
-        '#06b6d4', // Cyan
-        '#8b5cf6', // Violet
-        '#f43f5e', // Rose
-        '#10b981', // Emerald
-        '#f59e0b'  // Amber
-    ];
+    const datasets = [{
+        label: chimneyName,
+        data: values,
+        borderColor: '#2563eb',
+        backgroundColor: 'transparent',
+        borderWidth: 3,
+        tension: 0.2,
+        spanGaps: true,
+        pointBackgroundColor: '#2563eb',
+        pointBorderColor: '#ffffff',
+        pointBorderWidth: 2,
+        pointRadius: 5,
+        pointHoverRadius: 7
+    }];
 
-    const datasets = pointSources.map((source, colorIdx) => {
-        const color = colors[colorIdx % colors.length];
-        
-        const dataPoints = uniqueDates.map(dateStr => {
-            const match = activeSamples.find(s => {
-                const sDateStr = s.sampling_date ? new Date(s.sampling_date).toLocaleDateString('id-ID') : '-';
-                return (s.description || 'General') === source && sDateStr === dateStr;
-            });
-            
-            if (match) {
-                const p = match.parameters.find(param => param.parameter === parameterName);
-                if (p) {
-                    const pName = parameterName.replace(/\s+/g, ' ').trim().toLowerCase();
-                    const isGasPolutan = (
-                        pName.includes('sulfur') || pName.includes('so2') || 
-                        pName.includes('nitrogen') || pName.includes('nox') || 
-                        pName.includes('no2') || pName.includes(' no') || 
-                        pName.includes('carbon mon') || pName.includes(' co')
-                    ) && !pName.includes('co2');
-
-                    let rawValue = '0';
-                    let valToFormat;
-
-                    if (isGasPolutan) {
-                        rawValue = (p.konsentrasi_1 !== undefined && p.konsentrasi_1 !== null) ? p.konsentrasi_1 : '0';
-                        valToFormat = getConversionMgm3(p.parameter, rawValue);
-                    } else if (pName.includes('opacity') || pName.includes('opasitas')) {
-                        valToFormat = match.opasitas_avg || p.result || p.konsentrasi_1 || '0';
-                    } else {
-                        valToFormat = p.result || p.hasil_mg_nm3 || p.konsentrasi_1 || '0';
-                    }
-
-                    const finalDisplayResult = formatResultWithLOQ(p.parameter, valToFormat);
-                    return parseNumericValue(finalDisplayResult);
-                }
-            }
-            return null;
-        });
-
-        return {
-            label: source,
-            data: dataPoints,
-            borderColor: color,
-            backgroundColor: 'transparent',
-            borderWidth: 3,
-            tension: 0.2,
-            spanGaps: true,
-            pointBackgroundColor: color,
-            pointBorderColor: '#ffffff',
-            pointBorderWidth: 2,
-            pointRadius: 5,
-            pointHoverRadius: 7
-        };
-    });
-
-    // Add Baku Mutu Line to datasets if it exists
+    // Add Baku Mutu Line
     const parsedLimit = parseFloat(displayLimit);
     if (!isNaN(parsedLimit) && parsedLimit > 0) {
         datasets.push({
             label: `Baku Mutu (${displayLimit})`,
-            data: uniqueDates.map(() => parsedLimit),
+            data: labels.map(() => parsedLimit),
             borderColor: '#ef4444',
             backgroundColor: 'transparent',
             borderWidth: 2,
@@ -326,11 +332,13 @@ function handleParameterChange(parameterName) {
         });
     }
 
-    // Populate data baris tabel secara kronologis untuk semua titik sampel
-    activeSamples.forEach(s => {
+    const tableRows = [];
+    dataPoints.forEach(dp => {
+        const s = dp.raw;
         const p = s.parameters.find(param => param.parameter === parameterName);
-        if (!p) return;
-
+        const limit = getRegulatoryLimit(p.parameter, s.regulations?.[0] || '-');
+        
+        // Cari nilai display format
         const pName = parameterName.replace(/\s+/g, ' ').trim().toLowerCase();
         const isGasPolutan = (
             pName.includes('sulfur') || pName.includes('so2') || 
@@ -352,7 +360,6 @@ function handleParameterChange(parameterName) {
         }
 
         const finalDisplayResult = formatResultWithLOQ(p.parameter, valToFormat);
-        const limit = getRegulatoryLimit(p.parameter, s.regulations?.[0] || '-');
 
         tableRows.push({
             nomor_coc: s.nomor_coc,
@@ -366,15 +373,13 @@ function handleParameterChange(parameterName) {
         });
     });
 
-    // Render Tabel
+    // Render Tabel & Grafik
     renderDetailsTable(tableRows);
-
-    // Render Grafik
-    renderTrendChart(uniqueDates, datasets, activeSamples, parameterName, displayUnit);
+    renderTrendChart(labels, datasets, activeSamples, parameterName, displayUnit);
 
     // Update Label Header Grafik
     document.getElementById('chartLabel').innerText = `Tren Analisa: ${parameterName}`;
-    document.getElementById('chartSubLabel').innerText = `Grafik historis parameter ${parameterName} per Point Source untuk perusahaan ${document.getElementById('companySelect').value}`;
+    document.getElementById('chartSubLabel').innerText = `Grafik historis parameter ${parameterName} untuk ${chimneyName} (${document.getElementById('companySelect').value})`;
     document.getElementById('btnExportExcel').disabled = false;
 }
 
@@ -464,10 +469,7 @@ function renderTrendChart(labels, datasets, activeSamples, paramName, unitName) 
                             const val = context.raw;
 
                             // Cari data asli untuk memformat LOQ string dengan tepat di tooltip
-                            const match = activeSamples.find(s => {
-                                const sDateStr = s.sampling_date ? new Date(s.sampling_date).toLocaleDateString('id-ID') : '-';
-                                return (s.description || 'General') === source && sDateStr === dateStr;
-                            });
+                            const match = activeSamples.find(s => s.sample_id === context.label);
 
                             let displayVal = val;
                             if (match) {
@@ -526,6 +528,11 @@ function renderTrendChart(labels, datasets, activeSamples, paramName, unitName) 
                             weight: '600'
                         },
                         color: '#64748b'
+                    },
+                    title: {
+                        display: true,
+                        text: 'ID Sampel',
+                        font: { family: 'Plus Jakarta Sans', weight: 'bold' }
                     }
                 }
             }

@@ -633,6 +633,9 @@ async function saveCoc() {
             }]);
         }
 
+        // Buat akun klien otomatis jika belum ada
+        await autoCreateClientAccount(cocData.company_name);
+
         // 5. UPDATE TEMPLATE CETAK & PRINT
         // Kita panggil fungsi fillPrintTemplate (yang sudah diletakkan di luar)
         await loadCompanyHistory();
@@ -1578,3 +1581,51 @@ window.deleteCoc = async function(id) {
         alert("Gagal menghapus: " + err.message);
     }
 };
+
+// Fungsi otomatis membuat akun login klien jika belum ada
+async function autoCreateClientAccount(companyName) {
+    if (!companyName) return;
+    try {
+        const { data: existingAccount, error: fetchErr } = await _supabase
+            .from('client_accounts')
+            .select('id')
+            .eq('company_name', companyName)
+            .maybeSingle();
+
+        if (fetchErr) {
+            console.error("Gagal memeriksa akun klien:", fetchErr);
+            return;
+        }
+
+        if (!existingAccount) {
+            // Generasi username: klien_ + nama PT disederhanakan
+            const cleanCompanyName = companyName
+                .toLowerCase()
+                .replace(/[^a-z0-9]/g, '')
+                .substring(0, 20);
+            
+            const username = `klien_${cleanCompanyName}`;
+            
+            // Generasi password acak awal
+            const randomSuffix = Math.random().toString(36).substring(2, 7).toUpperCase();
+            const password = `ES-${randomSuffix}`;
+
+            // Insert ke tabel client_accounts
+            const { error: insertErr } = await _supabase
+                .from('client_accounts')
+                .insert([{
+                    company_name: companyName,
+                    username: username,
+                    password: password
+                }]);
+
+            if (insertErr) {
+                console.error("Gagal membuat akun klien otomatis:", insertErr);
+            } else {
+                console.log(`Akun klien otomatis dibuat: ${username} / ${password}`);
+            }
+        }
+    } catch (err) {
+        console.error("Error auto-creating client account:", err);
+    }
+}

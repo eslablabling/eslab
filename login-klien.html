@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login Portal Klien | Lab Environmental Services</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        body { 
+            font-family: 'Plus Jakarta Sans', sans-serif; 
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #f0f4f8; 
+            overflow: hidden;
+            position: relative;
+            padding: 20px;
+        }
+
+        /* Background Aurora */
+        .bg-animation {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            z-index: -1;
+            background: 
+                radial-gradient(at 0% 0%, #1e3a8a 0px, transparent 40%),
+                radial-gradient(at 100% 0%, #0f766e 0px, transparent 40%), /* Teal fallback color for clients */
+                radial-gradient(at 100% 100%, #311042 0px, transparent 40%),
+                radial-gradient(at 0% 100%, #0f172a 0px, transparent 40%);
+            filter: blur(60px);
+            background-size: 200% 200%;
+            animation: aurora-flow 15s ease-in-out infinite alternate;
+        }
+
+        @keyframes aurora-flow {
+            0% { background-position: 0% 0%; }
+            50% { background-position: 100% 100%; }
+            100% { background-position: 50% 0%; }
+        }
+
+        .glass-modern {
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 1);
+            width: 100%;
+            max-width: 440px;
+            padding: 40px;
+            border-radius: 40px;
+            box-shadow: 0 32px 64px -15px rgba(0,0,0,0.08);
+            position: relative;
+        }
+
+        .header { text-align: center; margin-bottom: 40px; }
+        
+        .logo-container {
+            width: 110px;
+            height: 110px;
+            margin: 0 auto 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }   
+
+        .logo-img {
+            width: 350%;
+            height: 350%;
+            object-fit: contain;
+            position: relative;
+            z-index: 2;
+        }
+
+        .logo-glow {
+            position: absolute;
+            inset: 0;
+            background: rgba(13, 148, 136, 0.15);
+            border-radius: 50%;
+            filter: blur(20px);
+            transform: scale(1.2);
+        }
+
+        h2 { font-size: 1.6rem; font-weight: 800; color: #0f172a; letter-spacing: -0.02em; }
+        .tagline { color: #0d9488; font-size: 0.75rem; font-weight: 800; text-transform: uppercase; margin-top: 6px; letter-spacing: 0.1em; }
+
+        .form-group { margin-bottom: 20px; text-align: left; }
+        label { display: block; font-size: 0.7rem; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 8px; margin-left: 4px; }
+        
+        .input-box { position: relative; }
+        input {
+            width: 100%;
+            padding: 14px 18px;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 16px;
+            font-family: inherit;
+            font-weight: 500;
+            outline: none;
+            transition: all 0.3s;
+        }
+        input:focus { border-color: #0d9488; background: #fff; box-shadow: 0 0 0 4px rgba(13, 148, 136, 0.05); }
+
+        button {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(to right, #0d9488, #0f766e);
+            color: white;
+            border: none;
+            border-radius: 16px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 10px 20px -5px rgba(13, 148, 136, 0.3);
+        }
+        button:hover { transform: translateY(-1px); box-shadow: 0 15px 25px -5px rgba(13, 148, 136, 0.4); }
+
+        .footer {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #f1f5f9;
+            display: flex;
+            justify-content: space-between;
+            font-size: 9px;
+            font-weight: 700;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+
+        /* Modal Overlay */
+        .pwd-modal {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(4px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            padding: 20px;
+        }
+        .pwd-modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 24px;
+            max-width: 460px;
+            width: 100%;
+            text-align: center;
+            box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1);
+        }
+        .pwd-box {
+            background: #f0fdf4;
+            border: 2px dashed #22c55e;
+            color: #16a34a;
+            padding: 16px;
+            border-radius: 16px;
+            font-size: 1.5rem;
+            font-weight: 800;
+            letter-spacing: 1px;
+            margin: 20px 0;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="bg-animation"></div>
+
+    <div class="glass-modern">
+        <div class="header">
+            <div class="logo-container">
+                <div class="logo-glow"></div>
+                <img src="eslab-logo.gif" alt="Logo PT Envirotama Solusindo" class="logo-img">
+            </div>
+            
+            <h2>Portal Klien Mandiri</h2>
+            <div class="tagline">PT Envirotama Solusindo</div>
+        </div>
+
+        <form id="clientLoginForm">
+            <div class="form-group">
+                <label>Username Klien</label>
+                <div class="input-box">
+                    <input type="text" id="username" placeholder="Masukkan username klien..." required>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Password</label>
+                <div class="input-box">
+                    <input type="password" id="password" placeholder="••••••••" required>
+                </div>
+            </div>
+
+            <button type="submit" id="btnSubmit">
+                Masuk Ke Portal
+            </button>
+        </form>
+
+        <div id="message" style="margin-top: 15px; text-align: center; font-size: 0.8rem; font-weight: 600; display: none;"></div>
+
+        <div class="footer">
+            <span>Portal Klien</span>
+            <span>2026</span>
+        </div>
+    </div>
+
+    <!-- Modal Peringatan Reset Sandi Bulanan -->
+    <div class="pwd-modal" id="pwdResetModal">
+        <div class="pwd-modal-content">
+            <h3 style="font-weight:800; color:#0f172a; font-size:1.15rem;">⚠️ Pemberitahuan Keamanan</h3>
+            <p style="font-size:0.8rem; color:#64748b; margin-top:8px;">Demi keamanan akun Anda, kata sandi klien telah di-reset secara berkala (bulanan) otomatis. Harap catat kata sandi baru Anda berikut:</p>
+            <div class="pwd-box" id="newPwdBox">ES-XXXXX</div>
+            <p style="font-size:0.75rem; color:#ef4444; font-weight:700; margin-bottom:20px;">Gunakan kata sandi baru ini untuk login berikutnya.</p>
+            <button onclick="closePwdModal()" style="background:#22c55e; box-shadow:0 10px 20px -5px rgba(34,197,94,0.3);">
+                Saya Mengerti & Sudah Mencatat
+            </button>
+        </div>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="login-klien.js"></script>
+</body>
+</html>

@@ -163,7 +163,7 @@ async function fetchCoAList(keyword = '') {
     try {
         const { data, error } = await _supabase
             .from('coc_emisi')
-            .select('id, company_name, qt_no, updated_at, status_sampling, samples(*)')
+            .select('id, company_name, qt_no, updated_at, status_sampling, scanned_coa_url, samples(*)')
             .order('updated_at', { ascending: false });
 
         if (error) throw error;
@@ -224,6 +224,7 @@ function renderCoATableRows() {
     }
 
     const canVerify = ['manager', 'admin_master'].includes(userRole);
+    const canUpload = ['admin_master', 'manager', 'admin_ts', 'analis'].includes(userRole);
 
     tbody.innerHTML = paginated.map(item => {
         const isVerified = (item.status_sampling || '').trim().toLowerCase() === 'verified';
@@ -253,6 +254,26 @@ function renderCoATableRows() {
             }
         }
 
+        let uploadBtnHtml = '';
+        if (canUpload && isVerified) {
+            const hasScan = !!item.scanned_coa_url;
+            uploadBtnHtml = `
+                <input type="file" id="coa-file-input-${item.id}" accept=".pdf" style="display: none;" onchange="handleUploadScannedCoA('${item.id}', event)">
+                ${hasScan ? `
+                    <a href="${item.scanned_coa_url}" target="_blank" style="background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; padding: 6px 12px; border-radius: 6px; text-decoration: none; font-size: 0.8rem; font-weight: 700; margin-right: 6px; display: inline-flex; align-items: center; gap: 4px;" title="Lihat Scan COA di Google Drive">
+                        📂 Lihat Scan
+                    </a>
+                    <button onclick="triggerUploadScannedCoA('${item.id}')" style="background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; padding: 6px 12px; border-radius: 6px; font-size: 0.8rem; font-weight: 700; cursor: pointer; margin-right: 6px;" title="Ganti Scan COA">
+                        🔄 Ganti
+                    </button>
+                ` : `
+                    <button onclick="triggerUploadScannedCoA('${item.id}')" style="background: #f59e0b; color: white; border: none; padding: 6px 12px; border-radius: 6px; font-size: 0.8rem; font-weight: 700; cursor: pointer; margin-right: 6px;" title="Unggah PDF Scan COA Resmi">
+                        📤 Unggah Scan
+                    </button>
+                `}
+            `;
+        }
+
         return `
             <tr style="border-bottom: 1px solid #f1f5f9;">
                 <td style="padding: 15px; font-family: monospace;">${item.qt_no || '-'}</td>
@@ -266,6 +287,7 @@ function renderCoATableRows() {
                 <td style="padding: 15px; text-align: center; white-space: nowrap;">
                     <div style="display: flex; align-items: center; justify-content: center;">
                         ${verifyBtnHtml}
+                        ${uploadBtnHtml}
                         <a href="coa.html?id=${item.id}" style="background: var(--primary); color: white; padding: 6px 12px; border-radius: 6px; text-decoration: none; font-size: 0.8rem; font-weight: 700;">
                             Buka CoA 📄
                         </a>
@@ -274,6 +296,85 @@ function renderCoATableRows() {
             </tr>
         `;
     }).join('');
+}
+
+// Google Drive Upload Logic for Scanned COA
+window.triggerUploadScannedCoA = function(id) {
+    document.getElementById(`coa-file-input-${id}`).click();
+}
+
+window.handleUploadScannedCoA = async function(id, event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    if (file.type !== 'application/pdf') {
+        alert("Hanya berkas PDF yang diperbolehkan.");
+        return;
+    }
+
+    const origBtn = event.currentTarget || event.target;
+    // Tampilkan prompt loading sederhana
+    const statusText = document.createElement('span');
+    statusText.innerText = "⏳ Sedang mengunggah ke Google Drive...";
+    statusText.style.cssText = "font-size:0.75rem; color:#2563eb; font-weight:bold; margin-left:10px;";
+    origBtn.parentElement.appendChild(statusText);
+
+    try {
+        const result = await uploadFileToGoogleDrive(file);
+        
+        const { error } = await _supabase
+            .from('coc_emisi')
+            .update({ scanned_coa_url: result.webViewLink })
+            .eq('id', id);
+
+        if (error) throw error;
+
+        // Audit log
+        const { data: { session } } = await _supabase.auth.getSession();
+        if (session) {
+            const coc = filteredSamplesList.find(c => c.id === id);
+            await _supabase.from('audit_logs').insert([{
+                user_id: session.user.id,
+                username: session.user.email,
+                action_type: 'UPLOAD_SCANNED_COA',
+                table_name: 'coc_emisi',
+                description: `Mengunggah berkas scan COA resmi ke Google Drive untuk No. QT: ${coc?.qt_no || '-'}`,
+                new_data: { scanned_coa_url: result.webViewLink }
+            }]);
+        }
+
+        alert("Scan COA resmi berhasil diunggah ke Google Drive!");
+        await fetchCoAList();
+    } catch (err) {
+        console.error("Gagal mengunggah scan COA:", err);
+        alert("Gagal mengunggah scan COA: " + err.message);
+    } finally {
+        statusText.remove();
+        event.target.value = '';
+    }
+}
+
+async function uploadFileToGoogleDrive(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch(`${SB_URL}/functions/v1/upload-to-drive`, {
+        method: 'POST',
+        headers: {
+            'Authorization': 'Bearer ' + SB_KEY
+        },
+        body: formData
+    });
+
+    if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(errText || "Respons server tidak berhasil.");
+    }
+
+    const result = await response.json();
+    return {
+        webViewLink: result.webViewLink
+    };
 }
 
 function renderCoAPaginationControls() {
@@ -557,6 +658,13 @@ function renderCoA(data) {
         s.status_lab && typeof s.status_lab === 'string' && s.status_lab.toLowerCase() === 'verified'
     );
 
+    // Urutkan berdasarkan sample_id secara alfanumerik (kecil ke besar)
+    verifiedSamples.sort((a, b) => {
+        const idA = a.sample_id || '';
+        const idB = b.sample_id || '';
+        return idA.localeCompare(idB, undefined, { numeric: true, sensitivity: 'base' });
+    });
+
     const totalCount = samples.length;
     const verifiedCount = verifiedSamples.length;
     const unverifiedCount = totalCount - verifiedCount;
@@ -723,6 +831,11 @@ function renderCoA(data) {
                     <p style="font-size: 0.85rem; margin: 70px 0 0 0;"><strong>Fadhel Verdino</strong></p>
                 </div>
             </div>
+
+            <div style="margin-top: 50px; display: flex; justify-content: space-between; font-size: 0.65rem; border-top: 1.5px solid #000; padding-top: 6px; color: #475569; font-family: 'Plus Jakarta Sans', sans-serif;">
+                <span>Form-ES-7.8.3; Rev.00; 3 Februari 2026</span>
+                <span style="font-weight: 700;">Page 1 of ${verifiedSamples.length + 1}</span>
+            </div>
         </div>
     `;
 
@@ -734,6 +847,33 @@ function renderCoA(data) {
         const o2Measured = getO2MeasuredValue(sample.parameters);
         let hasO2Correction = false;
         let correctedO2RefVal = null;
+
+        // Scan apakah ada hasil yang mengandung "<" (Less than LoQ)
+        let sampleHasLessThan = false;
+        (sample.parameters || []).forEach(p => {
+            const pName = p.parameter ? p.parameter.replace(/\s+/g, ' ').trim().toLowerCase() : '';
+            const isGasPolutan = (
+                pName.includes('sulfur') || pName.includes('so2') || 
+                pName.includes('nitrogen') || pName.includes('nox') || 
+                pName.includes('no2') || pName.includes(' no') || 
+                pName.includes('carbon mon') || pName.includes(' co')
+            ) && !pName.includes('co2');
+
+            let valToFormat;
+            if (isGasPolutan) {
+                const rawPpm = (p.konsentrasi_1 !== undefined && p.konsentrasi_1 !== null) ? p.konsentrasi_1 : '0';
+                valToFormat = getConversionMgm3(p.parameter, rawPpm);
+            } else if (pName.includes('opacity') || pName.includes('opasitas')) {
+                valToFormat = sample.opasitas_avg || '0';
+            } else {
+                valToFormat = p.result || p.hasil_mg_nm3 || p.konsentrasi_1 || '0';
+            }
+
+            const finalDisplayResult = formatResultWithLOQ(p.parameter, valToFormat);
+            if (finalDisplayResult && finalDisplayResult.includes('<')) {
+                sampleHasLessThan = true;
+            }
+        });
 
         htmlContent += `
         <div class="coa-page" style="padding: 20px; margin-top: 20px;">
@@ -869,7 +1009,7 @@ function renderCoA(data) {
                 </tbody>
             </table>
 
-            <div style="margin-top: 20px; font-size: 0.7rem; line-height: 1.4; text-align: left;">
+            <div style="margin-top: 10px; font-size: 0.65rem; line-height: 1.2; text-align: left;">
                 <p style="font-weight: bold; margin: 0 0 2px 0;">Note:</p>
                 ${!sample.parameters.every(p => p.is_accredited) ? '<p style="margin: 0;">* Non-accredited parameter</p>' : ''}
                 <p style="margin: 0;">** ${(() => {
@@ -879,21 +1019,28 @@ function renderCoA(data) {
                     return regs.length > 0 ? regs.join(', ') : '-';
                 })()}</p>
                 ${hasO2Correction && correctedO2RefVal !== null ? `<p style="margin: 0;">^ Corrected to ${correctedO2RefVal}% Oxygen</p>` : ''}
+                ${sampleHasLessThan ? `<p style="margin: 0;">&lt; Less than LoQ (Limit of Quantification)</p>` : ''}
+                <p style="margin: 0;"># mg/m3 = Concentration of miligram per meter cubic, at normal atmosfer, Pressure 1 atm and temperature 25 °C</p>
             </div>
 
-            <div style="margin-top: 30px; display: flex; justify-content: space-between; align-items: flex-end; width: 100%;">
+            <div style="margin-top: 15px; display: flex; justify-content: space-between; align-items: flex-end; width: 100%;">
                 <div style="display: flex; align-items: center; gap: 12px; text-align: left;">
-                    <img src="${qrCodeUrl}" alt="QR Code Verification" style="width: 70px; height: 70px; border: 1px solid #cbd5e1; padding: 2px; background: white;" />
-                    <div style="font-size: 0.65rem; color: #475569;">
+                    <img src="${qrCodeUrl}" alt="QR Code Verification" style="width: 60px; height: 60px; border: 1px solid #cbd5e1; padding: 2px; background: white;" />
+                    <div style="font-size: 0.6rem; color: #475569;">
                         <p style="font-weight: bold; color: #0f172a; margin-bottom: 1px;">Scan to Verify</p>
                         <p style="margin: 0; line-height: 1.2;">Original certificate available online.</p>
                     </div>
                 </div>
                 <div style="text-align: right;">
-                    <p style="font-size: 0.85rem;">Cikarang, ${new Date().toLocaleDateString('en-US', {month: 'long', day: 'numeric', year: 'numeric'})}</p>
-                    <p style="font-size: 0.85rem; margin: 0;">Approved by,</p>
-                    <p style="font-size: 0.85rem; margin: 70px 0 0 0;"><strong>Fadhel Verdino</strong><br>Environment Lab Manager</p>
+                    <p style="font-size: 0.8rem;">Cikarang, ${new Date().toLocaleDateString('en-US', {month: 'long', day: 'numeric', year: 'numeric'})}</p>
+                    <p style="font-size: 0.8rem; margin: 0;">Approved by,</p>
+                    <p style="font-size: 0.8rem; margin: 40px 0 0 0;"><strong>Fadhel Verdino</strong><br>Environment Lab Manager</p>
                 </div>
+            </div>
+
+            <div style="margin-top: 25px; display: flex; justify-content: space-between; font-size: 0.65rem; border-top: 1.5px solid #000; padding-top: 6px; color: #475569; font-family: 'Plus Jakarta Sans', sans-serif;">
+                <span>Form-ES-7.8.3; Rev.00; 3 Februari 2026</span>
+                <span style="font-weight: 700;">Page ${index + 2} of ${verifiedSamples.length + 1}</span>
             </div>
         </div>
         `;

@@ -204,10 +204,12 @@ function renderSidebar(role) {
             const navContainer = document.getElementById('dynamicSidebar');
             if (!navContainer) return;
 
-             const menuMapping = {
+            const menuMapping = {
                 admin_master: [
                     { title: "Master Data", icon: "🗂️", link: "master-data.html", cat: "Main" },
+                    { title: "Kelola Klien", icon: "👥", link: "kelola-klien.html", cat: "Main" },
                     { title: "COC Digital", icon: "📑", link: "coc.html", cat: "Menu Kerja" },
+                    { title: "Hub Komunikasi", icon: "💬", link: "komunikasi.html", cat: "Menu Kerja" },
                     { title: "Monitoring Sampling", icon: "📍", link: "sampling.html", cat: "Menu Kerja" },
                     { title: "Penerimaan Sampel", icon: "📥", link: "penerimaan.html", cat: "Menu Kerja" },
                     { title: "Log Analisa", icon: "🧪", link: "analisa.html", cat: "Menu Kerja" },
@@ -219,6 +221,7 @@ function renderSidebar(role) {
                 manager: [
                     { title: "Master Data", icon: "🗂️", link: "master-data.html", cat: "Main" },
                     { title: "COC Digital", icon: "📑", link: "coc.html", cat: "Menu Kerja" },
+                    { title: "Hub Komunikasi", icon: "💬", link: "komunikasi.html", cat: "Menu Kerja" },
                     { title: "Monitoring Sampling", icon: "📍", link: "sampling.html", cat: "Menu Kerja" },
                     { title: "Penerimaan Sampel", icon: "📥", link: "penerimaan.html", cat: "Menu Kerja" },
                     { title: "Log Analisa", icon: "🧪", link: "analisa.html", cat: "Menu Kerja" },
@@ -237,6 +240,7 @@ function renderSidebar(role) {
                 admin_ts: [
                     { title: "Master Data", icon: "🗂️", link: "master-data.html", cat: "Main" },
                     { title: "COC Digital", icon: "📑", link: "coc.html", cat: "Menu Kerja" },
+                    { title: "Hub Komunikasi", icon: "💬", link: "komunikasi.html", cat: "Menu Kerja" },
                     { title: "Penerimaan Sampel", icon: "📥", link: "penerimaan.html", cat: "Menu Kerja" },
                     { title: "Verifikasi & COA", icon: "📜", link: "coa.html", cat: "Menu Kerja" },
                     { title: "Tren Analisa", icon: "📈", link: "tren.html", cat: "Menu Kerja" },
@@ -248,17 +252,28 @@ function renderSidebar(role) {
                     { title: "Tren Analisa", icon: "📈", link: "tren.html", cat: "Menu Kerja" },
                     { title: "Dokumen", icon: "📁", link: "dokumen.html", cat: "Menu Kerja" }
                 ],
+                client: [
+                    { title: "Portal Klien", icon: "🏢", link: "portal-klien.html", cat: "Main" },
+                    { title: "Hub Komunikasi", icon: "💬", link: "komunikasi.html", cat: "Main" }
+                ],
             };
 
             const activeMenus = menuMapping[role] || menuMapping['sampling'];
             const currentPath = window.location.pathname;
 
-            let sidebarHTML = `
-                <p class="nav-label" style="font-size: 0.65rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; margin: 20px 0 10px 16px;">Main</p>
-                <a href="dashboard.html" class="nav-item ${currentPath.includes('dashboard.html') ? 'active' : ''}">
-                    <span style="width: 25px; display: inline-block;">🏠</span> Dashboard Utama
-                </a>
-            `;
+            let sidebarHTML = '';
+            if (role !== 'client') {
+                sidebarHTML += `
+                    <p class="nav-label" style="font-size: 0.65rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; margin: 20px 0 10px 16px;">Main</p>
+                    <a href="dashboard.html" class="nav-item ${currentPath.includes('dashboard.html') ? 'active' : ''}">
+                        <span style="width: 25px; display: inline-block;">🏠</span> Dashboard Utama
+                    </a>
+                `;
+            } else {
+                sidebarHTML += `
+                    <p class="nav-label" style="font-size: 0.65rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; margin: 20px 0 10px 16px;">Main</p>
+                `;
+            }
 
             let lastCat = 'Main';
             activeMenus.forEach(item => {
@@ -306,15 +321,25 @@ function renderSidebar(role) {
 // Fungsi Global untuk Logout
 async function processLogout() {
     if (confirm("Apakah Anda yakin ingin keluar?")) {
+        const isClient = !!sessionStorage.getItem('client-session');
+        
         // 1. Catat Log Logout dulu
-        await saveSecurityLog('LOGOUT');
+        if (!isClient) {
+            await saveSecurityLog('LOGOUT');
+        }
         
         // 2. Hapus status session storage
         sessionStorage.removeItem('logged_in_event');
+        sessionStorage.removeItem('client-session');
+        sessionStorage.removeItem('user_role');
 
         // 3. Baru jalankan SignOut
-        await _supabase.auth.signOut();
-        window.location.href = "index.html";
+        if (!isClient) {
+            await _supabase.auth.signOut();
+            window.location.href = "index.html";
+        } else {
+            window.location.href = "login-klien.html";
+        }
     }
 }
 
@@ -328,6 +353,41 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // 2. Fungsi Cek Sesi & Ambil Role
     async function checkAuth() {
+    // A. Cek Sesi Klien Kustom
+    const clientSessionStr = sessionStorage.getItem('client-session');
+    if (clientSessionStr) {
+        // Blokir akses ke halaman selain portal-klien.html dan komunikasi.html
+        const currentFilename = window.location.pathname.split('/').pop();
+        if (currentFilename && currentFilename !== '' && currentFilename !== 'portal-klien.html' && currentFilename !== 'komunikasi.html') {
+            window.location.href = 'portal-klien.html';
+            return;
+        }
+
+        const clientSession = JSON.parse(clientSessionStr);
+        const mockSession = { user: { id: '00000000-0000-0000-0000-000000000000', email: clientSession.username } };
+        const mockProfile = { role: 'client', full_name: clientSession.username, company_name: clientSession.company_name };
+        
+        window.userSession = mockSession;
+        window.userProfile = mockProfile;
+        window.userRole = 'client';
+        
+        if (userNameEl) {
+            userNameEl.innerHTML = `Portal Klien <span style="font-size:0.85rem; font-weight:400; color:#64748b;">| ${clientSession.company_name}</span>`;
+        }
+        if (userFullNameEl) userFullNameEl.innerText = clientSession.company_name;
+        if (userRoleEl) userRoleEl.innerText = 'CLIENT PORTAL';
+        
+        if (currentDateEl) {
+            currentDateEl.innerText = new Date().toLocaleDateString('id-ID', { 
+                weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
+            });
+        }
+        
+        renderSidebar('client');
+        window.dispatchEvent(new CustomEvent('auth-ready', { detail: { session: mockSession, profile: mockProfile, role: 'client' } }));
+        return;
+    }
+
     // 1. Ambil Sesi Auth Utama
     let { data: { session }, error: authError } = await _supabase.auth.getSession();
 
