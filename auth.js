@@ -355,10 +355,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function checkAuth() {
     // A. Cek Sesi Klien Kustom
     const clientSessionStr = sessionStorage.getItem('client-session');
+    
+    // Deteksi nama berkas saat ini secara aman
+    let currentFilename = window.location.pathname.split('/').pop().toLowerCase();
+    if (currentFilename === '' || currentFilename === 'eslab') {
+        currentFilename = 'index.html';
+    }
+
     if (clientSessionStr) {
         // Blokir akses ke halaman selain portal-klien.html dan komunikasi.html
-        const currentFilename = window.location.pathname.split('/').pop();
-        if (currentFilename && currentFilename !== '' && currentFilename !== 'portal-klien.html' && currentFilename !== 'komunikasi.html') {
+        if (currentFilename !== 'portal-klien.html' && currentFilename !== 'komunikasi.html') {
             window.location.href = 'portal-klien.html';
             return;
         }
@@ -392,8 +398,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     let { data: { session }, error: authError } = await _supabase.auth.getSession();
 
     if (authError || !session) {
-        // Redirection to login screen if not authenticated
-        window.location.href = "index.html";
+        // Jika klien tidak terotentikasi mencoba masuk ke portal klien, alihkan ke login-klien
+        if (currentFilename === 'portal-klien.html' || currentFilename === 'komunikasi.html') {
+            window.location.href = "login-klien.html";
+        } else {
+            window.location.href = "index.html";
+        }
         return;
     }
 
