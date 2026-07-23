@@ -454,7 +454,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         // 4. Render Sidebar dengan Role yang Benar
-        console.log("Login sebagai:", userRole);
         renderSidebar(userRole);
         
         // Dispatch Custom Event for page-specific initialization
@@ -515,7 +514,6 @@ async function saveSecurityLog(action) {
         }]);
 
         if (error) throw error;
-        console.log(`✅ Log ${action} berhasil dicatat`);
     } catch (err) {
         console.error(`❌ Gagal mencatat log ${action}:`, err.message);
     }

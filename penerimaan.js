@@ -12,7 +12,6 @@ let sortState = { col: 'sample_id', dir: 'asc' };
 window.addEventListener('auth-ready', async (e) => {
     const { role } = e.detail;
     userRole = role;
-    console.log("Role terkonfirmasi di penerimaan:", userRole);
 
     // 2. Ambil data pertama kali
     fetchDataPenerimaan();
@@ -477,8 +476,7 @@ async function prosesTerimaSampel(dbId, sampleId) {
 
 // Fungsi pembantu untuk notifikasi yang lebih cantik daripada alert bawaan
 function showNotification(msg) {
-    // Anda bisa mengganti ini dengan Toast library atau custom div
-    console.log("LIMS-NOTIF:", msg);
+    // Notifikasi internal
 }
 
 async function batalTerimaSampel(dbId, sampleId) {

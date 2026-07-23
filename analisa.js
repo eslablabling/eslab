@@ -21,7 +21,6 @@ async function fetchMasterEmisi() {
             .select('parameter, metode, baku_mutu, unit, regulasi, koreksi_o2');
         if (error) throw error;
         masterEmisi = data || [];
-        console.log("Master Emisi Loaded in Analisa:", masterEmisi.length, "rows");
     } catch (err) {
         console.error("Gagal memuat Master Emisi:", err);
         masterEmisi = [];
@@ -102,7 +101,6 @@ window.addEventListener('auth-ready', async (e) => {
     if (userRole) {
         sessionStorage.setItem('userRole', userRole);
     }
-    console.log("Role terkonfirmasi:", userRole);
 
     // 3. BARU PANGGIL TABEL
     await fetchMasterEmisi();

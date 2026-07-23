@@ -102,14 +102,12 @@ async function fetchActiveLogs() {
     }
 
     try {
-        console.log("Mencoba mengambil data dari Supabase...");
         const { data: samples, error } = await _supabase
             .from('samples') 
             .select('*, coc_emisi(*)')
             .order('updated_at', { ascending: false });
 
         if (error) throw error;
-        console.log("Data berhasil ditarik:", samples);
 
         if (!samples || samples.length === 0) {
             logTableBody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:30px;">Database kosong atau RLS memblokir data.</td></tr>`;
@@ -611,14 +609,12 @@ function updateDateDisplay() {
 
 // 14. Setup Supabase Realtime Subscription
 function setupRealtimeSubscription() {
-    console.log("Memulai langganan Realtime Supabase...");
     _supabase
         .channel('lims-realtime-channel')
         .on(
             'postgres_changes',
             { event: '*', schema: 'public', table: 'samples' },
             (payload) => {
-                console.log('Perubahan real-time terdeteksi pada tabel samples:', payload);
                 fetchActiveLogs();
             }
         )
@@ -626,12 +622,10 @@ function setupRealtimeSubscription() {
             'postgres_changes',
             { event: '*', schema: 'public', table: 'coc_emisi' },
             (payload) => {
-                console.log('Perubahan real-time terdeteksi pada tabel coc_emisi:', payload);
                 fetchActiveLogs();
             }
         )
         .subscribe((status) => {
-            console.log("Status langganan Realtime Supabase:", status);
         });
 }
 

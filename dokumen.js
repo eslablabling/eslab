@@ -27,7 +27,6 @@ function openDatabase() {
 
         request.onsuccess = (event) => {
             db = event.target.result;
-            console.log("IndexedDB EslabDMS berhasil dibuka");
             resolve(db);
         };
 
@@ -35,11 +34,9 @@ function openDatabase() {
             const dbInstance = event.target.result;
             if (!dbInstance.objectStoreNames.contains(STORE_NAME)) {
                 dbInstance.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
-                console.log("Object store 'documents' berhasil dibuat");
             }
             if (!dbInstance.objectStoreNames.contains('categories')) {
                 dbInstance.createObjectStore('categories', { keyPath: 'id' });
-                console.log("Object store 'categories' berhasil dibuat");
             }
         };
     });
@@ -124,11 +121,9 @@ const DEFAULT_SEED_DATA = [
 async function seedDatabaseIfEmpty() {
     const docs = await getAllDocsFromDB();
     if (docs.length === 0) {
-        console.log("Database DMS kosong, melakukan seeding data default...");
         for (const doc of DEFAULT_SEED_DATA) {
             await addDocToDB(doc);
         }
-        console.log("Seeding data selesai");
     }
 }
 
@@ -273,11 +268,9 @@ const DEFAULT_CATEGORIES = [
 async function seedCategoriesIfEmpty() {
     const cats = await getAllCategoriesFromDB();
     if (cats.length === 0) {
-        console.log("Database kategori kosong, melakukan seeding default...");
         for (const cat of DEFAULT_CATEGORIES) {
             await addCategoryToDB(cat);
         }
-        console.log("Seeding kategori selesai");
     }
 }
 
@@ -1032,7 +1025,6 @@ async function pushMetadataToDrive() {
             },
             body: JSON.stringify({ action: 'save_metadata', metadata })
         });
-        console.log("Metadata LIMS berhasil diunggah ke Google Drive!");
     } catch (err) {
         console.error("Gagal mengunggah metadata ke Google Drive:", err);
     }
@@ -1040,7 +1032,6 @@ async function pushMetadataToDrive() {
 
 async function pullMetadataFromDrive() {
     try {
-        console.log("Mengunduh metadata bersama dari Google Drive...");
         const response = await fetch(`${SB_URL}/functions/v1/upload-to-drive`, {
             method: 'POST',
             headers: {
@@ -1145,8 +1136,6 @@ async function performDriveSync(silent = false) {
             if (!silent) alert(`Tidak ada berkas yang ditemukan di folder Google Drive. Pastikan berkas-berkas tersebut sudah diunggah ke folder Drive Anda.`);
             return;
         }
-
-        console.log("Berkas Google Drive ditemukan:", driveFiles);
 
         const docs = await getAllDocsFromDB();
         let updatedCount = 0;

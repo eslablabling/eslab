@@ -14,8 +14,6 @@ function atou(str) {
 }
 
 window.addEventListener('auth-ready', async (e) => {
-    const { session } = e.detail;
-    console.log("Logger diinisialisasi untuk:", session.user.email);
     fetchLogs(); 
 });
 

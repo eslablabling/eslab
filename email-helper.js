@@ -25,13 +25,9 @@
                     company_name: companyName || '-'
                 },
                 publicKey
-            ).then(() => {
-                console.log('📧 [Email Auto] Notifikasi email berhasil terkirim ke', targetEmail);
-            }).catch(err => {
+            ).catch(err => {
                 console.warn('⚠️ [Email Auto] Gagal mengirim email via EmailJS:', err);
             });
-        } else {
-            console.log('📧 [Email Auto] Notifikasi email disiapkan untuk:', targetEmail, '| Subjek:', subject);
         }
     };
 

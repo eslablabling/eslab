@@ -70,7 +70,6 @@ async function fetchPeralatanData() {
             }
         }
         
-        console.log("Loading local storage or seed inventory...");
         const savedLocal = localStorage.getItem('master_peralatan_backup');
         if (savedLocal) {
             const parsed = JSON.parse(savedLocal);
@@ -594,7 +593,6 @@ async function autoSyncSertifikatToDokumen(item) {
                     const existing = (getAll.result || []).find(d => d.driveLink === item.sertifikat_url || d.title === docTitle);
                     if (!existing) {
                         store.add(docEntry);
-                        console.log('Automated sync certificate to Menu Dokumen EslabDMS:', docTitle);
                     }
                 };
             }

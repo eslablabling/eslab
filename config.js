@@ -21,6 +21,4 @@
     window.GOOGLE_CLIENT_ID = _dec(_c);
     window.GOOGLE_API_KEY = _dec(_a);
     window.GOOGLE_APP_ID = _dec(_id);
-
-    console.log("✅ Supabase Client initialized dynamically in config.js");
 })();

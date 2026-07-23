@@ -33,8 +33,6 @@ async function loadCompanyHistory() {
                 .map(item => `<option value="${item.company_name}">${item.company_name}</option>`)
                 .join('');
         }
-        
-        console.log("Company history loaded in COC:", companyHistory.length, "companies");
     } catch (err) {
         console.error("Gagal memuat history perusahaan:", err);
     }
@@ -71,8 +69,6 @@ async function loadOfficerHistory() {
                 .map(name => `<option value="${name}">${name}</option>`)
                 .join('');
         }
-        
-        console.log("Officer history loaded in COC:", officerHistory.length, "officers");
     } catch (err) {
         console.error("Gagal memuat history petugas:", err);
     }
@@ -2035,8 +2031,6 @@ async function autoCreateClientAccount(companyName) {
 
             if (insertErr) {
                 console.error("Gagal membuat akun klien otomatis:", insertErr);
-            } else {
-                console.log(`Akun klien otomatis dibuat: ${username} / ${password}`);
             }
         }
     } catch (err) {

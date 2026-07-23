@@ -9,7 +9,6 @@ window.addEventListener('auth-ready', async (e) => {
     const { session, role } = e.detail;
     const user = session.user;
     userRole = role;
-    console.log("Role terkonfirmasi di COA:", userRole);
 
     // 2. Isi Profil User
     const userDisplay = document.getElementById('userFullName');
@@ -1258,7 +1257,6 @@ async function fetchMasterEmisi() {
         
         // Simpan ke variabel global
         masterEmisi = data; 
-        console.log("Master Emisi Loaded:", masterEmisi.length, "rows");
     } catch (err) {
         console.error("Gagal memuat Master Emisi:", err);
         masterEmisi = []; 
@@ -1373,7 +1371,6 @@ async function toggleParamVisibility(sampleId, paramName, isChecked) {
             .eq('sample_id', sampleId);
 
         if (updateError) throw updateError;
-        console.log(`Visibilitas parameter diperbarui: ${paramName} di sampel ${sampleId} menjadi ${isChecked}`);
 
         // Update styling baris di layar secara lokal
         const checkboxes = document.querySelectorAll(`.param-visibility-chk[data-sample-id="${sampleId}"][data-param-name="${paramName}"]`);

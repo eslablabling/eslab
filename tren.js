@@ -75,7 +75,6 @@ async function fetchMasterEmisi() {
             .select('parameter, metode, baku_mutu, unit, regulasi');
         if (error) throw error;
         masterEmisi = data || [];
-        console.log("Master Emisi Loaded:", masterEmisi.length);
     } catch (err) {
         console.error("Gagal memuat Master Emisi:", err);
     }

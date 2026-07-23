@@ -484,7 +484,6 @@ window.handleUserAdd = async function(event) {
         });
 
         const signUpData = await signUpRes.json();
-        console.log('[KU] signUp response:', JSON.stringify({ status: signUpRes.status, userId: signUpData?.user?.id }));
 
         if (!signUpRes.ok) {
             const rawMsg = signUpData?.error_description || signUpData?.msg || signUpData?.message || `HTTP ${signUpRes.status}`;

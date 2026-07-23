@@ -16,7 +16,6 @@ async function fetchMasterEmisi() {
             .select('parameter, metode, baku_mutu, unit, regulasi, koreksi_o2');
         if (error) throw error;
         masterEmisi = data || [];
-        console.log("Master Emisi Loaded in Sampling:", masterEmisi.length, "rows");
     } catch (err) {
         console.error("Gagal memuat Master Emisi:", err);
         masterEmisi = [];
@@ -107,7 +106,6 @@ function getBadgeHtml(label, val, limitVal) {
 window.addEventListener('auth-ready', async (e) => {
     const { role } = e.detail;
     userRole = role;
-    console.log("Role terkonfirmasi di sampling:", userRole);
 
     // 3. Jika sesi aman, muat data sampling
     await fetchMasterEmisi();
