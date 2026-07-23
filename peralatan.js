@@ -329,7 +329,7 @@ function openModalEdit(idKey) {
     if (!item) return;
 
     document.getElementById('modalTitle').innerText = "Edit Peralatan Inventaris";
-    document.getElementById('editId').value = item.id || item.no_inventaris;
+    document.getElementById('editId').value = item.no_inventaris || item.id;
     document.getElementById('inpNoUrut').value = item.no_urut || "";
     document.getElementById('inpYymm').value = item.yymm || "";
     document.getElementById('inpNoInventaris').value = item.no_inventaris || "";
@@ -359,33 +359,58 @@ async function savePeralatan(e) {
 
     const editId = document.getElementById('editId').value;
     const newItem = {
-        no_urut: document.getElementById('inpNoUrut').value,
-        yymm: document.getElementById('inpYymm').value,
+        no_urut: document.getElementById('inpNoUrut').value || null,
+        yymm: document.getElementById('inpYymm').value || null,
         no_inventaris: document.getElementById('inpNoInventaris').value,
         nama_alat: document.getElementById('inpNamaAlat').value,
-        merek_brand: document.getElementById('inpMerekBrand').value,
-        type_model: document.getElementById('inpTypeModel').value,
-        no_seri: document.getElementById('inpNoSeri').value,
-        rentang_akurasi: document.getElementById('inpRentangAkurasi').value,
+        merek_brand: document.getElementById('inpMerekBrand').value || null,
+        type_model: document.getElementById('inpTypeModel').value || null,
+        no_seri: document.getElementById('inpNoSeri').value || null,
+        rentang_akurasi: document.getElementById('inpRentangAkurasi').value || null,
         lokasi: document.getElementById('inpLokasi').value,
         kondisi: document.getElementById('inpKondisi').value,
         tgl_kalibrasi: document.getElementById('inpTglKalibrasi').value || null,
         periode_kalibrasi: document.getElementById('inpPeriodeKalibrasi').value || '1 tahun',
         jadwal_kalibrasi: document.getElementById('inpJadwalKalibrasi').value || null,
-        lembaga_kalibrasi: document.getElementById('inpLembagaKalibrasi').value,
-        sertifikat_url: document.getElementById('inpSertifikatUrl').value
+        lembaga_kalibrasi: document.getElementById('inpLembagaKalibrasi').value || null,
+        sertifikat_url: document.getElementById('inpSertifikatUrl').value || null
     };
 
     try {
         if (typeof _supabase !== 'undefined') {
             if (editId) {
-                await _supabase.from('master_peralatan').update(newItem).eq('no_inventaris', editId);
+                // Update by no_inventaris first
+                let { data: upData, error: upErr } = await _supabase
+                    .from('master_peralatan')
+                    .update(newItem)
+                    .eq('no_inventaris', editId)
+                    .select();
+
+                if (upErr || !upData || upData.length === 0) {
+                    // Try update by new no_inventaris
+                    let { data: upData2, error: upErr2 } = await _supabase
+                        .from('master_peralatan')
+                        .update(newItem)
+                        .eq('no_inventaris', newItem.no_inventaris)
+                        .select();
+
+                    // If still nothing updated, try update by UUID id
+                    if (upErr2 || !upData2 || upData2.length === 0) {
+                        const { error: upErr3 } = await _supabase
+                            .from('master_peralatan')
+                            .update(newItem)
+                            .eq('id', editId);
+                        if (upErr3) console.error("Supabase update error:", upErr3);
+                    }
+                }
             } else {
-                await _supabase.from('master_peralatan').insert([newItem]);
+                const { error: insErr } = await _supabase.from('master_peralatan').insert([newItem]);
+                if (insErr) console.error("Supabase insert error:", insErr);
             }
         }
+        
         if (editId) {
-            const idx = peralatanList.findIndex(p => p.id === editId || p.no_inventaris === editId);
+            const idx = peralatanList.findIndex(p => p.id === editId || p.no_inventaris === editId || p.no_inventaris === newItem.no_inventaris);
             if (idx !== -1) peralatanList[idx] = { ...peralatanList[idx], ...newItem };
         } else {
             peralatanList.push(newItem);
@@ -393,7 +418,7 @@ async function savePeralatan(e) {
     } catch (err) {
         console.warn("Supabase save error, fallback local storage", err);
         if (editId) {
-            const idx = peralatanList.findIndex(p => p.id === editId || p.no_inventaris === editId);
+            const idx = peralatanList.findIndex(p => p.id === editId || p.no_inventaris === editId || p.no_inventaris === newItem.no_inventaris);
             if (idx !== -1) peralatanList[idx] = { ...peralatanList[idx], ...newItem };
         } else {
             peralatanList.push(newItem);
@@ -401,6 +426,11 @@ async function savePeralatan(e) {
     }
 
     localStorage.setItem('master_peralatan_backup', JSON.stringify(peralatanList));
+
+    if (newItem.sertifikat_url) {
+        autoSyncSertifikatToDokumen(newItem);
+    }
+
     closeModalPeralatan();
     renderTablePeralatan(peralatanList);
     updateStatsCards(peralatanList);
@@ -505,9 +535,21 @@ async function handlePdfUploadToDrive(event) {
         if (result && result.webViewLink) {
             document.getElementById('inpSertifikatUrl').value = result.webViewLink;
             if (statusEl) {
-                statusEl.innerText = '✅ Berkas PDF berhasil diunggah & tersimpan di Google Drive!';
+                statusEl.innerText = '✅ Berkas PDF berhasil diunggah & otomatis terdaftar di Menu Dokumen (Sertifikat Kalibrasi)!';
                 statusEl.style.color = '#16a34a';
             }
+
+            // Otomatis daftarkan dokumen ke Menu Dokumen (Kategori Sertifikat Kalibrasi)
+            const namaAlat = document.getElementById('inpNamaAlat')?.value || 'Peralatan';
+            const noInv = document.getElementById('inpNoInventaris')?.value || '';
+            const tglExp = document.getElementById('inpJadwalKalibrasi')?.value || null;
+
+            autoSyncSertifikatToDokumen({
+                nama_alat: namaAlat,
+                no_inventaris: noInv,
+                sertifikat_url: result.webViewLink,
+                jadwal_kalibrasi: tglExp
+            });
         } else {
             throw new Error('Tautan file Google Drive tidak ditemukan.');
         }
@@ -517,5 +559,47 @@ async function handlePdfUploadToDrive(event) {
             statusEl.innerText = '❌ Gagal mengunggah ke Google Drive: ' + err.message;
             statusEl.style.color = '#dc2626';
         }
+    }
+}
+
+// Function Auto-Sync Certificate PDF to Menu Dokumen (Category: kalibrasi / Sertifikat Kalibrasi)
+async function autoSyncSertifikatToDokumen(item) {
+    if (!item || !item.sertifikat_url) return;
+
+    const docTitle = `${item.no_inventaris ? item.no_inventaris + ' - ' : ''}${item.nama_alat || 'Peralatan'}`;
+    const fileName = item.no_inventaris ? `${item.no_inventaris.replace(/\//g, '_')}_Sertifikat.pdf` : `${item.nama_alat || 'Sertifikat'}.pdf`;
+
+    const docEntry = {
+        title: docTitle,
+        category: 'kalibrasi',
+        storageType: 'drive',
+        driveLink: item.sertifikat_url,
+        fileName: fileName,
+        fileType: 'pdf',
+        description: `Sertifikat Kalibrasi Resmi ${item.nama_alat || ''} (${item.no_inventaris || '-'}). Expired: ${item.jadwal_kalibrasi || '-'}`,
+        uploadedBy: sessionStorage.getItem('user_fullname') || 'Staf Lab',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+    };
+
+    try {
+        const request = indexedDB.open('EslabDMS', 2);
+        request.onsuccess = function(e) {
+            const db = e.target.result;
+            if (db.objectStoreNames.contains('documents')) {
+                const tx = db.transaction(['documents'], 'readwrite');
+                const store = tx.objectStore('documents');
+                const getAll = store.getAll();
+                getAll.onsuccess = function() {
+                    const existing = (getAll.result || []).find(d => d.driveLink === item.sertifikat_url || d.title === docTitle);
+                    if (!existing) {
+                        store.add(docEntry);
+                        console.log('Automated sync certificate to Menu Dokumen EslabDMS:', docTitle);
+                    }
+                };
+            }
+        };
+    } catch (err) {
+        console.warn('Auto sync to Menu Dokumen failed:', err);
     }
 }

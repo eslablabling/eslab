@@ -439,9 +439,16 @@ function renderDocuments(keyword = '') {
 
     // Filter kategori & pencarian kata kunci
     const filteredDocs = allDocuments.filter(doc => {
-        const matchesCategory = (currentCategory === 'all' || doc.category === currentCategory);
+        let matchesCategory = (currentCategory === 'all' || doc.category === currentCategory);
+        if (!matchesCategory && doc.category && currentCategory) {
+            const catDoc = doc.category.toLowerCase().replace(/[^a-z0-9]/g, '');
+            const catCurr = currentCategory.toLowerCase().replace(/[^a-z0-9]/g, '');
+            if (catDoc === catCurr || (catDoc.includes('kalibrasi') && catCurr.includes('kalibrasi'))) {
+                matchesCategory = true;
+            }
+        }
         const matchesKeyword = !keyword || 
-            doc.title.toLowerCase().includes(keyword) || 
+            (doc.title && doc.title.toLowerCase().includes(keyword)) || 
             (doc.fileName && doc.fileName.toLowerCase().includes(keyword)) ||
             (doc.description && doc.description.toLowerCase().includes(keyword)) ||
             (doc.uploadedBy && doc.uploadedBy.toLowerCase().includes(keyword));
@@ -523,23 +530,25 @@ function renderDocuments(keyword = '') {
         // Tentukan ikon berdasarkan category dokumen
         let iconClass = 'icon-lainnya';
         let emoji = '📄';
-        switch (doc.category) {
-            case 'regulasi':
-                iconClass = 'icon-regulasi';
-                emoji = '📕';
-                break;
-            case 'metode':
-                iconClass = 'icon-metode';
-                emoji = '🧪';
-                break;
-            case 'verifikasi':
-                iconClass = 'icon-verifikasi';
-                emoji = '📋';
-                break;
-            case 'template':
-                iconClass = 'icon-template';
-                emoji = '📂';
-                break;
+        let badgeClass = `badge-${doc.category}`;
+
+        const catLower = (doc.category || '').toLowerCase();
+        if (catLower.includes('regulasi')) {
+            iconClass = 'icon-regulasi';
+            emoji = '📕';
+        } else if (catLower.includes('metode')) {
+            iconClass = 'icon-metode';
+            emoji = '🧪';
+        } else if (catLower.includes('verifikasi')) {
+            iconClass = 'icon-verifikasi';
+            emoji = '📋';
+        } else if (catLower.includes('template')) {
+            iconClass = 'icon-template';
+            emoji = '📂';
+        } else if (catLower.includes('kalibrasi')) {
+            iconClass = 'icon-kalibrasi';
+            badgeClass = 'badge-kalibrasi';
+            emoji = '📜';
         }
 
         // Format tanggal unggah
@@ -567,7 +576,7 @@ function renderDocuments(keyword = '') {
                     </div>
                 </td>
                 <td>
-                    <span class="badge-cat badge-${doc.category}">
+                    <span class="badge-cat ${badgeClass}">
                         ${getCategoryLabel(doc.category)}
                     </span>
                 </td>
