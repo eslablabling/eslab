@@ -40,8 +40,22 @@ CREATE POLICY "Allow authenticated read profiles" ON public.profiles
     FOR SELECT TO authenticated USING (true);
 
 DROP POLICY IF EXISTS "Allow users update own profile" ON public.profiles;
-CREATE POLICY "Allow users update own profile" ON public.profiles
-    FOR UPDATE TO authenticated USING (auth.uid() = id) WITH CHECK (auth.uid() = id);
+DROP POLICY IF EXISTS "Allow admin_master update profiles" ON public.profiles;
+DROP POLICY IF EXISTS "Allow update profiles" ON public.profiles;
+CREATE POLICY "Allow update profiles" ON public.profiles
+    FOR UPDATE TO authenticated 
+    USING (auth.uid() = id OR public.get_user_role() = 'admin_master')
+    WITH CHECK (auth.uid() = id OR public.get_user_role() = 'admin_master');
+
+DROP POLICY IF EXISTS "Allow admin_master insert profiles" ON public.profiles;
+CREATE POLICY "Allow admin_master insert profiles" ON public.profiles
+    FOR INSERT TO authenticated
+    WITH CHECK (public.get_user_role() = 'admin_master' OR auth.uid() = id);
+
+DROP POLICY IF EXISTS "Allow admin_master delete profiles" ON public.profiles;
+CREATE POLICY "Allow admin_master delete profiles" ON public.profiles
+    FOR DELETE TO authenticated
+    USING (public.get_user_role() = 'admin_master');
 
 -- ------------------------------------------------------------------------
 -- 4. Kebijakan Keamanan untuk Tabel 'coc_emisi'

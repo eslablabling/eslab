@@ -178,7 +178,29 @@ ALTER TABLE profiles ADD COLUMN IF NOT EXISTS notes TEXT DEFAULT NULL;</pre>
 function showRlsBanner() {
     if (document.getElementById('rlsBanner')) return;
 
-    const SQL_RLS = `-- Izinkan admin_master mengelola semua profil user\nCREATE POLICY "admin_master_manage_profiles"\nON public.profiles\nFOR ALL\nTO authenticated\nUSING (\n  EXISTS (\n    SELECT 1 FROM public.profiles p\n    WHERE p.id = auth.uid()\n    AND p.role = 'admin_master'\n  )\n)\nWITH CHECK (\n  EXISTS (\n    SELECT 1 FROM public.profiles p\n    WHERE p.id = auth.uid()\n    AND p.role = 'admin_master'\n  )\n);`;
+    const SQL_RLS = `-- Aktifkan RLS dan izinkan admin_master mengelola profiles
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow authenticated read profiles" ON public.profiles;
+CREATE POLICY "Allow authenticated read profiles" ON public.profiles FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Allow update profiles" ON public.profiles;
+CREATE POLICY "Allow update profiles" ON public.profiles FOR UPDATE TO authenticated 
+USING (auth.uid() = id OR public.get_user_role() = 'admin_master') 
+WITH CHECK (auth.uid() = id OR public.get_user_role() = 'admin_master');
+
+DROP POLICY IF EXISTS "Allow admin_master insert profiles" ON public.profiles;
+CREATE POLICY "Allow admin_master insert profiles" ON public.profiles FOR INSERT TO authenticated 
+WITH CHECK (public.get_user_role() = 'admin_master' OR auth.uid() = id);
+
+DROP POLICY IF EXISTS "Allow admin_master delete profiles" ON public.profiles;
+CREATE POLICY "Allow admin_master delete profiles" ON public.profiles FOR DELETE TO authenticated 
+USING (public.get_user_role() = 'admin_master');
+
+-- Sync user di auth.users yang belum punya profil
+INSERT INTO public.profiles (id, username, full_name, role, is_active, status_karyawan, last_password_reset)
+SELECT u.id, split_part(u.email, '@', 1), split_part(u.email, '@', 1), 'sampling', true, 'aktif', NOW()
+FROM auth.users u LEFT JOIN public.profiles p ON u.id = p.id WHERE p.id IS NULL;`;
 
     const banner = document.createElement('div');
     banner.id = 'rlsBanner';
@@ -292,7 +314,7 @@ function renderTable() {
                     <div class="user-initial avatar-${u.role}">${initials}</div>
                     <div>
                         <div style="font-weight:700;color:#0f172a;">${u.full_name || '—'}</div>
-                        <div style="font-size:0.72rem;color:#94a3b8;margin-top:2px;font-family:monospace;">${u.id?.split('-')[0] || '—'}</div>
+                        <div style="font-size:0.72rem;color:#94a3b8;margin-top:2px;font-family:monospace;">${u.username || u.id?.split('-')[0] || '—'}</div>
                     </div>
                 </div>
             </td>
@@ -473,8 +495,44 @@ window.handleUserAdd = async function(event) {
                     `Tunggu beberapa menit, atau naikkan limit di Supabase → Authentication → Rate Limits.`
                 );
             }
-            throw new Error(`Auth Error: ${rawMsg}`);
+            // Jika user sudah terdaftar di Auth, cek apakah profilnya masih default/kosong (misal dari Trigger/gagal sebelumnya)
+            if (rawMsg.toLowerCase().includes('already registered') || rawMsg.toLowerCase().includes('already exists')) {
+                const { data: orphanProfile } = await _supabase
+                    .from('profiles')
+                    .select('*')
+                    .or(`username.eq.${username},full_name.eq.${fullName}`)
+                    .maybeSingle();
 
+                if (orphanProfile) {
+                    const { error: updateErr } = await _supabase
+                        .from('profiles')
+                        .update({
+                            username,
+                            full_name: fullName,
+                            role,
+                            phone: phone || null,
+                            notes: notes || null,
+                            plain_password: encodedPwd,
+                            is_active: true,
+                            status_karyawan: 'aktif',
+                            last_password_reset: new Date().toISOString()
+                        })
+                        .eq('id', orphanProfile.id);
+
+                    if (!updateErr) {
+                        await logAction('UPDATE_USER',
+                            `Memperbarui profil user terdaftar: ${fullName} (${email}), role: ${role}`,
+                            null,
+                            { full_name: fullName, email, role }
+                        );
+                        showToast(`✅ User "${fullName}" berhasil diperbarui dengan Role: ${formatRole(role)}! Password: ${password}`, 'success', 8000);
+                        closeModal('modalAdd');
+                        await fetchUsers();
+                        return;
+                    }
+                }
+            }
+            throw new Error(`Auth Error: ${rawMsg}`);
         }
 
         const newUserId = signUpData?.user?.id || signUpData?.id;
@@ -490,25 +548,12 @@ window.handleUserAdd = async function(event) {
             );
         }
 
-        // ─── STEP 4: Cek apakah profile dengan UUID ini sudah ada ────────
-        const { data: existingProfileById } = await _supabase
-            .from('profiles')
-            .select('id, role')
-            .eq('id', newUserId)
-            .maybeSingle();
-
-        if (existingProfileById) {
-            // Profile sudah ada — jangan overwrite, lempar error informatif
-            throw new Error(
-                `Akun dengan email "${email}" sudah memiliki profil ` +
-                `(role: ${existingProfileById.role}). Gunakan username yang berbeda.`
-            );
-        }
-
-        // ─── STEP 5: INSERT profil (bukan upsert agar tidak bisa overwrite) ─
-        const { error: profileError } = await _supabase.from('profiles').insert([{
+        // ─── STEP 4 & 5: UPSERT / UPDATE PROFIL ──────────────────────────
+        // Supabase Trigger mungkin sudah otomatis membuat baris profil default (misal role='staff').
+        // Kita gunakan update/upsert agar data dari form (nama, role, phone, password) langsung tersimpan!
+        const profilePayload = {
             id: newUserId,
-            username,                // ← username dari form (fadhel, manager, dst)
+            username,
             full_name: fullName,
             role,
             phone: phone || null,
@@ -517,8 +562,29 @@ window.handleUserAdd = async function(event) {
             is_active: true,
             status_karyawan: 'aktif',
             last_password_reset: new Date().toISOString()
-        }]);
+        };
 
+        const { data: existingProfileById } = await _supabase
+            .from('profiles')
+            .select('id, role')
+            .eq('id', newUserId)
+            .maybeSingle();
+
+        let profileError = null;
+        if (existingProfileById) {
+            // Update profil yang baru saja dibuat oleh Trigger Supabase
+            const { error: err } = await _supabase
+                .from('profiles')
+                .update(profilePayload)
+                .eq('id', newUserId);
+            profileError = err;
+        } else {
+            // Insert profil baru jika belum ada
+            const { error: err } = await _supabase
+                .from('profiles')
+                .insert([profilePayload]);
+            profileError = err;
+        }
 
         if (profileError) throw new Error(`Profile Error: ${profileError.message}`);
 
