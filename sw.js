@@ -1,15 +1,29 @@
-const CACHE_NAME = 'eslab-lims-v1';
+const CACHE_NAME = 'eslab-lims-v2';
 const ASSETS_TO_CACHE = [
+  './',
   './index.html',
   './dashboard.html',
   './sampling.html',
   './coa.html',
   './analisa.html',
+  './dokumen.html',
+  './peralatan.html',
+  './master-data.html',
+  './kelola-users.html',
+  './login-klien.html',
+  './portal-klien.html',
   './config.js',
   './auth.js',
   './sampling.js',
   './coa.js',
   './analisa.js',
+  './pwa-install.js',
+  './pwa-install.css',
+  './manifest.json',
+  './icon-192.png',
+  './icon-512.png',
+  './icon-maskable-512.png',
+  './apple-touch-icon.png',
   './eslab-logo.gif',
   './logo_eslab.jpg',
   'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',
@@ -51,7 +65,7 @@ self.addEventListener('fetch', event => {
           // Stale-While-Revalidate: Kembalikan cache segera, lalu update di latar belakang
           fetch(event.request)
             .then(networkResponse => {
-              if (networkResponse.status === 200) {
+              if (networkResponse && networkResponse.status === 200) {
                 caches.open(CACHE_NAME).then(cache => cache.put(event.request, networkResponse));
               }
             })
@@ -71,7 +85,7 @@ self.addEventListener('fetch', event => {
           .catch(() => {
             // Jika navigasi halaman utama gagal saat offline, berikan fallback
             if (event.request.mode === 'navigate') {
-              return caches.match('./sampling.html');
+              return caches.match('./dashboard.html') || caches.match('./index.html');
             }
           });
       })

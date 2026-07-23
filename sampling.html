@@ -4,33 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sampling Lapangan | PT Envirotama Solusindo</title>
+    <!-- PWA & Shortcut Support (Android, iOS, Desktop) -->
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="ESLab LIMS">
+    <meta name="theme-color" content="#2563eb">
+    <link rel="stylesheet" href="pwa-install.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;600;700;800&display=swap" rel="stylesheet">
-    <script>
-        // Bersihkan localStorage sisa-sisa antrean PWA offline agar tidak terjadi error sync null
-        localStorage.removeItem('eslab_unsynced_sampling');
-        localStorage.removeItem('eslab_sampling_cache');
-
-        // Otomatis bersihkan Service Worker dan Cache PWA lama jika masih tertinggal di browser
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.getRegistrations().then(registrations => {
-                if (registrations.length > 0) {
-                    for (let registration of registrations) {
-                        registration.unregister();
-                    }
-                    if ('caches' in window) {
-                        caches.keys().then(names => {
-                            for (let name of names) {
-                                caches.delete(name);
-                            }
-                            console.log("Service Worker & Cache cleared. Reloading page...");
-                            window.location.reload();
-                        });
-                    }
-                }
-            });
-        }
-    </script>
     <style>
         /* --- COPY THEME DARI DASHBOARD --- */
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -312,5 +295,6 @@
     <script src="config.js"></script>
     <script src="auth.js?v=2"></script>
     <script src="sampling.js?v=3"></script>
+    <script src="pwa-install.js"></script>
 </body>
 </html>

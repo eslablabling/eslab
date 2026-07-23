@@ -1,16 +1,82 @@
 {
-  "name": "ESLab LIMS",
+  "name": "ESLab LIMS - Environmental Laboratory",
   "short_name": "ESLab LIMS",
-  "description": "Laboratory Information Management System - PT Envirotama Solusindo",
-  "start_url": "./dashboard.html",
+  "description": "Sistem Informasi Manajemen Laboratorium Lingkungan PT Envirotama Solusindo",
+  "id": "eslab-lims-app",
+  "start_url": "./index.html",
+  "scope": "./",
   "display": "standalone",
-  "background_color": "#f8fafc",
+  "background_color": "#0f172a",
   "theme_color": "#2563eb",
+  "orientation": "any",
   "icons": [
     {
-      "src": "logo_eslab.jpg",
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
       "sizes": "512x512",
-      "type": "image/jpeg"
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Dashboard Utama",
+      "short_name": "Dashboard",
+      "description": "Buka Ringkasan & Status LIMS",
+      "url": "./dashboard.html",
+      "icons": [
+        {
+          "src": "icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Sampling Lapangan",
+      "short_name": "Sampling",
+      "description": "Input Data Fieldwork & Sampling",
+      "url": "./sampling.html",
+      "icons": [
+        {
+          "src": "icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Hasil Analisa",
+      "short_name": "Analisa",
+      "description": "Pengujian Parameter Laboratorium",
+      "url": "./analisa.html",
+      "icons": [
+        {
+          "src": "icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Sertifikat COA",
+      "short_name": "COA",
+      "description": "Cetak & Verifikasi COA",
+      "url": "./coa.html",
+      "icons": [
+        {
+          "src": "icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
     }
   ]
 }

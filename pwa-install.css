@@ -1,0 +1,312 @@
+/* --- ESLab PWA Shortcut & Install System CSS --- */
+
+:root {
+    --pwa-primary: #2563eb;
+    --pwa-primary-hover: #1d4ed8;
+    --pwa-bg-glass: rgba(15, 23, 42, 0.85);
+    --pwa-border-glass: rgba(255, 255, 255, 0.15);
+    --pwa-text-main: #f8fafc;
+    --pwa-text-muted: #94a3b8;
+}
+
+/* Floating Action Button (FAB) */
+.eslab-pwa-fab {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 99999;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
+    color: #ffffff;
+    padding: 12px 20px;
+    border-radius: 50px;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    box-shadow: 0 10px 25px -5px rgba(37, 99, 235, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 0.85rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    animation: pwa-pulse-bounce 3s infinite alternate;
+}
+
+.eslab-pwa-fab:hover {
+    transform: translateY(-3px) scale(1.03);
+    box-shadow: 0 15px 30px -5px rgba(37, 99, 235, 0.7);
+    background: linear-gradient(135deg, #1d4ed8 0%, #3b82f6 100%);
+}
+
+.eslab-pwa-fab:active {
+    transform: translateY(0) scale(0.97);
+}
+
+.eslab-pwa-fab-icon {
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 50%;
+    font-size: 14px;
+}
+
+.eslab-pwa-fab-badge {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    width: 12px;
+    height: 12px;
+    background-color: #10b981;
+    border: 2px solid #ffffff;
+    border-radius: 50%;
+}
+
+@keyframes pwa-pulse-bounce {
+    0% { transform: translateY(0); }
+    100% { transform: translateY(-4px); }
+}
+
+/* Modal Overlay */
+.eslab-pwa-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100000;
+    background: rgba(15, 23, 42, 0.75);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s ease;
+}
+
+.eslab-pwa-overlay.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* Modal Dialog Box */
+.eslab-pwa-modal {
+    background: #ffffff;
+    border-radius: 28px;
+    max-width: 480px;
+    width: 100%;
+    padding: 28px;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    transform: scale(0.9);
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    position: relative;
+    overflow: hidden;
+}
+
+.eslab-pwa-overlay.active .eslab-pwa-modal {
+    transform: scale(1);
+}
+
+.eslab-pwa-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.eslab-pwa-app-icon {
+    width: 56px;
+    height: 56px;
+    border-radius: 16px;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+    object-fit: cover;
+}
+
+.eslab-pwa-title {
+    font-size: 1.15rem;
+    font-weight: 800;
+    color: #0f172a;
+    line-height: 1.2;
+}
+
+.eslab-pwa-subtitle {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #64748b;
+    margin-top: 2px;
+}
+
+.eslab-pwa-close-btn {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    background: #f1f5f9;
+    border: none;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    font-size: 18px;
+    font-weight: 700;
+    color: #64748b;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s, color 0.2s;
+}
+
+.eslab-pwa-close-btn:hover {
+    background: #e2e8f0;
+    color: #0f172a;
+}
+
+/* Tabs platform (Android, iOS, Desktop) */
+.eslab-pwa-tabs {
+    display: flex;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    padding: 4px;
+    border-radius: 14px;
+    margin-bottom: 20px;
+}
+
+.eslab-pwa-tab {
+    flex: 1;
+    text-align: center;
+    padding: 8px 12px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    border-radius: 10px;
+    cursor: pointer;
+    color: #64748b;
+    transition: all 0.2s ease;
+}
+
+.eslab-pwa-tab.active {
+    background: #ffffff;
+    color: #2563eb;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+/* Step list */
+.eslab-pwa-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin-bottom: 24px;
+}
+
+.eslab-pwa-step-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    background: #f8fafc;
+    padding: 12px 16px;
+    border-radius: 16px;
+    border: 1px solid #f1f5f9;
+}
+
+.eslab-pwa-step-num {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #2563eb;
+    color: #ffffff;
+    font-weight: 800;
+    font-size: 0.8rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.eslab-pwa-step-text {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #334155;
+    line-height: 1.4;
+}
+
+.eslab-pwa-step-text strong {
+    color: #1e293b;
+}
+
+/* Primary Action Button inside Modal */
+.eslab-pwa-btn-primary {
+    width: 100%;
+    padding: 14px;
+    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+    color: #ffffff;
+    border: none;
+    border-radius: 16px;
+    font-weight: 700;
+    font-size: 0.9rem;
+    cursor: pointer;
+    box-shadow: 0 8px 20px -4px rgba(37, 99, 235, 0.4);
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.eslab-pwa-btn-primary:hover {
+    background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%);
+    transform: translateY(-1px);
+}
+
+.eslab-pwa-shortcuts-preview {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid #e2e8f0;
+}
+
+.eslab-pwa-shortcuts-title {
+    font-size: 0.75rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #64748b;
+    margin-bottom: 10px;
+}
+
+.eslab-pwa-shortcuts-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+}
+
+.eslab-pwa-shortcut-chip {
+    background: #f1f5f9;
+    padding: 8px 12px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #334155;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.eslab-pwa-shortcut-chip span {
+    font-size: 14px;
+}
+
+/* Responsiveness */
+@media (max-width: 480px) {
+    .eslab-pwa-fab {
+        bottom: 16px;
+        right: 16px;
+        padding: 10px 16px;
+        font-size: 0.78rem;
+    }
+    .eslab-pwa-modal {
+        padding: 20px;
+        border-radius: 24px;
+    }
+}
