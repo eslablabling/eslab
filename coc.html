@@ -203,11 +203,26 @@ td { padding: 16px; font-size: 0.85rem; border-bottom: 1px solid #f1f5f9; vertic
    ============================================================ */
 
 @media print {
-    /* 1. Pengaturan Kertas & Margin Luar (Fisik) */
+    /* 1. Pengaturan Kertas Default & Named Pages */
     @page {
         size: A4 landscape;
-        /* Margin fisik kertas: Atas & Bawah sesuai permintaan (0.9cm) */
-        margin: 0.9cm 0.5cm 0.9cm 0.5cm; 
+        /* Margin fisik kertas untuk printer Epson LX-310 (Top: 0.9cm, Bottom: 0.9cm, Left: 0cm, Right: 0cm) */
+        margin: 0.9cm 0cm 0.9cm 0cm; 
+    }
+
+    @page spk-portrait {
+        size: A4 portrait;
+        margin: 2.54cm 2.54cm 2.54cm 3.25cm; /* Top: 2.54cm, Right: 2.54cm, Bottom: 2.54cm, Left: 3.25cm */
+    }
+
+    @page sj-portrait {
+        size: A4 portrait;
+        margin: 1cm 1cm 1cm 1.2cm;
+    }
+
+    /* Sembunyikan seluruh UI Web agar tidak memakan ruang/halaman kosong saat dicetak */
+    .sidebar, .top-bar, .content-body, .no-print, .btn-save, button, nav, .btn-add, #cocPrintModal, #duplicateBanner {
+        display: none !important;
     }
 
     /* 2. Teknik Isolasi Area Cetak */
@@ -224,24 +239,79 @@ td { padding: 16px; font-size: 0.85rem; border-bottom: 1px solid #f1f5f9; vertic
         visibility: hidden; 
     }
 
-    #printArea, #printArea * { 
-        visibility: visible; 
+    /* Mode Cetak COC (Landscape) */
+    body:not(.print-spk-mode):not(.print-sj-mode) #printArea, 
+    body:not(.print-spk-mode):not(.print-sj-mode) #printArea * { 
+        visibility: visible !important; 
     }
 
-    #printArea {
-        position: absolute;
-        left: 0;
-        top: 0;
+    body:not(.print-spk-mode):not(.print-sj-mode) #printArea {
+        position: absolute !important;
+        left: 0 !important;
+        top: 0 !important;
         width: 100% !important;
         display: block !important;
-        /* Jarak konten ke margin kertas (Internal Margin) */
-        padding-top: 0.8cm;    /* Sesuai permintaan: Header 0.8 */
-        padding-bottom: 0.1cm; /* Sesuai permintaan: Footer 0.1 */
+        padding-top: 0.8cm;
+        padding-bottom: 0.1cm;
+        padding-left: 0cm;
+        padding-right: 0cm;
     }
 
-    /* 3. Sembunyikan Elemen UI */
-    .no-print, .btn-save, .sidebar, .top-bar, button, nav, .btn-add {
+    body:not(.print-spk-mode) #printAreaSpk {
         display: none !important;
+    }
+    body:not(.print-sj-mode) #printAreaSuratJalan {
+        display: none !important;
+    }
+
+    /* Mode Cetak SPK (Portrait) */
+    body.print-spk-mode #printArea, body.print-spk-mode #printAreaSuratJalan {
+        display: none !important;
+    }
+
+    body.print-spk-mode #printAreaSpk, 
+    body.print-spk-mode #printAreaSpk * { 
+        visibility: visible !important; 
+    }
+
+    body.print-spk-mode #printAreaSpk {
+        page: spk-portrait;
+        position: absolute !important;
+        left: 0 !important;
+        top: 0 !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        height: auto !important;
+        display: block !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        box-shadow: none !important;
+        border: none !important;
+        page-break-inside: avoid !important;
+        page-break-after: avoid !important;
+    }
+
+    /* Mode Cetak Surat Jalan Peralatan (Portrait 2 Halaman) */
+    body.print-sj-mode #printArea, body.print-sj-mode #printAreaSpk {
+        display: none !important;
+    }
+
+    body.print-sj-mode #printAreaSuratJalan, 
+    body.print-sj-mode #printAreaSuratJalan * { 
+        visibility: visible !important; 
+    }
+
+    body.print-sj-mode #printAreaSuratJalan {
+        page: sj-portrait;
+        position: absolute !important;
+        left: 0 !important;
+        top: 0 !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        height: auto !important;
+        display: block !important;
+        padding: 0 !important;
+        margin: 0 !important;
     }
 
     /* 4. Tabel Utama */
@@ -694,6 +764,305 @@ td { padding: 16px; font-size: 0.85rem; border-bottom: 1px solid #f1f5f9; vertic
                             </tr>
                         </tbody>
                     </table>
+                </div>
+            </div>
+
+            <!-- ============================================================ -->
+            <!-- AREA CETAK SURAT PERINTAH KERJA (SPK) PORTRAIT (PASTI 1 HALAMAN) -->
+            <!-- ============================================================ -->
+            <div id="printAreaSpk" class="only-print-spk" style="display: none; background: white; width: 100%; margin: 0; padding: 0; box-sizing: border-box; font-family: Arial, sans-serif; color: black; page-break-inside: avoid; page-break-after: avoid;">
+                <!-- Header / Kop Surat -->
+                <div style="display: flex; align-items: center; gap: 12px; border-bottom: 2.5px solid black; padding-bottom: 6px; margin-bottom: 12px;">
+                    <div style="width: 80px; flex-shrink: 0;">
+                        <img src="logo_es.jfif" style="width: 100%; display: block;">
+                    </div>
+                    <div style="flex-grow: 1; text-align: left;">
+                        <div style="font-weight: bold; font-size: 10.5pt; color: #000; letter-spacing: 0.5px; font-family: Arial, sans-serif;">LABORATORIUM</div>
+                        <div style="font-weight: bold; font-size: 11.5pt; color: #000; letter-spacing: 0.5px; font-family: Arial, sans-serif;">PT ENVIROTAMA SOLUSINDO</div>
+                        <div style="font-size: 8pt; color: #000; margin-top: 2px; font-family: Arial, sans-serif;">Jl. Raya Jatiwangi, Cikedokan, Kec. Cikarang Bar., Kabupaten Bekasi, Jawa Barat 17530</div>
+                        <div style="font-size: 8pt; color: #000; font-family: Arial, sans-serif;">(021) 22143948</div>
+                    </div>
+                </div>
+
+                <!-- Judul SPK -->
+                <div style="text-align: center; margin-top: 10px; margin-bottom: 15px;">
+                    <h2 style="font-size: 13pt; font-weight: bold; text-decoration: underline; margin: 0; font-family: Arial, sans-serif;">SURAT PERINTAH KERJA</h2>
+                    <div style="font-size: 9.5pt; margin-top: 3px; font-family: Arial, sans-serif;" id="spk-nomor">No.0001/SPK/ES/II/26</div>
+                </div>
+
+                <!-- Detail Permintaan Pekerjaan -->
+                <p style="font-size: 9.5pt; margin-bottom: 6px; font-family: Arial, sans-serif;">Berdasarkan permintaan pekerjaan:</p>
+                <table style="width: 100%; font-size: 9.5pt; font-family: Arial, sans-serif; border-collapse: collapse; margin-bottom: 12px; table-layout: fixed;">
+                    <tr>
+                        <td style="width: 150px; padding: 2px 0; vertical-align: top;">Nama Customer</td>
+                        <td style="width: 12px; padding: 2px 0; vertical-align: top;">:</td>
+                        <td style="font-weight: bold; padding: 2px 0; vertical-align: top;" id="spk-customer">-</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 2px 0; vertical-align: top;">No. PO</td>
+                        <td style="padding: 2px 0; vertical-align: top;">:</td>
+                        <td style="padding: 2px 0; vertical-align: top;" id="spk-po">-</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 2px 0; vertical-align: top;">Alamat On-Site</td>
+                        <td style="padding: 2px 0; vertical-align: top;">:</td>
+                        <td style="padding: 2px 0; vertical-align: top;" id="spk-alamat">-</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 2px 0; vertical-align: top;">Tanggal On-Site</td>
+                        <td style="padding: 2px 0; vertical-align: top;">:</td>
+                        <td style="padding: 2px 0; vertical-align: top;" id="spk-tanggal-onsite">-</td>
+                    </tr>
+                </table>
+
+                <!-- Penugasan -->
+                <p style="font-size: 9.5pt; margin-bottom: 6px; font-family: Arial, sans-serif;">Saya yang bertanda tangan di bawah ini:</p>
+                <table style="width: 100%; font-size: 9.5pt; font-family: Arial, sans-serif; border-collapse: collapse; margin-bottom: 12px;">
+                    <tr>
+                        <td style="width: 150px; padding: 2px 0;">Nama</td>
+                        <td style="width: 12px; padding: 2px 0;">:</td>
+                        <td style="padding: 2px 0;" id="spk-manager-nama">Fadhel Verdino, S.T.</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 2px 0;">Jabatan</td>
+                        <td style="padding: 2px 0;">:</td>
+                        <td style="padding: 2px 0;" id="spk-manager-jabatan">Environment Lab Manager</td>
+                    </tr>
+                </table>
+
+                <!-- Tabel Daftar Petugas -->
+                <p style="font-size: 9.5pt; margin-bottom: 6px; font-family: Arial, sans-serif;">Dengan ini memberikan tugas kepada:</p>
+                <table style="width: 100%; border-collapse: collapse; font-size: 9.5pt; font-family: Arial, sans-serif; margin-bottom: 15px; color: black !important;">
+                    <thead>
+                        <tr style="background: #ffffff; color: black !important;">
+                            <th style="border: 1pt solid black; padding: 4px; width: 40px; text-align: center !important; vertical-align: middle !important; color: black !important; font-weight: bold;">NO.</th>
+                            <th style="border: 1pt solid black; padding: 4px 8px; text-align: left !important; vertical-align: middle !important; color: black !important; font-weight: bold;">NAMA</th>
+                            <th style="border: 1pt solid black; padding: 4px 8px; text-align: center !important; vertical-align: middle !important; width: 220px; color: black !important; font-weight: bold;">JABATAN</th>
+                        </tr>
+                    </thead>
+                    <tbody id="spk-table-petugas" style="color: black !important;">
+                        <!-- Dynamic content -->
+                    </tbody>
+                </table>
+
+                <!-- Tabel Deskripsi Pekerjaan -->
+                <p style="font-size: 9.5pt; margin-bottom: 6px; font-family: Arial, sans-serif;">Untuk melaksanakan tugas pekerjaan:</p>
+                <table style="width: 100%; border-collapse: collapse; font-size: 9.5pt; font-family: Arial, sans-serif; margin-bottom: 15px; color: black !important;">
+                    <thead>
+                        <tr style="background: #ffffff; color: black !important;">
+                            <th style="border: 1pt solid black; padding: 4px; width: 40px; text-align: center !important; vertical-align: middle !important; color: black !important; font-weight: bold;">NO.</th>
+                            <th style="border: 1pt solid black; padding: 4px 8px; text-align: left !important; vertical-align: middle !important; color: black !important; font-weight: bold;">DESKRIPSI PEKERJAAN</th>
+                            <th style="border: 1pt solid black; padding: 4px; text-align: center !important; vertical-align: middle !important; width: 220px; color: black !important; font-weight: bold;">JUMLAH</th>
+                        </tr>
+                    </thead>
+                    <tbody style="color: black !important;">
+                        <tr>
+                            <td style="border: 1pt solid black; padding: 4px; text-align: center !important; vertical-align: middle !important;">1</td>
+                            <td style="border: 1pt solid black; padding: 4px 8px; vertical-align: middle !important;">Pengambilan Sampel</td>
+                            <td style="border: 1pt solid black; padding: 4px; text-align: center !important; vertical-align: middle !important;">Terlampir</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <!-- Penutup -->
+                <p style="font-size: 9.5pt; margin-bottom: 20px; font-family: Arial, sans-serif;">Demikian surat tugas ini dibuat untuk dipergunakan sebagaimana mestinya.</p>
+
+                <!-- Tanda Tangan Manager -->
+                <div style="display: flex; justify-content: flex-end; margin-bottom: 20px; page-break-inside: avoid;">
+                    <div style="text-align: left; min-width: 230px; font-size: 9.5pt; font-family: Arial, sans-serif;">
+                        <div>Bekasi, <span id="spk-tgl-surat">-</span></div>
+                        <div style="font-weight: bold; margin-bottom: 65px;">PT Envirotama Solusindo</div>
+                        <div style="font-weight: bold; text-decoration: underline;" id="spk-manager-ttd">Fadhel Verdino, S.T.</div>
+                    </div>
+                </div>
+
+                <!-- Footer Kodifikasi Form -->
+                <div style="font-size: 8pt; color: #000; margin-top: 10px; font-family: Arial, sans-serif;">
+                    Form-ES-6.2.10; Rev.02; 10 Januari 2022
+                </div>
+            </div>
+
+            <!-- ============================================================ -->
+            <!-- AREA CETAK SURAT JALAN PERALATAN LABORATORIUM (FORM-ES-6.4.5; REV.03) -->
+            <!-- ============================================================ -->
+            <div id="printAreaSuratJalan" class="only-print-sj" style="display: none; background: white; width: 100%; margin: 0; padding: 0; box-sizing: border-box; font-family: Arial, sans-serif; color: black;">
+                <!-- HALAMAN 1 -->
+                <div id="sj-page-1-wrapper" style="min-height: 96vh; display: flex; flex-direction: column; justify-content: space-between; box-sizing: border-box;">
+                    <div>
+                        <!-- Header / Kop Surat -->
+                        <div style="border-bottom: 2px solid black; padding-bottom: 4px; margin-bottom: 8px;">
+                            <div style="display: flex; align-items: center; gap: 12px;">
+                                <div style="width: 65px; flex-shrink: 0;">
+                                    <img src="logo_es.jfif" style="width: 100%; display: block;">
+                                </div>
+                                <div style="flex-grow: 1; text-align: left;">
+                                    <div style="font-weight: bold; font-size: 11pt; font-family: Arial, sans-serif;">Laboratorium PT Envirotama Solusindo</div>
+                                    <div style="font-weight: bold; font-size: 12pt; font-family: Arial, sans-serif;">Surat Jalan Peralatan Laboratorium</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Metadata Header Table -->
+                        <table style="width: 100%; margin-bottom: 6px; font-size: 8pt; font-family: Arial, sans-serif; border-collapse: collapse; line-height: 1.2;">
+                            <tr>
+                                <td style="width: 130px; padding: 1px 0; vertical-align: top;">Nama Pekerjaan</td>
+                                <td style="width: 12px; padding: 1px 0; vertical-align: top;">:</td>
+                                <td style="font-weight: bold; padding: 1px 0; vertical-align: top;" id="sj-nama-pekerjaan">Pengambilan Sampel</td>
+                                <td style="width: 85px; padding: 1px 0; vertical-align: top;">Transportasi :</td>
+                                <td style="width: 150px; font-weight: bold; padding: 1px 0; vertical-align: top;">
+                                    <span id="sj-trans-darat">☑</span> Darat &nbsp;&nbsp;
+                                    <span id="sj-trans-laut">☐</span> Laut &nbsp;&nbsp;
+                                    <span id="sj-trans-udara">☐</span> Udara
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 1px 0; vertical-align: top;">Nomor QT</td>
+                                <td style="padding: 1px 0; vertical-align: top;">:</td>
+                                <td style="font-weight: bold; padding: 1px 0; vertical-align: top;" id="sj-no-qt" colspan="3">-</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 1px 0; vertical-align: top;">Tanggal Pengerjaan</td>
+                                <td style="padding: 1px 0; vertical-align: top;">:</td>
+                                <td style="font-weight: bold; padding: 1px 0; vertical-align: top;" id="sj-tgl-pengerjaan" colspan="3">-</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 1px 0; vertical-align: top;">Nama Pelanggan</td>
+                                <td style="padding: 1px 0; vertical-align: top;">:</td>
+                                <td style="font-weight: bold; padding: 1px 0; vertical-align: top;" id="sj-nama-pelanggan" colspan="3">-</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 1px 0; vertical-align: top;">Lokasi Pengerjaan</td>
+                                <td style="padding: 1px 0; vertical-align: top;">:</td>
+                                <td style="font-weight: bold; padding: 1px 0; vertical-align: top;" id="sj-lokasi-pengerjaan" colspan="3">-</td>
+                            </tr>
+                        </table>
+
+                        <!-- Tabel Peralatan Halaman 1 -->
+                        <table style="width: 100%; border-collapse: collapse; font-size: 7pt; font-family: Arial, sans-serif; border: 1pt solid black; table-layout: fixed; margin-bottom: 8px; color: black !important;">
+                            <thead>
+                                <tr style="background: #f1f5f9; text-align: center; color: black !important;">
+                                    <th style="border: 1pt solid black; width: 4%; padding: 3px 2px; color: black !important; font-size: 6.8pt; font-weight: bold; text-align: center !important; vertical-align: middle !important;" rowspan="2">No.</th>
+                                    <th style="border: 1pt solid black; width: 22%; padding: 3px 2px; color: black !important; font-size: 6.8pt; font-weight: bold; text-align: center !important; vertical-align: middle !important;" rowspan="2">No. Inventaris Barang/Alat</th>
+                                    <th style="border: 1pt solid black; width: 25%; padding: 3px 2px; color: black !important; font-size: 6.8pt; font-weight: bold; text-align: center !important; vertical-align: middle !important;" rowspan="2">Nama Barang/Alat</th>
+                                    <th style="border: 1pt solid black; width: 5%; padding: 3px 2px; color: black !important; font-size: 6.8pt; font-weight: bold; text-align: center !important; vertical-align: middle !important;" rowspan="2">Jumlah</th>
+                                    <th style="border: 1pt solid black; width: 17%; padding: 3px 2px; color: black !important; font-size: 6.8pt; font-weight: bold; text-align: center !important; vertical-align: middle !important;" colspan="2">Kondisi Alat</th>
+                                    <th style="border: 1pt solid black; width: 17%; padding: 3px 2px; color: black !important; font-size: 6.8pt; font-weight: bold; text-align: center !important; vertical-align: middle !important;" colspan="2">Box Pengaman</th>
+                                    <th style="border: 1pt solid black; width: 10%; padding: 3px 2px; color: black !important; font-size: 6.8pt; font-weight: bold; text-align: center !important; vertical-align: middle !important;" rowspan="2">Keterangan</th>
+                                </tr>
+                                <tr style="background: #f1f5f9; text-align: center; color: black !important;">
+                                    <th style="border: 1pt solid black; width: 8.5%; padding: 2px 1px; color: black !important; font-size: 5.8pt; font-weight: bold; line-height: 1.1; text-align: center !important; vertical-align: middle !important;">Sebelum<br>Digunakan</th>
+                                    <th style="border: 1pt solid black; width: 8.5%; padding: 2px 1px; color: black !important; font-size: 5.8pt; font-weight: bold; line-height: 1.1; text-align: center !important; vertical-align: middle !important;">Setelah<br>Digunakan</th>
+                                    <th style="border: 1pt solid black; width: 8.5%; padding: 2px 1px; color: black !important; font-size: 5.8pt; font-weight: bold; line-height: 1.1; text-align: center !important; vertical-align: middle !important;">Sebelum<br>Digunakan</th>
+                                    <th style="border: 1pt solid black; width: 8.5%; padding: 2px 1px; color: black !important; font-size: 5.8pt; font-weight: bold; line-height: 1.1; text-align: center !important; vertical-align: middle !important;">Setelah<br>Digunakan</th>
+                                </tr>
+                            </thead>
+                            <tbody id="sj-tbody-page1" style="color: black !important;"></tbody>
+                        </table>
+
+                        <!-- TTD Halaman 1 (Aktif bila hanya 1 Halaman) -->
+                        <div id="sj-signatures-page1" style="display: none; margin-top: 6px;">
+                            <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 7.5pt; font-family: Arial, sans-serif; border: 1pt solid black; table-layout: fixed;">
+                                <tr style="background: #f1f5f9; text-align: center; font-weight: bold;">
+                                    <td style="border: 1pt solid black; width: 25%; padding: 3px;">Digunakan oleh,<br><span style="font-weight: normal; font-style: italic; font-size: 7pt;">Teknisi Kalibrasi/Lab</span></td>
+                                    <td style="border: 1pt solid black; width: 25%; padding: 3px;">Disetujui oleh,<br><span style="font-weight: normal; font-style: italic; font-size: 7pt;">Lab Manager</span></td>
+                                    <td style="border: 1pt solid black; width: 25%; padding: 3px;">Diserahkan oleh,</td>
+                                    <td style="border: 1pt solid black; width: 25%; padding: 3px;">Diterima kembali oleh,</td>
+                                </tr>
+                                <tr style="height: 50px; vertical-align: bottom;">
+                                    <td style="border: 1pt solid black; padding: 3px;"><div>Tgl:</div></td>
+                                    <td style="border: 1pt solid black; padding: 3px;">
+                                        <div style="font-weight: bold; text-decoration: underline;" class="sj-ttd-manager-name">Fadhel Verdino, S.T.</div>
+                                        <div>Tgl: <span class="sj-tgl-ttd-manager-val">-</span></div>
+                                    </td>
+                                    <td style="border: 1pt solid black; padding: 3px;"><div>Tgl:</div></td>
+                                    <td style="border: 1pt solid black; padding: 3px;"><div>Tgl:</div></td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Footer Halaman 1 -->
+                    <div style="display: flex; justify-content: space-between; font-size: 7pt; color: #333; font-family: Arial, sans-serif; border-top: 1px solid #ccc; padding-top: 4px; margin-top: 5px;">
+                        <div>Form-ES-6.4.5; Rev.03; 29 Februari 2024</div>
+                        <div id="sj-footer-page1-num">1 dari 1</div>
+                    </div>
+                </div>
+
+                <!-- HALAMAN 2 (Hanya aktif jika items > 20) -->
+                <div id="sj-page-2-wrapper" style="display: none; min-height: 96vh; flex-direction: column; justify-content: space-between; box-sizing: border-box; page-break-before: always; margin-top: 10px;">
+                    <div>
+                        <!-- Tabel Peralatan Halaman 2 -->
+                        <table style="width: 100%; border-collapse: collapse; font-size: 7pt; font-family: Arial, sans-serif; border: 1pt solid black; table-layout: fixed; margin-bottom: 10px; color: black !important;">
+                            <thead>
+                                <tr style="background: #f1f5f9; text-align: center; color: black !important;">
+                                    <th style="border: 1pt solid black; width: 4%; padding: 3px 2px; color: black !important; font-size: 6.8pt; font-weight: bold; text-align: center !important; vertical-align: middle !important;" rowspan="2">No.</th>
+                                    <th style="border: 1pt solid black; width: 22%; padding: 3px 2px; color: black !important; font-size: 6.8pt; font-weight: bold; text-align: center !important; vertical-align: middle !important;" rowspan="2">No. Inventaris Barang/Alat</th>
+                                    <th style="border: 1pt solid black; width: 25%; padding: 3px 2px; color: black !important; font-size: 6.8pt; font-weight: bold; text-align: center !important; vertical-align: middle !important;" rowspan="2">Nama Barang/Alat</th>
+                                    <th style="border: 1pt solid black; width: 5%; padding: 3px 2px; color: black !important; font-size: 6.8pt; font-weight: bold; text-align: center !important; vertical-align: middle !important;" rowspan="2">Jumlah</th>
+                                    <th style="border: 1pt solid black; width: 17%; padding: 3px 2px; color: black !important; font-size: 6.8pt; font-weight: bold; text-align: center !important; vertical-align: middle !important;" colspan="2">Kondisi Alat</th>
+                                    <th style="border: 1pt solid black; width: 17%; padding: 3px 2px; color: black !important; font-size: 6.8pt; font-weight: bold; text-align: center !important; vertical-align: middle !important;" colspan="2">Box Pengaman</th>
+                                    <th style="border: 1pt solid black; width: 10%; padding: 3px 2px; color: black !important; font-size: 6.8pt; font-weight: bold; text-align: center !important; vertical-align: middle !important;" rowspan="2">Keterangan</th>
+                                </tr>
+                                <tr style="background: #f1f5f9; text-align: center; color: black !important;">
+                                    <th style="border: 1pt solid black; width: 8.5%; padding: 2px 1px; color: black !important; font-size: 5.8pt; font-weight: bold; line-height: 1.1; text-align: center !important; vertical-align: middle !important;">Sebelum<br>Digunakan</th>
+                                    <th style="border: 1pt solid black; width: 8.5%; padding: 2px 1px; color: black !important; font-size: 5.8pt; font-weight: bold; line-height: 1.1; text-align: center !important; vertical-align: middle !important;">Setelah<br>Digunakan</th>
+                                    <th style="border: 1pt solid black; width: 8.5%; padding: 2px 1px; color: black !important; font-size: 5.8pt; font-weight: bold; line-height: 1.1; text-align: center !important; vertical-align: middle !important;">Sebelum<br>Digunakan</th>
+                                    <th style="border: 1pt solid black; width: 8.5%; padding: 2px 1px; color: black !important; font-size: 5.8pt; font-weight: bold; line-height: 1.1; text-align: center !important; vertical-align: middle !important;">Setelah<br>Digunakan</th>
+                                </tr>
+                            </thead>
+                            <tbody id="sj-tbody-page2" style="color: black !important;"></tbody>
+                        </table>
+
+                        <!-- TTD Halaman 2 -->
+                        <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 7.5pt; font-family: Arial, sans-serif; border: 1pt solid black; table-layout: fixed;">
+                            <tr style="background: #f1f5f9; text-align: center; font-weight: bold;">
+                                <td style="border: 1pt solid black; width: 25%; padding: 3px;">Digunakan oleh,<br><span style="font-weight: normal; font-style: italic; font-size: 7pt;">Teknisi Kalibrasi/Lab</span></td>
+                                <td style="border: 1pt solid black; width: 25%; padding: 3px;">Disetujui oleh,<br><span style="font-weight: normal; font-style: italic; font-size: 7pt;">Lab Manager</span></td>
+                                <td style="border: 1pt solid black; width: 25%; padding: 3px;">Diserahkan oleh,</td>
+                                <td style="border: 1pt solid black; width: 25%; padding: 3px;">Diterima kembali oleh,</td>
+                            </tr>
+                            <tr style="height: 50px; vertical-align: bottom;">
+                                <td style="border: 1pt solid black; padding: 3px;"><div>Tgl:</div></td>
+                                <td style="border: 1pt solid black; padding: 3px;">
+                                    <div style="font-weight: bold; text-decoration: underline;" class="sj-ttd-manager-name">Fadhel Verdino, S.T.</div>
+                                    <div>Tgl: <span class="sj-tgl-ttd-manager-val">-</span></div>
+                                </td>
+                                <td style="border: 1pt solid black; padding: 3px;"><div>Tgl:</div></td>
+                                <td style="border: 1pt solid black; padding: 3px;"><div>Tgl:</div></td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <!-- Footer Halaman 2 -->
+                    <div style="display: flex; justify-content: space-between; font-size: 7pt; color: #333; font-family: Arial, sans-serif; border-top: 1px solid #ccc; padding-top: 4px; margin-top: 5px;">
+                        <div>Form-ES-6.4.5; Rev.03; 29 Februari 2024</div>
+                        <div>2 dari 2</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal Pilihan Cetak Dokumen (COC / SPK / Surat Jalan) -->
+            <div id="cocPrintModal" class="no-print" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px); z-index: 1000; justify-content: center; align-items: center;">
+                <div style="background: white; width: 460px; border-radius: 20px; padding: 25px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04); text-align: center;">
+                    <div style="font-size: 2.5rem; margin-bottom: 8px;">🎉</div>
+                    <h3 style="color: #0f172a; margin-bottom: 4px; font-weight: 800;">Dokumen Berhasil Dibuat!</h3>
+                    <p style="color: #64748b; font-size: 0.85rem; margin-bottom: 18px;">Silakan pilih dokumen yang ingin Anda cetak:</p>
+                    
+                    <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 15px;">
+                        <button onclick="triggerPrintCocFromModal()" style="background: #059669; color: white; border: none; padding: 12px 14px; border-radius: 12px; font-weight: 700; font-size: 0.88rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: 0.2s;">
+                            🖨️ Cetak COC (Chain of Custody - Landscape)
+                        </button>
+                        <button onclick="triggerPrintSpkFromModal()" style="background: #2563eb; color: white; border: none; padding: 12px 14px; border-radius: 12px; font-weight: 700; font-size: 0.88rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: 0.2s;">
+                            📄 Cetak SPK (Surat Perintah Kerja - Portrait)
+                        </button>
+                        <button onclick="triggerPrintSuratJalanFromModal()" style="background: #7c3aed; color: white; border: none; padding: 12px 14px; border-radius: 12px; font-weight: 700; font-size: 0.88rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: 0.2s;">
+                            🚚 Cetak Surat Jalan Alat (Form-ES-6.4.5 - Portrait)
+                        </button>
+                    </div>
+
+                    <button onclick="closeCocPrintModal()" style="background: #f1f5f9; color: #64748b; border: none; padding: 10px; width: 100%; border-radius: 10px; font-weight: 700; font-size: 0.8rem; cursor: pointer;">
+                        ✕ Tutup / Nanti
+                    </button>
                 </div>
             </div>
     </main>

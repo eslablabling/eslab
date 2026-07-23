@@ -23,6 +23,7 @@ window.addEventListener('auth-ready', async (e) => {
     setDashboardGreeting(profile);
     updateDateDisplay();
     await fetchActiveLogs(); 
+    await fetchEquipmentStatsForDashboard();
     setupRealtimeSubscription(); 
 
     // Setup event listeners untuk Pencarian, Paginasi, Filter & Ekspor
@@ -984,4 +985,71 @@ function getWorkingDays(startDate, endDate) {
     }
     // Minimal 1 hari kerja jika ada rentang waktu
     return Math.max(count, 1);
+}
+
+// Fetch dan Tampilkan Ringkasan Statistik Peralatan Inventaris di Dashboard
+async function fetchEquipmentStatsForDashboard() {
+    let peralatanList = [];
+    try {
+        if (typeof _supabase !== 'undefined') {
+            const { data, error } = await _supabase
+                .from('master_peralatan')
+                .select('*')
+                .order('no_urut', { ascending: true });
+            if (!error && data) {
+                peralatanList = data;
+            }
+        }
+    } catch (err) {
+        console.warn("Falling back to local storage for equipment stats", err);
+    }
+
+    if (peralatanList.length === 0) {
+        const backup = localStorage.getItem('master_peralatan_backup');
+        if (backup) {
+            try { peralatanList = JSON.parse(backup); } catch(e) {}
+        }
+    }
+
+    const total = peralatanList.length;
+    let baikCount = 0;
+    let warningCount = 0;
+    let expiredCount = 0;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    peralatanList.forEach(item => {
+        let isExpired = (item.kondisi === 'Perlu Kalibrasi' || item.kondisi === 'Expired' || item.kondisi === 'Rusak');
+        let isWarning = false;
+
+        if (item.jadwal_kalibrasi) {
+            const expDate = new Date(item.jadwal_kalibrasi);
+            expDate.setHours(0, 0, 0, 0);
+            const diffDays = Math.ceil((expDate - today) / (1000 * 60 * 60 * 24));
+            if (diffDays < 0) {
+                isExpired = true;
+            } else if (diffDays <= 30) {
+                isWarning = true;
+            }
+        }
+
+        if (isExpired) {
+            expiredCount++;
+        } else if (isWarning) {
+            warningCount++;
+        } else {
+            baikCount++;
+        }
+    });
+
+    const elTotal = document.getElementById('statDashTotalAlat');
+    const elBaik = document.getElementById('statDashBaik');
+    const elWarning = document.getElementById('statDashWarningKalibrasi');
+    const elExpired = document.getElementById('statDashExpiredKalibrasi');
+
+    if (elTotal) elTotal.innerText = total;
+    if (elBaik) elBaik.innerText = baikCount;
+    if (elWarning) elWarning.innerText = warningCount;
+    if (elExpired) elExpired.innerText = expiredCount;
 }

@@ -209,6 +209,7 @@ function renderSidebar(role) {
                     { title: "Master Data", icon: "🗂️", link: "master-data.html", cat: "Main" },
                     { title: "Kelola Klien", icon: "👥", link: "kelola-klien.html", cat: "Main" },
                     { title: "Kelola Users", icon: "🛡️", link: "kelola-users.html", cat: "Main" },
+                    { title: "Kelola Peralatan", icon: "🔧", link: "peralatan.html", cat: "Menu Kerja" },
                     { title: "COC Digital", icon: "📑", link: "coc.html", cat: "Menu Kerja" },
                     { title: "Hub Komunikasi", icon: "💬", link: "komunikasi.html", cat: "Menu Kerja" },
                     { title: "Monitoring Sampling", icon: "📍", link: "sampling.html", cat: "Menu Kerja" },
@@ -221,6 +222,7 @@ function renderSidebar(role) {
                 ],
                 manager: [
                     { title: "Master Data", icon: "🗂️", link: "master-data.html", cat: "Main" },
+                    { title: "Kelola Peralatan", icon: "🔧", link: "peralatan.html", cat: "Menu Kerja" },
                     { title: "COC Digital", icon: "📑", link: "coc.html", cat: "Menu Kerja" },
                     { title: "Hub Komunikasi", icon: "💬", link: "komunikasi.html", cat: "Menu Kerja" },
                     { title: "Monitoring Sampling", icon: "📍", link: "sampling.html", cat: "Menu Kerja" },
@@ -232,6 +234,7 @@ function renderSidebar(role) {
                 ],
                 sampling: [
                     { title: "Master Data", icon: "🗂️", link: "master-data.html", cat: "Main" },
+                    { title: "Kelola Peralatan", icon: "🔧", link: "peralatan.html", cat: "Menu Kerja" },
                     { title: "COC Digital", icon: "📑", link: "coc.html", cat: "Menu Kerja" },
                     { title: "Monitoring Sampling", icon: "📍", link: "sampling.html", cat: "Menu Kerja" },
                     { title: "Penerimaan Sampel", icon: "📥", link: "penerimaan.html", cat: "Menu Kerja" },
@@ -240,6 +243,7 @@ function renderSidebar(role) {
                 ],
                 admin_ts: [
                     { title: "Master Data", icon: "🗂️", link: "master-data.html", cat: "Main" },
+                    { title: "Kelola Peralatan", icon: "🔧", link: "peralatan.html", cat: "Menu Kerja" },
                     { title: "COC Digital", icon: "📑", link: "coc.html", cat: "Menu Kerja" },
                     { title: "Hub Komunikasi", icon: "💬", link: "komunikasi.html", cat: "Menu Kerja" },
                     { title: "Penerimaan Sampel", icon: "📥", link: "penerimaan.html", cat: "Menu Kerja" },

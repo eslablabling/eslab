@@ -642,12 +642,10 @@ async function saveCoc() {
         await loadOfficerHistory();
         alert("Berhasil disimpan! Menyiapkan dokumen...");
         
-        fillPrintTemplate(cocData, items); // Mengisi data ke area preview cetak
+        fillPrintTemplate(cocData, items); // Mengisi data ke area preview cetak COC
+        fillSpkTemplate(cocData);          // Mengisi data ke area preview cetak SPK
 
-        // Beri jeda 500ms agar browser sempat me-render tabel sebelum kotak print muncul
-        setTimeout(() => {
-            window.print();
-        }, 500);
+        showCocPrintModal(cocData, items); // Tampilkan modal pilihan cetak (COC / SPK)
 
     } catch (err) {
         console.error("Gagal Simpan:", err);
@@ -1098,14 +1096,18 @@ function renderCocTableRows() {
         
         if (allowedToEdit) {
             actionButtons += `
-                <button class="btn-primary" onclick="loadCocToForm('${item.id}', false)" style="padding:5px 10px; font-size:0.7rem; background: #2563eb;">EDIT</button>
-                <button class="btn-primary" onclick="duplicateCoc('${item.id}')" style="padding:5px 10px; font-size:0.7rem; background: #7c3aed;" title="Duplikat seluruh COC ini ke form baru">📋 DUPLIKAT</button>
-                <button class="btn-primary" onclick="directPrint('${item.id}')" style="padding:5px 10px; font-size:0.7rem; background: #059669;">CETAK</button>
-                <button class="btn-primary" onclick="deleteCoc('${item.id}')" style="padding:5px 10px; font-size:0.7rem; background: #ef4444;">HAPUS</button>
+                <button class="btn-primary" onclick="loadCocToForm('${item.id}', false)" style="padding:5px 8px; font-size:0.7rem; background: #2563eb;">EDIT</button>
+                <button class="btn-primary" onclick="duplicateCoc('${item.id}')" style="padding:5px 8px; font-size:0.7rem; background: #7c3aed;" title="Duplikat COC">📋 DUPLIKAT</button>
+                <button class="btn-primary" onclick="directPrintCoc('${item.id}')" style="padding:5px 8px; font-size:0.7rem; background: #059669;" title="Cetak COC Landscape">🖨️ COC</button>
+                <button class="btn-primary" onclick="directPrintSpk('${item.id}')" style="padding:5px 8px; font-size:0.7rem; background: #0891b2;" title="Cetak SPK Portrait">📄 SPK</button>
+                <button class="btn-primary" onclick="directPrintSuratJalan('${item.id}')" style="padding:5px 8px; font-size:0.7rem; background: #6d28d9;" title="Cetak Surat Jalan Alat (Form-ES-6.4.5)">🚚 SURAT JALAN</button>
+                <button class="btn-primary" onclick="deleteCoc('${item.id}')" style="padding:5px 8px; font-size:0.7rem; background: #ef4444;">HAPUS</button>
             `;
         } else {
             actionButtons += `
-                <button class="btn-primary" onclick="directPrint('${item.id}')" style="padding:5px 10px; font-size:0.7rem; background: #059669;">CETAK</button>
+                <button class="btn-primary" onclick="directPrintCoc('${item.id}')" style="padding:5px 8px; font-size:0.7rem; background: #059669;" title="Cetak COC Landscape">🖨️ COC</button>
+                <button class="btn-primary" onclick="directPrintSpk('${item.id}')" style="padding:5px 8px; font-size:0.7rem; background: #0891b2;" title="Cetak SPK Portrait">📄 SPK</button>
+                <button class="btn-primary" onclick="directPrintSuratJalan('${item.id}')" style="padding:5px 8px; font-size:0.7rem; background: #6d28d9;" title="Cetak Surat Jalan Alat (Form-ES-6.4.5)">🚚 SURAT JALAN</button>
             `;
         }
 
@@ -1263,30 +1265,433 @@ window.duplicateCoc = async function(id) {
     setTimeout(() => banner.remove(), 5000);
 };
 
-async function directPrint(id) {
-    const { data, error } = await _supabase.from('coc_emisi').select('*, samples(*)').eq('id', id).single();
+// --- LOGIKA OTOMATISASI SURAT PERINTAH KERJA (SPK) ---
+function getRomanMonth(monthNum) {
+    const romans = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
+    return romans[(parseInt(monthNum, 10) - 1)] || 'I';
+}
+
+function formatIndonesianDate(dateStr) {
+    if (!dateStr) return '-';
+    const months = [
+        'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+        'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+    ];
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+        const y = parts[0];
+        const m = parseInt(parts[1], 10) - 1;
+        const d = parseInt(parts[2], 10);
+        return `${d} ${months[m] || ''} ${y}`;
+    }
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = months[d.getMonth()];
+    const year = d.getFullYear();
+    return `${day} ${month} ${year}`;
+}
+
+function formatShortDate(dateStr) {
+    if (!dateStr) return '-';
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+        return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    return `${day}/${month}/${year}`;
+}
+
+function generateSpkNumber(nomorCoc, samplingDate) {
+    let seq = '0001';
+    if (nomorCoc) {
+        const matches = nomorCoc.match(/\d{4}$/);
+        if (matches) seq = matches[0];
+    }
     
-    if (error || !data) {
-        alert("Gagal mengambil data untuk dicetak");
-        return;
+    let dateObj = new Date();
+    if (samplingDate) {
+        const parts = samplingDate.split('-');
+        if (parts.length === 3) {
+            dateObj = new Date(parts[0], parseInt(parts[1], 10) - 1, parts[2]);
+        } else {
+            dateObj = new Date(samplingDate);
+        }
+    }
+    
+    const romanMonth = getRomanMonth(dateObj.getMonth() + 1);
+    const year2Digit = String(dateObj.getFullYear()).slice(-2);
+    
+    return `No.${seq}/SPK/ES/${romanMonth}/${year2Digit}`;
+}
+
+function fillSpkTemplate(cocData) {
+    const spkNomorEl = document.getElementById('spk-nomor');
+    if (spkNomorEl) {
+        spkNomorEl.innerText = generateSpkNumber(cocData.nomor_coc, cocData.sampling_date);
+    }
+    
+    const custEl = document.getElementById('spk-customer');
+    if (custEl) custEl.innerText = cocData.company_name || '-';
+
+    const poEl = document.getElementById('spk-po');
+    if (poEl) poEl.innerText = cocData.qt_no || '-';
+
+    const alamatEl = document.getElementById('spk-alamat');
+    if (alamatEl) alamatEl.innerText = cocData.company_address || '-';
+
+    const tglOnsiteEl = document.getElementById('spk-tanggal-onsite');
+    if (tglOnsiteEl) tglOnsiteEl.innerText = formatShortDate(cocData.sampling_date);
+
+    const tglSuratEl = document.getElementById('spk-tgl-surat');
+    if (tglSuratEl) tglSuratEl.innerText = formatIndonesianDate(cocData.sampling_date || new Date().toISOString().split('T')[0]);
+
+    // Populate Petugas Table
+    const tbody = document.getElementById('spk-table-petugas');
+    if (tbody) {
+        tbody.innerHTML = '';
+        const officers = (cocData.sampling_officer || '')
+            .split(',')
+            .map(s => s.trim())
+            .filter(Boolean);
+            
+        if (officers.length > 0) {
+            officers.forEach((name, idx) => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td style="border: 1pt solid black; padding: 6px; text-align: center !important; vertical-align: middle !important;">${idx + 1}</td>
+                    <td style="border: 1pt solid black; padding: 6px; vertical-align: middle !important;">${name}</td>
+                    <td style="border: 1pt solid black; padding: 6px; text-align: center !important; vertical-align: middle !important;">Petugas Sampling</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        } else {
+            tbody.innerHTML = `
+                <tr>
+                    <td style="border: 1pt solid black; padding: 6px; text-align: center !important; vertical-align: middle !important;">1</td>
+                    <td style="border: 1pt solid black; padding: 6px; vertical-align: middle !important;">-</td>
+                    <td style="border: 1pt solid black; padding: 6px; text-align: center !important; vertical-align: middle !important;">Petugas Sampling</td>
+                </tr>
+            `;
+        }
+    }
+}
+
+function fillSuratJalanTemplate(cocData) {
+    const namaPekerjaan = document.getElementById('sj-nama-pekerjaan');
+    if (namaPekerjaan) namaPekerjaan.innerText = "Pengambilan Sampel";
+
+    const noQt = document.getElementById('sj-no-qt');
+    if (noQt) noQt.innerText = `${cocData.qt_no || '-'} - ${cocData.nomor_coc || '-'}`;
+
+    const tglPengerjaan = document.getElementById('sj-tgl-pengerjaan');
+    if (tglPengerjaan) tglPengerjaan.innerText = formatShortDate(cocData.sampling_date) || '-';
+
+    const namaPelanggan = document.getElementById('sj-nama-pelanggan');
+    if (namaPelanggan) namaPelanggan.innerText = cocData.company_name || '-';
+
+    const lokasiPengerjaan = document.getElementById('sj-lokasi-pengerjaan');
+    if (lokasiPengerjaan) lokasiPengerjaan.innerText = cocData.company_address || 'MM2100';
+
+    const tglTtdManager = document.getElementById('sj-tgl-ttd-manager');
+    if (tglTtdManager) tglTtdManager.innerText = formatIndonesianDate(cocData.sampling_date || new Date().toISOString().split('T')[0]);
+
+    // Master Catalog Peralatan Berdasarkan Tabel Matriks Parameter & Metode
+    const MASTER_EQUIPMENT_RULES = [
+        // Oksigen / Gas Direct Reading
+        { 
+            inv: 'EQP/ES/PL/2601/008.1', nama: 'Gas Analyzer', merek: 'Seitron', qty: 1, 
+            match: (p, m) => (p.includes('oksigen') || p.includes('o2') || p.includes('gas')) && !m.includes('ndir') 
+        },
+        { 
+            inv: 'EQP/ES/PL/2601/026.1', nama: 'Gas Analyzer', merek: 'MRU MGA PrimeQ', qty: 1, 
+            match: (p, m) => (p.includes('oksigen') || p.includes('o2') || p.includes('gas')) && m.includes('ndir') 
+        },
+
+        // Opasitas / Opacity
+        { 
+            inv: 'EQP/ES/PL/2601/009.1', nama: 'Opasitas Ringlemann', merek: 'Fujis scope', qty: 1, 
+            match: (p, m) => p.includes('opacit') || p.includes('opasitas') || p.includes('asap') 
+        },
+
+        // Apex Instruments Isokinetic Set (SNI 7117.17:2009 / EPA Method 5)
+        { inv: 'EQP/ES/PL/2601/015.1', nama: 'Isokinetik Stack Sampler', merek: 'Apex Instruments', qty: 1, match: (p, m) => (p.includes('partic') || p.includes('debu')) && (m.includes('7117.17') || m.includes('epa method 5')) },
+        { inv: 'EQP/ES/PL/2601/015.2', nama: 'Sampling Pumps apex', merek: 'Apex Instruments', qty: 1, match: (p, m) => (p.includes('partic') || p.includes('debu')) && (m.includes('7117.17') || m.includes('epa method 5')) },
+        { inv: 'EQP/ES/PL/2601/015.3', nama: 'Heated Probes with liners apex', merek: 'Apex Instruments', qty: 1, match: (p, m) => (p.includes('partic') || p.includes('debu')) && (m.includes('7117.17') || m.includes('epa method 5')) },
+        { inv: 'EQP/ES/PL/2601/015.4', nama: 'Nozzle Set apex', merek: 'Apex Instruments', qty: 1, match: (p, m) => (p.includes('partic') || p.includes('debu')) && (m.includes('7117.17') || m.includes('epa method 5')) },
+        { inv: 'EQP/ES/PL/2601/015.5', nama: 'Filter Holder apex', merek: 'Apex Instruments', qty: 1, match: (p, m) => (p.includes('partic') || p.includes('debu')) && (m.includes('7117.17') || m.includes('epa method 5')) },
+        { inv: 'EQP/ES/PL/2601/015.6', nama: 'Box Impinger glassware set apex', merek: 'Apex Instruments', qty: 1, match: (p, m) => (p.includes('partic') || p.includes('debu')) && (m.includes('7117.17') || m.includes('epa method 5')) },
+
+        // Polltech Instruments Isokinetic Set (SNI 7117-21:2021)
+        { inv: 'EQP/ES/PL/2601/016.1', nama: 'Isokinetik Stack Sampler', merek: 'Polltech Instruments', qty: 1, match: (p, m) => (p.includes('partic') || p.includes('debu')) && (m.includes('7117-21') || m.includes('7117.21') || m.includes('polltech')) },
+        { inv: 'EQP/ES/PL/2601/016.2', nama: 'Sampling Pumps polltech', merek: 'Polltech Instruments', qty: 1, match: (p, m) => (p.includes('partic') || p.includes('debu')) && (m.includes('7117-21') || m.includes('7117.21') || m.includes('polltech')) },
+        { inv: 'EQP/ES/PL/2601/016.3', nama: 'Heated Probes with liners polltech', merek: 'Polltech Instruments', qty: 1, match: (p, m) => (p.includes('partic') || p.includes('debu')) && (m.includes('7117-21') || m.includes('7117.21') || m.includes('polltech')) },
+        { inv: 'EQP/ES/PL/2601/016.4', nama: 'Pitot tube polltech', merek: 'Polltech Instruments', qty: 1, match: (p, m) => (p.includes('partic') || p.includes('debu')) && (m.includes('7117-21') || m.includes('7117.21') || m.includes('polltech')) },
+        { inv: 'EQP/ES/PL/2601/016.5', nama: 'Nozzle Set polltech', merek: 'Polltech Instruments', qty: 1, match: (p, m) => (p.includes('partic') || p.includes('debu')) && (m.includes('7117-21') || m.includes('7117.21') || m.includes('polltech')) },
+        { inv: 'EQP/ES/PL/2601/016.6', nama: 'Filter Holder polltech', merek: 'Polltech Instruments', qty: 1, match: (p, m) => (p.includes('partic') || p.includes('debu')) && (m.includes('7117-21') || m.includes('7117.21') || m.includes('polltech')) },
+        { inv: 'EQP/ES/PL/2601/016.7', nama: 'stack gas temperature sensor polltech', merek: 'Polltech Instruments', qty: 1, match: (p, m) => (p.includes('partic') || p.includes('debu')) && (m.includes('7117-21') || m.includes('7117.21') || m.includes('polltech')) },
+        { inv: 'EQP/ES/PL/2601/016.8', nama: 'Box Impinger glassware set polltech', merek: 'Polltech Instruments', qty: 1, match: (p, m) => (p.includes('partic') || p.includes('debu')) && (m.includes('7117-21') || m.includes('7117.21') || m.includes('polltech')) },
+
+        // Peralatan Pendukung General Particulate & Field Safety
+        { inv: 'EQP/ES/PL/2601/010.1', nama: 'Dry Box Filter', merek: '-', qty: 1, match: (p) => p.includes('partic') || p.includes('debu') },
+        { inv: 'EQP/ES/PL/2601/011.1', nama: 'Cooler Box', merek: 'Lion star', qty: 1, match: (p) => p.includes('partic') || p.includes('debu') || p.includes('sampel') },
+        { inv: 'EQP/ES/PL/2601/012.1', nama: 'Jangka sorong', merek: '-', qty: 1, match: (p) => p.includes('partic') || p.includes('debu') },
+        { inv: 'EQP/ES/PL/2601/013.1', nama: 'Trolley', merek: '-', qty: 1, match: (p) => p.includes('partic') || p.includes('debu') },
+        { inv: 'EQP/ES/PL/2601/014.1', nama: 'Neraca Teknis', merek: '-', qty: 1, match: (p) => p.includes('partic') || p.includes('debu') },
+        { inv: 'EQP/ES/PL/2601/017.1<br>EQP/ES/PL/2601/017.2<br>EQP/ES/PL/2601/017.3', nama: 'Kabel Roll', merek: '-', qty: 3, match: (p) => p.includes('partic') || p.includes('debu') || p.includes('gas') },
+        { inv: 'EQP/ES/PL/2601/018.1', nama: 'Tripod', merek: '-', qty: 1, match: (p) => p.includes('partic') || p.includes('debu') },
+        { inv: 'EQP/ES/PL/2601/019.1', nama: 'Tatakan', merek: '-', qty: 1, match: (p) => p.includes('partic') || p.includes('debu') },
+        { inv: 'EQP/ES/PL/2601/020.1', nama: 'Banner Safety Bekerja diKetinggian', merek: '-', qty: 1, match: (p) => p.includes('partic') || p.includes('debu') || p.includes('gas') },
+        { inv: 'EQP/ES/PL/2601/022.1', nama: 'Tali 25 meter', merek: '-', qty: 1, match: (p) => p.includes('partic') || p.includes('debu') },
+        { inv: 'EQP/ES/PL/2601/023.1', nama: 'Fylsheet 3x6', merek: '-', qty: 1, match: (p) => p.includes('partic') || p.includes('debu') },
+        { inv: 'EQP/ES/PL/2601/024.1', nama: 'Katrol 1 ton', merek: '-', qty: 1, match: (p) => p.includes('partic') || p.includes('debu') },
+        { inv: 'EQP/ES/PL/2601/025.1', nama: 'Terpal 2x4', merek: '-', qty: 1, match: (p) => p.includes('partic') || p.includes('debu') },
+        { inv: 'EQP/ES/PL/2601/027.1', nama: 'Panel listrik Portable', merek: 'Lokal', qty: 1, match: (p) => p.includes('partic') || p.includes('debu') || p.includes('gas') }
+    ];
+
+    // Ambil Semua Pasangan (Parameter, Metode) yang Dipilih di COC
+    const selectedPairs = [];
+    if (cocData.samples_data && Array.isArray(cocData.samples_data)) {
+        cocData.samples_data.forEach(s => {
+            (s.parameters || []).forEach(p => {
+                selectedPairs.push({
+                    param: (p.parameter || '').toLowerCase().trim(),
+                    method: (p.method || '').toLowerCase().trim()
+                });
+            });
+        });
+    } else if (cocData.samples && Array.isArray(cocData.samples)) {
+        cocData.samples.forEach(s => {
+            (s.parameters || []).forEach(p => {
+                selectedPairs.push({
+                    param: (p.parameter || '').toLowerCase().trim(),
+                    method: (p.method || '').toLowerCase().trim()
+                });
+            });
+        });
     }
 
+    // Filter Alat Berdasarkan Pasangan Parameter & Metode
+    let matchedEquipment = [];
+    if (selectedPairs.length > 0) {
+        matchedEquipment = MASTER_EQUIPMENT_RULES.filter(rule => {
+            return selectedPairs.some(pair => rule.match(pair.param, pair.method));
+        });
+    }
+
+    // Fallback: Jika tidak ada match khusus atau parameter belum diisi, tampilkan daftar standar 33 item
+    if (matchedEquipment.length === 0) {
+        matchedEquipment = MASTER_EQUIPMENT_RULES;
+    }
+
+    // Format Nomor Urut 1..N
+    const finalItems = matchedEquipment.map((item, idx) => ({
+        no: idx + 1,
+        inv: item.inv,
+        nama: item.nama,
+        qty: item.qty
+    }));
+
+    const managerDateText = formatIndonesianDate(cocData.sampling_date || new Date().toISOString().split('T')[0]);
+    document.querySelectorAll('.sj-tgl-ttd-manager-val').forEach(el => el.innerText = managerDateText);
+
+    const isTwoPages = finalItems.length > 20;
+    const page1Items = isTwoPages ? finalItems.slice(0, 20) : finalItems;
+    const page2Items = isTwoPages ? finalItems.slice(20) : [];
+
+    const tbodyPage1 = document.getElementById('sj-tbody-page1');
+    if (tbodyPage1) {
+        tbodyPage1.innerHTML = page1Items.map(item => `
+            <tr>
+                <td style="border: 1pt solid black; padding: 2px; text-align: center;">${item.no}</td>
+                <td style="border: 1pt solid black; padding: 2px 4px; font-family: monospace; font-size: 7pt;">${item.inv}</td>
+                <td style="border: 1pt solid black; padding: 2px 4px;">${item.nama}</td>
+                <td style="border: 1pt solid black; padding: 2px; text-align: center;">${item.qty}</td>
+                <td style="border: 1pt solid black; padding: 2px; text-align: center;"></td>
+                <td style="border: 1pt solid black; padding: 2px; text-align: center;"></td>
+                <td style="border: 1pt solid black; padding: 1px 2px; font-size: 6.5pt; text-align: center; white-space: nowrap;">☐ Ada &nbsp; ☐ Tdk</td>
+                <td style="border: 1pt solid black; padding: 1px 2px; font-size: 6.5pt; text-align: center; white-space: nowrap;">☐ Ada &nbsp; ☐ Tdk</td>
+                <td style="border: 1pt solid black; padding: 2px;"></td>
+            </tr>
+        `).join('');
+    }
+
+    const sjSignaturesPage1 = document.getElementById('sj-signatures-page1');
+    if (sjSignaturesPage1) {
+        sjSignaturesPage1.style.display = isTwoPages ? 'none' : 'block';
+    }
+
+    const sjFooterPage1Num = document.getElementById('sj-footer-page1-num');
+    if (sjFooterPage1Num) {
+        sjFooterPage1Num.innerText = isTwoPages ? '1 dari 2' : '1 dari 1';
+    }
+
+    const sjPage2Wrapper = document.getElementById('sj-page-2-wrapper');
+    if (sjPage2Wrapper) {
+        if (isTwoPages) {
+            sjPage2Wrapper.style.display = 'flex';
+            const tbodyPage2 = document.getElementById('sj-tbody-page2');
+            if (tbodyPage2) {
+                tbodyPage2.innerHTML = page2Items.map(item => `
+                    <tr>
+                        <td style="border: 1pt solid black; padding: 2px; text-align: center;">${item.no}</td>
+                        <td style="border: 1pt solid black; padding: 2px 4px; font-family: monospace; font-size: 7pt;">${item.inv}</td>
+                        <td style="border: 1pt solid black; padding: 2px 4px;">${item.nama}</td>
+                        <td style="border: 1pt solid black; padding: 2px; text-align: center;">${item.qty}</td>
+                        <td style="border: 1pt solid black; padding: 2px; text-align: center;"></td>
+                        <td style="border: 1pt solid black; padding: 2px; text-align: center;"></td>
+                        <td style="border: 1pt solid black; padding: 1px 2px; font-size: 6.5pt; text-align: center; white-space: nowrap;">☐ Ada &nbsp; ☐ Tdk</td>
+                        <td style="border: 1pt solid black; padding: 1px 2px; font-size: 6.5pt; text-align: center; white-space: nowrap;">☐ Ada &nbsp; ☐ Tdk</td>
+                        <td style="border: 1pt solid black; padding: 2px;"></td>
+                    </tr>
+                `).join('');
+            }
+        } else {
+            sjPage2Wrapper.style.display = 'none';
+        }
+    }
+}
+
+window.showCocPrintModal = function(cocData, items) {
+    if (cocData) {
+        fillSpkTemplate(cocData);
+        fillSuratJalanTemplate(cocData);
+    }
+    const modal = document.getElementById('cocPrintModal');
+    if (modal) {
+        modal.style.display = 'flex';
+    }
+};
+
+window.closeCocPrintModal = function() {
+    const modal = document.getElementById('cocPrintModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+};
+
+window.triggerPrintCocFromModal = function() {
+    closeCocPrintModal();
+    document.body.classList.remove('print-spk-mode', 'print-sj-mode');
+    document.body.classList.add('print-coc-mode');
+    
+    // Paksa orientasi Landscape secara dinamis pada @page
+    let styleEl = document.getElementById('printPageOrientation');
+    if (!styleEl) {
+        styleEl = document.createElement('style');
+        styleEl.id = 'printPageOrientation';
+        document.head.appendChild(styleEl);
+    }
+    styleEl.innerHTML = `@page { size: A4 landscape !important; margin: 0.9cm 0cm 0.9cm 0cm !important; }`;
+
+    const printArea = document.getElementById('printArea');
+    if (printArea) printArea.classList.add('show-preview');
+    const printAreaSpk = document.getElementById('printAreaSpk');
+    if (printAreaSpk) printAreaSpk.style.display = 'none';
+    const printAreaSj = document.getElementById('printAreaSuratJalan');
+    if (printAreaSj) printAreaSj.style.display = 'none';
+
+    setTimeout(() => {
+        window.print();
+    }, 300);
+};
+
+window.triggerPrintSpkFromModal = function() {
+    closeCocPrintModal();
+    document.body.classList.remove('print-coc-mode', 'print-sj-mode');
+    document.body.classList.add('print-spk-mode');
+    
+    // Paksa orientasi Portrait secara dinamis pada @page
+    let styleEl = document.getElementById('printPageOrientation');
+    if (!styleEl) {
+        styleEl = document.createElement('style');
+        styleEl.id = 'printPageOrientation';
+        document.head.appendChild(styleEl);
+    }
+    styleEl.innerHTML = `@page { size: A4 portrait !important; margin: 2.54cm 2.54cm 2.54cm 3.25cm !important; }`;
+
+    const printAreaSpk = document.getElementById('printAreaSpk');
+    if (printAreaSpk) printAreaSpk.style.display = 'block';
+    const printAreaSj = document.getElementById('printAreaSuratJalan');
+    if (printAreaSj) printAreaSj.style.display = 'none';
+
+    setTimeout(() => {
+        window.print();
+    }, 300);
+};
+
+window.triggerPrintSuratJalanFromModal = function() {
+    closeCocPrintModal();
+    document.body.classList.remove('print-coc-mode', 'print-spk-mode');
+    document.body.classList.add('print-sj-mode');
+    
+    // Paksa orientasi Portrait secara dinamis pada @page untuk Surat Jalan Alat
+    let styleEl = document.getElementById('printPageOrientation');
+    if (!styleEl) {
+        styleEl = document.createElement('style');
+        styleEl.id = 'printPageOrientation';
+        document.head.appendChild(styleEl);
+    }
+    styleEl.innerHTML = `@page { size: A4 portrait !important; margin: 0.6cm 0.8cm 0.6cm 0.8cm !important; }`;
+
+    const printAreaSj = document.getElementById('printAreaSuratJalan');
+    if (printAreaSj) printAreaSj.style.display = 'block';
+    const printAreaSpk = document.getElementById('printAreaSpk');
+    if (printAreaSpk) printAreaSpk.style.display = 'none';
+
+    setTimeout(() => {
+        window.print();
+    }, 300);
+};
+
+window.directPrintCoc = async function(id) {
+    const { data, error } = await _supabase.from('coc_emisi').select('*, samples(*)').eq('id', id).single();
+    if (error || !data) {
+        alert("Gagal mengambil data COC untuk dicetak");
+        return;
+    }
     const cocData = {
         nomor_coc: data.nomor_coc,
         company_name: data.company_name,
         company_address: data.company_address,
         contact_person: data.contact_person,
+        phone_no: data.phone_no,
+        email_coa: data.email_coa,
+        tat_requested: data.tat_requested,
         qt_no: data.qt_no,
         sampling_date: data.sampling_date,
         sampling_officer: data.sampling_officer
     };
 
     fillPrintTemplate(cocData, data.samples || []);
+    triggerPrintCocFromModal();
+};
 
-    setTimeout(() => {
-        window.print();
-    }, 500);
-}
+window.directPrintSpk = async function(id) {
+    const { data, error } = await _supabase.from('coc_emisi').select('*').eq('id', id).single();
+    if (error || !data) {
+        alert("Gagal mengambil data SPK untuk dicetak");
+        return;
+    }
+    fillSpkTemplate(data);
+    triggerPrintSpkFromModal();
+};
+
+window.directPrintSuratJalan = async function(id) {
+    const { data, error } = await _supabase.from('coc_emisi').select('*, samples(*)').eq('id', id).single();
+    if (error || !data) {
+        alert("Gagal mengambil data Surat Jalan Alat untuk dicetak");
+        return;
+    }
+    fillSuratJalanTemplate(data);
+    triggerPrintSuratJalanFromModal();
+};
+
+window.directPrint = window.directPrintCoc;
 
 // --- MEMASUKKAN DATA KE FORM (LOAD DATA) ---
 async function loadCocToForm(id, isReadonly = false) {
@@ -1375,9 +1780,11 @@ async function loadCocToForm(id, isReadonly = false) {
         printBtn.className = 'btn-save no-print';
         printBtn.style.background = '#059669';
         printBtn.style.marginTop = '10px';
-        printBtn.innerText = '🖨️ CETAK DOKUMEN INI';
-        printBtn.onclick = () => window.print();
+        printBtn.innerText = '🖨️ CETAK DOKUMEN (COC / SPK / SURAT JALAN)';
+        printBtn.onclick = () => showCocPrintModal(data, data.samples || []);
         document.querySelector('.coc-card').appendChild(printBtn);
+    } else {
+        existingPrintBtn.onclick = () => showCocPrintModal(data, data.samples || []);
     }
 
     switchCocMainTab('form');
