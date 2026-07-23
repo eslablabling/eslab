@@ -1,4 +1,4 @@
-const CACHE_NAME = 'eslab-lims-v2';
+const CACHE_NAME = 'eslab-lims-v3';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -19,6 +19,8 @@ const ASSETS_TO_CACHE = [
   './analisa.js',
   './pwa-install.js',
   './pwa-install.css',
+  './mobile-nav.js',
+  './mobile-nav.css',
   './manifest.json',
   './icon-192.png',
   './icon-512.png',

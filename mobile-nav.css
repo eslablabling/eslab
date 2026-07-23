@@ -1,0 +1,191 @@
+/* --- ESLab LIMS Mobile Navigation & Responsiveness System (Android & iOS) --- */
+
+:root {
+    --mobile-header-height: 60px;
+    --mobile-nav-bg: #ffffff;
+    --mobile-accent: #2563eb;
+    --mobile-border: #e2e8f0;
+}
+
+/* Safe Area Insets untuk iPhone Notch & Android Gesture Bar */
+body {
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+}
+
+/* Mobile Header (Hanya tampil di layar HP/Tablet < 768px) */
+.mobile-header {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: var(--mobile-header-height);
+    background: #ffffff;
+    border-bottom: 1px solid var(--mobile-border);
+    z-index: 9998;
+    padding: 0 16px;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+}
+
+.mobile-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.mobile-brand img {
+    height: 36px;
+    width: auto;
+    object-fit: contain;
+}
+
+.mobile-menu-toggle {
+    background: #f1f5f9;
+    border: none;
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+    font-size: 22px;
+    color: #1e293b;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+}
+
+.mobile-menu-toggle:active {
+    background: #e2e8f0;
+}
+
+/* Mobile Drawer Backdrop */
+.mobile-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.6);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    z-index: 9998;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.mobile-backdrop.active {
+    display: block;
+    opacity: 1;
+}
+
+/* Media Queries untuk Layar Seluler (< 768px) */
+@media (max-width: 768px) {
+    /* Tampilkan Mobile Header */
+    .mobile-header {
+        display: flex;
+    }
+
+    /* Penyesuaian Body agar Konten tidak tertutup Mobile Header */
+    body {
+        flex-direction: column !important;
+        height: auto !important;
+        min-height: 100vh !important;
+        overflow-y: auto !important;
+        padding-top: calc(var(--mobile-header-height) + env(safe-area-inset-top, 0px)) !important;
+    }
+
+    /* Transformasi Sidebar Desktop menjadi Slide-Over Drawer */
+    .sidebar {
+        position: fixed !important;
+        top: 0 !important;
+        left: -300px !important;
+        width: 280px !important;
+        height: 100% !important;
+        max-height: 100vh !important;
+        z-index: 9999 !important;
+        box-shadow: 10px 0 30px rgba(0, 0, 0, 0.15) !important;
+        transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        overflow-y: auto !important;
+        -webkit-overflow-scrolling: touch;
+        padding-top: max(20px, env(safe-area-inset-top, 20px)) !important;
+        padding-bottom: max(20px, env(safe-area-inset-bottom, 20px)) !important;
+    }
+
+    .sidebar.mobile-open {
+        left: 0 !important;
+    }
+
+    /* Main Content Area di Mobile */
+    main, .main-content, .content, .container {
+        width: 100% !important;
+        max-width: 100% !important;
+        flex: 1 1 auto !important;
+        padding: 16px !important;
+        overflow-x: hidden !important;
+    }
+
+    /* Card & Grid Responsif */
+    .grid, .card-grid, .stats-grid {
+        grid-template-columns: 1fr !important;
+        gap: 16px !important;
+    }
+
+    .flex-responsive {
+        flex-direction: column !important;
+        align-items: stretch !important;
+    }
+
+    /* Touch Targets (Mencegah Zoom Otomatis di iOS Safari) */
+    input[type="text"],
+    input[type="password"],
+    input[type="email"],
+    input[type="number"],
+    input[type="date"],
+    select,
+    textarea {
+        font-size: 16px !important; /* Mencegah auto-zoom iOS saat input diketik */
+        min-height: 44px;
+        padding: 10px 14px;
+    }
+
+    button, .btn, .btn-primary, .btn-secondary, .nav-item {
+        min-height: 44px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    /* Wrap Tabel Data Responsif dengan Scroll Sentuh */
+    .table-responsive {
+        width: 100% !important;
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+        margin-bottom: 16px;
+        border-radius: 12px;
+        border: 1px solid #e2e8f0;
+    }
+
+    table {
+        min-width: 600px; /* Memastikan tabel tidak gepeng di layar HP */
+    }
+}
+
+/* Penyesuaian Khusus Layar HP Sangat Kecil (< 480px) */
+@media (max-width: 480px) {
+    .mobile-header {
+        height: 56px;
+        padding: 0 12px;
+    }
+
+    .mobile-brand img {
+        height: 30px;
+    }
+
+    .glass-modern, .card, .modal-content {
+        padding: 20px !important;
+        border-radius: 24px !important;
+    }
+}
