@@ -351,10 +351,10 @@ async function prosesTerimaSampel(dbId, sampleId) {
     }
 
     try {
-        // 1. Ambil data sampel secara spesifik
+        // 1. Ambil data sampel beserta relasi coc_emisi
         const { data: targetSample, error: sampleError } = await _supabase
             .from('samples')
-            .select('*')
+            .select('*, coc_emisi(*)')
             .eq('coc_id', dbId)
             .eq('sample_id', sampleId)
             .single();
@@ -455,6 +455,16 @@ async function prosesTerimaSampel(dbId, sampleId) {
             if (error) {
                 alert("Gagal memperbarui data: " + error.message);
             } else {
+                if (typeof window.notifySampleReceived === 'function') {
+                    const cocInfo = targetSample?.coc_emisi || {};
+                    const cocNo = cocInfo.no_coc || cocInfo.coc_number || targetSample?.sample_id || 'COC';
+                    const compName = cocInfo.company_name || 'Klien';
+                    window.notifySampleReceived(
+                        cocNo,
+                        compName,
+                        1
+                    );
+                }
                 tutupModalPenerimaan();
                 fetchDataPenerimaan();
             }

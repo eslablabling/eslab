@@ -466,6 +466,14 @@ async function verifikasiCoASampling(id, nomorCoc) {
 
         if (error) throw error;
 
+        if (typeof window.notifyCOAVerified === 'function') {
+            window.notifyCOAVerified(
+                item ? (item.coa_number || item.no_coa || nomorCoc) : nomorCoc,
+                nomorCoc,
+                item ? (item.company_name || 'Klien') : 'Klien'
+            );
+        }
+
         const { data: { session } } = await _supabase.auth.getSession();
         if (session) {
             await _supabase.from('audit_logs').insert([{

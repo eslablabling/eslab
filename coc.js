@@ -1560,6 +1560,13 @@ window.showCocPrintModal = function(cocData, items) {
     if (cocData) {
         fillSpkTemplate(cocData);
         fillSuratJalanTemplate(cocData);
+        if (typeof window.notifyNewCOC === 'function') {
+            window.notifyNewCOC(
+                cocData.no_coc || cocData.coc_number || 'COC-BARU',
+                cocData.company_name || 'Klien',
+                cocData.sampling_officer || ''
+            );
+        }
     }
     const modal = document.getElementById('cocPrintModal');
     if (modal) {
